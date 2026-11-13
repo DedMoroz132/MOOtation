@@ -321,6 +321,8 @@ inline suite::Spec spec_of(const json::Value& d)
         in.observed = real("observed", 1.0);
         if (const json::Value* v = y->find("variant"); v && v->kind == Kind::String) in.variant = v->s;
         in.embed = real("embed", 0.5);
+        in.rho = real("rho", 0.0);                   // morse_cluster (task 20, §24.6.2)
+        in.container = real("container", 0.0);       // circles_in_circle, circles_in_square
         in.instance = static_cast<int>(int_of(*y, "instance", 1));
     }
     return s;

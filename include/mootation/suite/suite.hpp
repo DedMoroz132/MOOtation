@@ -35,8 +35,10 @@
 // The problems with symmetries at one objective (task 19, §19.1; sym.hpp):
 // family "sumexp" (sumexp.hpp), "lowrank", "cp3", "cp3_degenerate"
 // (factor.hpp), "rbfnet", "mlp_plateau" (networks.hpp), "chaboche1d"
-// (chaboche.hpp) or "lj_cluster" (lj.hpp), the instance's numbers in `sym`;
-// n_var 0 takes the family's. Least squares but lj_cluster, whose gradient
+// (chaboche.hpp), "lj_cluster" (lj.hpp), "morse_cluster" (morse.hpp; `rho`),
+// "circles_in_circle" or "circles_in_square" (circles.hpp; `container`; task
+// 20, §24.6.2), the instance's numbers in `sym`; n_var 0 takes the
+// family's. Least squares but lj_cluster and morse_cluster, whose gradient
 // comes with it; each gives its blocks, canon, gauge directions and start
 // (Native).
 //
@@ -111,6 +113,7 @@
 #include "catzdt.hpp"
 #include "cf.hpp"
 #include "chaboche.hpp"
+#include "circles.hpp"
 #include "classic.hpp"
 #include "common.hpp"
 #include "dascmop.hpp"
@@ -124,6 +127,7 @@
 #include "maf.hpp"
 #include "mgh.hpp"
 #include "mmo.hpp"
+#include "morse.hpp"
 #include "nist.hpp"
 #include "mop.hpp"
 #include "mw.hpp"
@@ -592,6 +596,9 @@ private:
         if (f == "mlp_plateau") return std::make_shared<sym::MlpPlateau>(in);
         if (f == "chaboche1d") return std::make_shared<sym::Chaboche>(in);
         if (f == "lj_cluster") return std::make_shared<sym::LJCluster>(in);
+        if (f == "morse_cluster") return std::make_shared<sym::MorseCluster>(in);
+        if (f == "circles_in_circle") return std::make_shared<sym::Circles>(in, true);
+        if (f == "circles_in_square") return std::make_shared<sym::Circles>(in, false);
         return nullptr;
     }
 

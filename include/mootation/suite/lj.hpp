@@ -30,6 +30,9 @@
 // The start: atoms uniform in the box, from (20261102, crc32("lj_cluster:
 // start"), instance, N).
 //
+// Cluster below holds all but the energy: morse_cluster (morse.hpp; task 20,
+// §24.6.2) takes it with its own volume per atom (MORSE-1).
+//
 // READINGS:
 //   LJ-1. Wales & Doye's container is a sphere, used only in their local
 //     minimizations to keep atoms from evaporating; ours is the cube of the
@@ -50,6 +53,7 @@
 
 #include <cmath>
 #include <stdexcept>
+#include <string>
 
 #include "../scalar/eigen.hpp"
 #include "sym.hpp"
@@ -76,51 +80,13 @@ inline double lj_icosahedral(int N)
     return N == 38 ? -173.252378 : N == 75 ? -396.282249 : std::numeric_limits<double>::quiet_NaN();
 }
 
-class LJCluster final : public Family {
+// What an atom cluster of lj_cluster and morse_cluster (morse.hpp) shares: N
+// atoms in R^3N, the box, the blocks, the gauge directions, canon and the
+// start; each gives its energy and gradient.
+class Cluster : public Family {
 public:
     int atoms = 0;
     double L = 0.0;
-
-    explicit LJCluster(const Instance& in)
-    {
-        if (in.dim < 2) throw std::invalid_argument("lj_cluster: N >= 2 atoms");
-        atoms = in.dim;
-        L = 1.0 + dm::pow(3.0 * atoms / (4.0 * dm::kPi), 1.0 / 3.0);   // LJ-1
-        n = 3 * atoms;
-        m = 0;
-        has_gradient = has_canon = true;
-        gauge_dim = 6;
-        blocks = {{0, 3, atoms}};
-        bounds = box(n, -L, L);
-        instance_ = in.instance;
-    }
-
-    double value(const double* x) const override
-    {
-        double sum = 0.0;
-        for (int i = 0; i < atoms; ++i)
-            for (int j = i + 1; j < atoms; ++j) {
-                const double s = 1.0 / squared(x, i, j), s3 = s * s * s;
-                sum += s3 * s3 - s3;
-            }
-        return 4.0 * sum;
-    }
-
-    // dE/dx_i = 8 (x_i - x_j) de/d(r^2), de/d(r^2) = s s3 (3 - 6 s3), s = 1/r^2
-    void gradient(const double* x, double* g) const override
-    {
-        std::fill(g, g + n, 0.0);
-        for (int i = 0; i < atoms; ++i)
-            for (int j = i + 1; j < atoms; ++j) {
-                const double s = 1.0 / squared(x, i, j), s3 = s * s * s;
-                const double de = 8.0 * (s * s3 * (3.0 - 6.0 * s3));
-                for (int c = 0; c < 3; ++c) {
-                    const double t = de * (x[3 * i + c] - x[3 * j + c]);
-                    g[3 * i + c] += t;
-                    g[3 * j + c] -= t;
-                }
-            }
-    }
 
     void gauge(const double* x, double* N) const override
     {
@@ -175,13 +141,27 @@ public:
 
     void start(double* x) const override
     {
-        std::mt19937 g = generator({kKey, instances::crc32("lj_cluster:start"), static_cast<std::uint64_t>(instance_),
+        std::mt19937 g = generator({kKey, instances::crc32(name_ + ":start"), static_cast<std::uint64_t>(instance_),
                                     static_cast<std::uint64_t>(atoms)});
         for (int i = 0; i < n; ++i) x[i] = -L + 2.0 * L * rnd::uniform01(g);
     }
 
-private:
-    int instance_ = 1;
+protected:
+    // volume: the volume per atom of the fcc cell at the pair potential's
+    // minimum (LJ-1; lj_cluster's 1)
+    Cluster(const Instance& in, const std::string& name, double volume) : name_(name)
+    {
+        if (in.dim < 2) throw std::invalid_argument(name + ": N >= 2 atoms");
+        atoms = in.dim;
+        L = 1.0 + dm::pow(3.0 * atoms * volume / (4.0 * dm::kPi), 1.0 / 3.0);   // LJ-1
+        n = 3 * atoms;
+        m = 0;
+        has_gradient = has_canon = true;
+        gauge_dim = 6;
+        blocks = {{0, 3, atoms}};
+        bounds = box(n, -L, L);
+        instance_ = in.instance;
+    }
 
     double squared(const double* x, int i, int j) const
     {
@@ -189,6 +169,10 @@ private:
         for (int c = 0; c < 3; ++c) s += (x[3 * i + c] - x[3 * j + c]) * (x[3 * i + c] - x[3 * j + c]);
         return s;
     }
+
+private:
+    std::string name_;
+    int instance_ = 1;
 
     double biggest(const double* x) const
     {
@@ -227,6 +211,38 @@ private:
         const double s2 = tol * s * s * atoms;
         return std::fabs(S(0, 1)) <= s2 && std::fabs(S(0, 2)) <= s2 && std::fabs(S(1, 2)) <= s2 &&
                S(1, 1) <= S(0, 0) + s2 && S(2, 2) <= S(1, 1) + s2;
+    }
+};
+
+class LJCluster final : public Cluster {
+public:
+    explicit LJCluster(const Instance& in) : Cluster(in, "lj_cluster", 1.0) {}
+
+    double value(const double* x) const override
+    {
+        double sum = 0.0;
+        for (int i = 0; i < atoms; ++i)
+            for (int j = i + 1; j < atoms; ++j) {
+                const double s = 1.0 / squared(x, i, j), s3 = s * s * s;
+                sum += s3 * s3 - s3;
+            }
+        return 4.0 * sum;
+    }
+
+    // dE/dx_i = 8 (x_i - x_j) de/d(r^2), de/d(r^2) = s s3 (3 - 6 s3), s = 1/r^2
+    void gradient(const double* x, double* g) const override
+    {
+        std::fill(g, g + n, 0.0);
+        for (int i = 0; i < atoms; ++i)
+            for (int j = i + 1; j < atoms; ++j) {
+                const double s = 1.0 / squared(x, i, j), s3 = s * s * s;
+                const double de = 8.0 * (s * s3 * (3.0 - 6.0 * s3));
+                for (int c = 0; c < 3; ++c) {
+                    const double t = de * (x[3 * i + c] - x[3 * j + c]);
+                    g[3 * i + c] += t;
+                    g[3 * j + c] -= t;
+                }
+            }
     }
 };
 

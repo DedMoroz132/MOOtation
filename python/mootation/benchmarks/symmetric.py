@@ -2,8 +2,10 @@
 # ============================================================================
 # The problems with symmetries at one objective (task 19, §19.1): the
 # registry's instances of the C++ suite's families sumexp, lowrank, cp3,
-# cp3_degenerate, rbfnet, mlp_plateau, chaboche1d and lj_cluster
-# (include/mootation/suite/sym.hpp and the headers it names, which define
+# cp3_degenerate, rbfnet, mlp_plateau, chaboche1d and lj_cluster, and of task
+# 20's (package 24-27, §24.6.2) morse_cluster, circles_in_circle and
+# circles_in_square, the public sets to check PBH, MDE and IDTS against their
+# papers (include/mootation/suite/sym.hpp and the headers it names, which define
 # them and give the readings), and the same families in NumPy for the
 # cross-check (python/test_symmetric.py): the same draws of the library's
 # generator (library_rng.py), the same formulas. The registry evaluates them
@@ -16,7 +18,10 @@
 # best known value otherwise ("best_known", of version SO_REFERENCE_VERSION):
 # lm's (scalar/lm.hpp, ftol = xtol = 1e-15) least 1/2 ||r||^2 from the
 # instance's start and 199 starts about it (SYMR-1); lj_cluster's are Wales &
-# Doye's Table I, Table II's icosahedral minima its f_local (lj.hpp).
+# Doye's Table I, Table II's icosahedral minima its f_local (lj.hpp);
+# morse_cluster's Grosso, Locatelli & Schoen's Table 1 (morse.hpp); the
+# circles' 0 ("exact": a packing fits the container, the record's times
+# 1 + eps, circles.hpp, CIRC-2).
 #
 # READINGS:
 #   SYMR-1. The best known values are our lm's least over the 200 starts,
@@ -24,11 +29,12 @@
 #   SYMR-2. Budgets: the least-squares instances take MGH's 1000 evaluations
 #     and pop_size 1 (least_squares.py, LSQ-4: problems for the local solvers,
 #     with a start x0); lj_cluster bbob's 10^4 D (pop_size 100, n_gen 100 D)
-#     and its own random start as x0.
+#     and its own random start as x0; so do the global problems of task 20
+#     (GLOBAL), the circles least squares or not.
 #   SYMR-3. Targets (so_metrics.hpp): the owner's rule of 01.11 names bbob
 #     (absolute) and MGH, NIST (relative from x0); the least-squares instances
 #     here take the latter, lj_cluster, a global problem with a best known
-#     energy, the former.
+#     energy, the former, and so do the rest of GLOBAL.
 # ============================================================================
 from __future__ import annotations
 
@@ -55,11 +61,18 @@ class Instance:
     variant: str = ""
     embed: float = 0.5
     instance: int = 1
+    rho: float = 0.0              # morse_cluster (task 20, §24.6.2)
+    container: float = 0.0        # circles_in_circle: R; circles_in_square: L
 
     def spec(self) -> dict:
-        return {"teacher": self.teacher, "student": self.student, "points": self.points, "dim": self.dim,
-                "shape": list(self.shape), "noise": self.noise, "ratio": self.ratio, "observed": self.observed,
-                "variant": self.variant, "embed": self.embed, "instance": self.instance}
+        d = {"teacher": self.teacher, "student": self.student, "points": self.points, "dim": self.dim,
+             "shape": list(self.shape), "noise": self.noise, "ratio": self.ratio, "observed": self.observed,
+             "variant": self.variant, "embed": self.embed, "instance": self.instance}
+        if self.rho:                  # their families' only, as the extension's spec: the rest as before
+            d["rho"] = self.rho
+        if self.container:
+            d["container"] = self.container
+        return d
 
 
 @dataclass
@@ -87,6 +100,16 @@ _BEST = {
 # Wales & Doye 1997, Table I and Table II (lj.hpp)
 LJ_BEST = {13: -44.326801, 19: -72.659782, 26: -108.315616, 38: -173.928427, 55: -279.248470, 75: -397.492331}
 LJ_ICOSAHEDRAL = {38: -173.252378, 75: -396.282249}
+
+# Grosso, Locatelli & Schoen 2007 (experimental analysis), Table 1, rho = 14 (morse.hpp)
+MORSE_BEST = {30: -106.835, 55: -220.646, 61: -249.587, 79: -336.798}
+# Lai et al. 2022, Table 2: R* of N unit circles in a circle; Costa, Hansen &
+# Liberti, Table 4: r* of N circles in the unit square, L* = 1 / r* (circles.hpp)
+CIRCLE_R = {66: 9.096279427, 82: 10.050824224}
+SQUARE_r = {20: 0.111382, 30: 0.091671, 40: 0.079186, 50: 0.071377}
+EPS = (2, 3)                       # the container: the record's times 1 + 10^-e (CIRC-2)
+# the global problems: bbob's budgets and absolute targets (SYMR-2, SYMR-3)
+GLOBAL = ("lj_cluster", "morse_cluster", "circles_in_circle", "circles_in_square")
 
 
 def _rows() -> list:
@@ -124,6 +147,16 @@ def _rows() -> list:
     for N in sorted(LJ_BEST):
         rows.append(Row(f"lj_cluster_N{N}", "lj_cluster", I(dim=N), LJ_BEST[N], "best_known",
                         (LJ_ICOSAHEDRAL[N],) if N in LJ_ICOSAHEDRAL else ()))
+    for N in sorted(MORSE_BEST):
+        rows.append(Row(f"morse_cluster_N{N}_rho14", "morse_cluster", I(dim=N, rho=14.0), MORSE_BEST[N], "best_known"))
+    for N in sorted(CIRCLE_R):
+        for e in EPS:
+            rows.append(Row(f"circles_in_circle_N{N}_e{e}", "circles_in_circle",
+                            I(dim=N, container=CIRCLE_R[N] * (1.0 + 10.0 ** -e)), 0.0, "exact"))
+    for N in sorted(SQUARE_r):
+        for e in EPS:
+            rows.append(Row(f"circles_in_square_N{N}_e{e}", "circles_in_square",
+                            I(dim=N, container=(1.0 / SQUARE_r[N]) * (1.0 + 10.0 ** -e)), 0.0, "exact"))
     return rows
 
 
@@ -510,9 +543,86 @@ class LJCluster:
         return N.reshape(3 * self.N, 6)
 
 
+class MorseCluster(LJCluster):
+    """morse.hpp: lj_cluster's box rule at the volume 1/sqrt 2 (MORSE-1), its gauge."""
+
+    def __init__(self, inst: Instance):
+        self.N, self.rho = inst.dim, inst.rho
+        self.L = 1.0 + (3.0 * self.N * (1.0 / math.sqrt(2.0)) / (4.0 * math.pi)) ** (1.0 / 3.0)
+
+    def value(self, x):
+        r = np.asarray(x, float).reshape(self.N, 3)
+        i, j = np.triu_indices(self.N, 1)
+        e = np.exp(self.rho * (1.0 - np.sqrt(np.sum((r[i] - r[j]) ** 2, axis=1)))) - 1.0
+        return float(np.sum(e * e - 1.0))
+
+    def gradient(self, x):
+        r = np.asarray(x, float).reshape(self.N, 3)
+        i, j = np.triu_indices(self.N, 1)
+        diff = r[i] - r[j]
+        d = np.sqrt(np.sum(diff ** 2, axis=1))
+        a = np.exp(self.rho * (1.0 - d))
+        t = (-2.0 * self.rho * a * (a - 1.0) / d)[:, None] * diff
+        g = np.zeros_like(r)
+        np.add.at(g, i, t)
+        np.add.at(g, j, -t)
+        return g.reshape(-1)
+
+
+class Circles:
+    """circles.hpp: the overlaps of N unit circles, the pairs (i < j) then the walls."""
+
+    def __init__(self, inst: Instance, circle: bool):
+        self.N, self.size, self.circle = inst.dim, inst.container, circle
+
+    def _walls(self, c):
+        if self.circle:
+            d = np.sqrt(np.sum(c ** 2, axis=1))
+            return (d + 1.0 - self.size)[:, None], (c / np.where(d > 0.0, d, 1.0)[:, None])[:, None, :]
+        t = np.stack([1.0 - c[:, 0], c[:, 0] + 1.0 - self.size, 1.0 - c[:, 1], c[:, 1] + 1.0 - self.size], axis=1)
+        dt = np.zeros((self.N, 4, 2))
+        dt[:, 0, 0], dt[:, 1, 0], dt[:, 2, 1], dt[:, 3, 1] = -1.0, 1.0, -1.0, 1.0
+        return t, dt
+
+    def residuals(self, x):
+        c = np.asarray(x, float).reshape(self.N, 2)
+        i, j = np.triu_indices(self.N, 1)
+        d = np.sqrt(np.sum((c[i] - c[j]) ** 2, axis=1))
+        t, _ = self._walls(c)
+        return np.concatenate([np.maximum(2.0 - d, 0.0), np.maximum(t, 0.0).reshape(-1)])
+
+    def jacobian(self, x):
+        c = np.asarray(x, float).reshape(self.N, 2)
+        i, j = np.triu_indices(self.N, 1)
+        diff = c[i] - c[j]
+        d = np.sqrt(np.sum(diff ** 2, axis=1))
+        on = (d < 2.0) & (d > 0.0)                    # CIRC-4
+        u = np.where(on[:, None], diff / np.where(d > 0.0, d, 1.0)[:, None], 0.0)
+        P = len(i)
+        t, dt = self._walls(c)
+        W = t.shape[1]
+        J = np.zeros((P + self.N * W, 2 * self.N))
+        k = np.arange(P)
+        J[k, 2 * i], J[k, 2 * i + 1], J[k, 2 * j], J[k, 2 * j + 1] = -u[:, 0], -u[:, 1], u[:, 0], u[:, 1]
+        for a in range(self.N):
+            for w in range(W):
+                if t[a, w] > 0.0:
+                    J[P + a * W + w, 2 * a:2 * a + 2] = dt[a, w]
+        return J
+
+    def gauge_basis(self, x):
+        c = np.asarray(x, float).reshape(self.N, 2)
+        return np.stack([-c[:, 1], c[:, 0]], axis=1).reshape(2 * self.N, 1)
+
+    def canon(self, x):
+        return _sort_blocks(np.asarray(x, float), 0, 2, self.N, lambda b: 0.0)
+
+
 def numpy_family(family: str, inst: Instance):
     """The family in NumPy for an instance (the cross-check's)."""
     return {"sumexp": lambda: Sumexp(inst), "lowrank": lambda: Lowrank(inst),
             "cp3": lambda: CP3(inst, False), "cp3_degenerate": lambda: CP3(inst, True),
             "rbfnet": lambda: Rbfnet(inst), "mlp_plateau": lambda: MlpPlateau(inst),
-            "chaboche1d": lambda: Chaboche(inst), "lj_cluster": lambda: LJCluster(inst)}[family]()
+            "chaboche1d": lambda: Chaboche(inst), "lj_cluster": lambda: LJCluster(inst),
+            "morse_cluster": lambda: MorseCluster(inst), "circles_in_circle": lambda: Circles(inst, True),
+            "circles_in_square": lambda: Circles(inst, False)}[family]()

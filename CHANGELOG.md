@@ -10,6 +10,18 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 20, package 24-27, §24.6.2): three public problem families
+  for checking strategies against their papers, C++ with a NumPy cross-check
+  (`suite/morse.hpp`, `suite/circles.hpp`; `benchmarks/symmetric.py`).
+  `morse_cluster`: the Morse cluster's energy and gradient (Grosso, Locatelli
+  & Schoen), ρ = 14 at N = 30, 55, 61, 79 against their Table 1.
+  `circles_in_circle` and `circles_in_square`: N unit circles in a container,
+  the overlaps as residuals (Lai et al. 2022), the container the record's
+  times 1 + ε (ε = 10⁻², 10⁻³; Lai et al.'s Table 2, Costa, Hansen &
+  Liberti's Table 4), f_opt = 0. Sixteen registry rows, global like
+  `lj_cluster` (bbob's budgets, absolute targets). `lj_cluster` now shares
+  its box, blocks, gauge, canon and start with `morse_cluster` (`Cluster` in
+  `lj.hpp`), bit for bit as before; the other instances' specs are unchanged.
 - Changed: reference version 6 (REFERENCE_VERSION, refs::kReferenceVersion;
   task 20, after verify2's finding). fronts_full.SIZES named WFG3_6D and
   WFG3_10D, but their files had never been built, so their reference was the

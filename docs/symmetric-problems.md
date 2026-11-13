@@ -3,7 +3,10 @@
 Single-objective problems whose parameters can be interchanged or moved along known directions without
 changing the objective (task 19). They are least-squares teacher-student problems (but `lj_cluster`):
 the data come from a teacher of the model class, the unknowns are the student's, the objective is
-½‖r‖². Each is a family of the C++ suite (`include/mootation/suite/sym.hpp` and the headers it names,
+½‖r‖². Task 20 (package 24–27, §24.6.2) adds three public sets for checking strategies such as PBH,
+MDE and IDTS against their papers: Morse clusters (`morse_cluster`, an energy with its gradient) and
+equal circles in a circle or a square (`circles_in_circle`, `circles_in_square`, least squares: the
+overlaps). Each is a family of the C++ suite (`include/mootation/suite/sym.hpp` and the headers it names,
 with their sources and readings), evaluated by C++ and checked against an independent NumPy version
 (`python/mootation/benchmarks/symmetric.py`).
 
@@ -33,9 +36,15 @@ with their sources and readings), evaluated by C++ and checked against an indepe
 | `mlp_plateau` | v_0 + Σ v_j tanh(w_j0 + w_jᵀu) | the units (blocks), sign flips; `canon` | 0; starts `random`, `duplicate` (γ_λ), `bias` (β_(0,w)) of Fukumizu and Amari |
 | `chaboche1d` | uniaxial elastoplasticity, N Armstrong–Frederick back stresses, Voce hardening, strain control | the pairs (C_k, γ_k) (blocks); `canon` sorts by γ | 0 in the exact class |
 | `lj_cluster` | Lennard-Jones energy of N atoms | the atoms (blocks), translations and rotations (6 gauge directions); `canon` | Wales and Doye's Table I (best known) |
+| `morse_cluster` | Morse energy Σ [e^{ρ(1−r)} − 1]² − 1 of N atoms (`rho`) | as `lj_cluster` | Grosso, Locatelli & Schoen 2007, Table 1, ρ = 14 (best known, three decimals) |
+| `circles_in_circle` | N unit circles in a circle of radius R (`container`): ½ Σ overlaps², Lai et al. 2022 (4)–(6) | the circles (blocks), the rotation about the centre (1 gauge direction); `canon` sorts | 0 at R = R*(1 + ε), R* Lai et al.'s Table 2 |
+| `circles_in_square` | N unit circles in the square [0, L]² (`container`): the pairs and four walls a circle | the circles (blocks); `canon` sorts | 0 at L = L*(1 + ε), L* = 1/r*, r* Costa, Hansen & Liberti's Table 4 |
 
-The registry (`data/registry.json`) has 27 instances, `<family>_<numbers>_1D`; where the minimum is
-not known, `f_opt` is the best value known (`f_opt_kind = best_known`, `SO_REFERENCE_VERSION`).
+The registry (`data/registry.json`) has 43 instances, `<family>_<numbers>_1D`; where the minimum is
+not known, `f_opt` is the best value known (`f_opt_kind = best_known`, `SO_REFERENCE_VERSION`). The
+global ones (`lj_cluster`, `morse_cluster` at N = 30, 55, 61, 79, the circles at ε = 10⁻², 10⁻³: N = 66,
+82 in a circle, N = 20, 30, 40, 50 in a square) take bbob's budgets and absolute targets; finding the
+record itself (shrinking the container) is a strategy's business, not the problem's (CIRC-2).
 
 ## How each is checked
 
@@ -44,11 +53,13 @@ not known, `f_opt` is the best value known (`f_opt_kind = best_known`, `SO_REFER
 | `f(x_opt) = 0` bit for bit at the teacher's point (exact class, no noise) | `tests/test_suite.cpp` |
 | the Jacobian (gradient) against central differences, relative 10⁻⁶ | `tests/test_suite.cpp` |
 | `canon`: `f(canon(x)) = f(x)` to 10⁻¹², idempotent and permutation-invariant bit for bit (sign flips of `cp3` and `mlp_plateau` included) | `tests/test_suite.cpp` |
-| `gauge_basis`: ‖J g‖ ≤ 10⁻¹⁰ ‖J‖ ‖g‖ for every direction (`lowrank`, `cp3`, `cp3_degenerate`, `lj_cluster`) | `tests/test_suite.cpp` |
+| `gauge_basis`: ‖J g‖ ≤ 10⁻¹⁰ ‖J‖ ‖g‖ for every direction (`lowrank`, `cp3`, `cp3_degenerate`, `lj_cluster`, `morse_cluster`, `circles_in_circle`) | `tests/test_suite.cpp` |
 | `sumexp`: the resolution limit against Istratov and Vyvenko's Table I; Lanczos's f₂ within two decimals of f₃ on the grid | `tests/test_suite.cpp` |
 | `cp3_degenerate`: n² f(A_n) equals ½‖S + Y/n‖² (the explicit residual) at n = 10, 100, 1000 while the norms grow like n | `tests/test_suite.cpp` |
 | `mlp_plateau`: at either embedding the gradient is the smaller network's at its minimum, carried over | `tests/test_suite.cpp` |
 | `lj_cluster`: the 13-atom icosahedron at its best radius gives Table I's energy (the other sizes: no published coordinates in the sources) | `tests/test_suite.cpp` |
+| `morse_cluster`: the segment, triangle and tetrahedron of edge 1 give E = −N(N − 1)/2 at ρ = 6 and 14 (MORSE-3); the box | `tests/test_suite.cpp` |
+| `circles_in_circle`: the hexagon of 7 gives f = 0 at R = 3 and f > 0 just below; `circles_in_square`: the 5 × 5 grid gives f = 0 exactly at L* = 1/0.1 = 10 and f > 0 just below | `tests/test_suite.cpp` |
 | C++ against NumPy at every registered instance: residuals, Jacobian, objective, gradient, gauge directions, `canon`, to 10⁻¹² | `python/test_symmetric.py` |
 | the box from C++ is the registry's | `tests/test_registry_bounds.cpp` |
 

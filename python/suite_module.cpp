@@ -148,6 +148,8 @@ suite::Spec spec_of(const py::dict& d)
         if (y.contains("observed")) in.observed = y["observed"].cast<double>();
         if (y.contains("variant")) in.variant = y["variant"].cast<std::string>();
         if (y.contains("embed")) in.embed = y["embed"].cast<double>();
+        if (y.contains("rho")) in.rho = y["rho"].cast<double>();                  // task 20, §24.6.2
+        if (y.contains("container")) in.container = y["container"].cast<double>();
         if (y.contains("instance")) in.instance = y["instance"].cast<int>();
     }
     return s;
@@ -212,6 +214,8 @@ py::dict dict_of(const suite::Spec& s)
         y["variant"] = in.variant;
         y["embed"] = in.embed;
         y["instance"] = in.instance;
+        if (s.family == "morse_cluster") y["rho"] = in.rho;           // their families' only: the rest as before
+        if (s.family == "circles_in_circle" || s.family == "circles_in_square") y["container"] = in.container;
         d["sym"] = y;
     }
     return d;

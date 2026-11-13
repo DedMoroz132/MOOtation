@@ -160,11 +160,17 @@ void symmetric_problems()
         {"chaboche1d", "N2", inst(2, 0, 0, 0, {}, 0.0)},
         {"chaboche1d", "N2 -> 1", inst(2, 1, 0, 0, {}, 0.0)},
         {"lj_cluster", "N7", inst(0, 0, 0, 7, {}, 0.0)},
+        {"morse_cluster", "N7 rho 6", inst(0, 0, 0, 7, {}, 0.0)},
+        {"circles_in_circle", "N7 R 3.5", inst(0, 0, 0, 7, {}, 0.0)},
+        {"circles_in_square", "N6 L 7", inst(0, 0, 0, 6, {}, 0.0)},
     };
     cases[0].in.ratio = cases[1].in.ratio = cases[2].in.ratio = 4.0;
     cases[3].in.variant = "lanczos";
     cases[3].in.student = 3;
     cases[5].in.observed = 0.6;
+    cases[13].in.rho = 6.0;           // task 20, §24.6.2
+    cases[14].in.container = 3.5;
+    cases[15].in.container = 7.0;
     for (const Case& c : cases) {
         const std::string tag = c.family + " " + c.label;
         const auto made = S::make(sym_spec(c.family, c.in));
@@ -343,12 +349,83 @@ void symmetric_problems()
                                                           (1.0 + std::cbrt(39.0 / (4.0 * 3.141592653589793)))) < 1e-14,
               "lj_cluster: the box L = 1 + (3N / (4 pi))^(1/3)");
     }
+    {   // morse_cluster (MORSE-3): the segment, triangle and tetrahedron of edge 1 have E = -N (N - 1) / 2
+        const double h = std::sqrt(3.0) / 2.0;
+        const std::vector<double> simplex = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5, h, 0.0, 0.5, h / 3.0, std::sqrt(2.0 / 3.0)};
+        bool exact = true;
+        std::string seen;
+        for (int N : {2, 3, 4})
+            for (double rho : {6.0, 14.0}) {
+                Y::Instance in;
+                in.dim = N;
+                in.rho = rho;
+                const auto p = S::make(sym_spec("morse_cluster", in));
+                const double E = objective(*p, std::vector<double>(simplex.begin(), simplex.begin() + 3 * N));
+                exact = exact && std::fabs(E + N * (N - 1) / 2.0) <= 1e-12;
+                seen += " " + std::to_string(E);
+            }
+        check(exact, "morse_cluster: E = -N (N - 1) / 2 at the simplices of edge 1, rho 6 and 14 (" + seen + ")");
+        Y::Instance in;
+        in.dim = 30;
+        in.rho = 14.0;
+        const double L = S::bounds(sym_spec("morse_cluster", in))[0].second;
+        check(std::fabs(L - (1.0 + std::cbrt(90.0 / (4.0 * 3.141592653589793 * std::sqrt(2.0))))) < 1e-14 &&
+                  Y::morse_best_known(30, 14.0) == -106.835 && std::isnan(Y::morse_best_known(30, 6.0)),
+              "morse_cluster: the box L = 1 + (3N / (4 pi sqrt 2))^(1/3) (MORSE-1); Table 1's -106.835 at rho 14");
+    }
+    {   // circles: known packings give f = 0, the container a little smaller f > 0
+        auto f_at = [](const char* family, int N, double size, const std::vector<double>& x) {
+            Y::Instance in;
+            in.dim = N;
+            in.container = size;
+            return objective(*S::make(sym_spec(family, in)), x);
+        };
+        std::vector<double> hexagon = {0.0, 0.0};       // the centre and six about it, R* = 3
+        for (int k = 0; k < 6; ++k) {
+            hexagon.push_back(2.0 * std::cos(k * 3.141592653589793 / 3.0));
+            hexagon.push_back(2.0 * std::sin(k * 3.141592653589793 / 3.0));
+        }
+        const double in3 = f_at("circles_in_circle", 7, 3.0, hexagon), below3 = f_at("circles_in_circle", 7, 3.0 - 1e-6, hexagon);
+        check(in3 <= 1e-28 && below3 > 0.0, "circles_in_circle: the hexagon of 7 at R = 3 (f " + std::to_string(in3) +
+                                                 "), at R = 3 - 1e-6 f > 0");
+        std::vector<double> grid;                       // 25 circles on the 5 x 5 grid, L* = 1 / r* = 10
+        for (int i = 0; i < 5; ++i)
+            for (int j = 0; j < 5; ++j) {
+                grid.push_back(1.0 + 2.0 * i);
+                grid.push_back(1.0 + 2.0 * j);
+            }
+        const double L = 1.0 / Y::square_record_radius(25);
+        check(L == 10.0 && f_at("circles_in_square", 25, L, grid) == 0.0 && f_at("circles_in_square", 25, L - 1e-6, grid) > 0.0,
+              "circles_in_square: the 5 x 5 grid at Costa et al.'s L* = 1 / 0.1 = 10 gives f = 0 exactly, at L - 1e-6 f > 0");
+        Y::Instance in;
+        in.dim = 66;
+        in.container = Y::circle_record(66);
+        const auto p = S::make(sym_spec("circles_in_circle", in));
+        check(p->n_var == 132 && p->n_res == 66 * 65 / 2 + 66 && p->gauge_dim == 1 && p->blocks.size() == 1 &&
+                  S::bounds(sym_spec("circles_in_circle", in))[0].first == -9.096279427,
+              "circles_in_circle N66: 132 variables, the pairs and walls as residuals, one gauge direction, the box [-R, R]");
+        in.dim = 30;
+        in.container = 1.0 / Y::square_record_radius(30);
+        const auto q = S::make(sym_spec("circles_in_square", in));
+        check(q->n_var == 60 && q->n_res == 30 * 29 / 2 + 4 * 30 && q->gauge_dim == 0 &&
+                  S::bounds(sym_spec("circles_in_square", in))[0].first == 0.0,
+              "circles_in_square N30: 60 variables, the pairs and four walls a circle, no gauge, the box [0, L]");
+    }
     {   // what make() refuses
         Y::Instance bad;
         check(refused(sym_spec("sumexp", bad)) && refused(sym_spec("lowrank", bad)) && refused(sym_spec("cp3", bad)) &&
                   refused(sym_spec("rbfnet", bad)) && refused(sym_spec("mlp_plateau", bad)) &&
-                  refused(sym_spec("chaboche1d", bad)) && refused(sym_spec("lj_cluster", bad)),
+                  refused(sym_spec("chaboche1d", bad)) && refused(sym_spec("lj_cluster", bad)) &&
+                  refused(sym_spec("morse_cluster", bad)) && refused(sym_spec("circles_in_circle", bad)) &&
+                  refused(sym_spec("circles_in_square", bad)),
               "sym: instances without their sizes are refused");
+        Y::Instance small;
+        small.dim = 4;
+        small.container = 1.0;                         // R > 1 and L > 2 (a unit circle must fit)
+        bool sizes = refused(sym_spec("circles_in_circle", small));
+        small.container = 2.0;
+        sizes = sizes && refused(sym_spec("circles_in_square", small)) && refused(sym_spec("morse_cluster", small));
+        check(sizes, "circles: containers too small for one circle are refused; morse_cluster: rho 0 is refused");
         Y::Instance two;
         two.teacher = 2;
         two.points = 10;

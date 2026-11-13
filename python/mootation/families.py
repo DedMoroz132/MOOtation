@@ -16,8 +16,9 @@ VERIFICATION = ("SCH", "FON", "POL", "KUR", "SPH_2D", "SPH_3D", "QV", "KURZ", "Z
 
 
 # task 19, §19.1 (benchmarks/symmetric.py): the families whose names have
-# digits or underscores; cp3_degenerate before cp3
-SYMMETRIC = ("cp3_degenerate", "cp3", "chaboche1d", "lj_cluster", "lowrank", "mlp_plateau", "rbfnet", "sumexp")
+# digits or underscores; cp3_degenerate before cp3; task 20's (§24.6.2) last
+SYMMETRIC = ("cp3_degenerate", "cp3", "chaboche1d", "lj_cluster", "lowrank", "mlp_plateau", "rbfnet", "sumexp",
+             "morse_cluster", "circles_in_circle", "circles_in_square")
 
 
 def family(name: str) -> str:

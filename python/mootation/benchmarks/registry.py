@@ -2510,11 +2510,14 @@ _register_single_objective()
 #  One objective with symmetries (task 19, §19.1): symmetric.py
 # =============================================================
 #  The C++ suite's families sumexp, lowrank, cp3, cp3_degenerate, rbfnet,
-#  mlp_plateau, chaboche1d, lj_cluster (suite/sym.hpp), registered with the
+#  mlp_plateau, chaboche1d, lj_cluster, and task 20's (§24.6.2) morse_cluster,
+#  circles_in_circle, circles_in_square (suite/sym.hpp), registered with the
 #  extension only (C++ evaluates them; symmetric.py's NumPy is the
 #  cross-check). Each takes its own start as x0 and the box its header gives;
 #  the least-squares ones are measured against relative targets from x0, as
-#  MGH and NIST, lj_cluster against absolute ones, as bbob (SYMR-3).
+#  MGH and NIST, lj_cluster against absolute ones, as bbob (SYMR-3); so do
+#  the other global problems (symmetric.GLOBAL: bbob's budgets, least
+#  squares or not).
 def _register_symmetric():
     try:
         from .. import _core
@@ -2526,14 +2529,15 @@ def _register_symmetric():
         nat = _core.Native(_sym.spec(row))
         key = _sym.name(row)
         lsq = nat.n_res > 0
+        local = lsq and row.family not in _sym.GLOBAL
         PROBLEMS[key] = BenchProblem(
             name=key, n_vars=nat.n_var, bounds=[tuple(b) for b in nat.bounds], n_obj=1,
             evaluate=nat.evaluate, constraints=_no_cons, evaluate_batch=nat.evaluate_batch,
             hv_ref_raw=(), hv_ref_norm=(), hv_norm_divisor=1.0, ideal=(), nadir=(),
-            pop_size=1 if lsq else 100, n_gen=_sym.BUDGET if lsq else 100 * nat.n_var, K_runs=1 if lsq else 15,
+            pop_size=1 if local else 100, n_gen=_sym.BUDGET if local else 100 * nat.n_var, K_runs=1 if local else 15,
             has_cons=False, f_opt=row.f_opt, f_opt_kind=row.f_opt_kind,
             x0=tuple(float(v) for v in nat.start()), native=nat, f_local=tuple(row.f_local),
-            large_residual=(row.f_opt > 0.0) if lsq else None, targets="relative" if lsq else "absolute")
+            large_residual=(row.f_opt > 0.0) if lsq else None, targets="relative" if local else "absolute")
 
 
 _register_symmetric()

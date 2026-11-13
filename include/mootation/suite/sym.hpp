@@ -4,11 +4,13 @@
 // Problems with symmetries at one objective (task 19, §19.1): what the
 // families sumexp (sumexp.hpp), lowrank, cp3, cp3_degenerate (factor.hpp),
 // rbfnet, mlp_plateau (networks.hpp), chaboche1d (chaboche.hpp) and
-// lj_cluster (lj.hpp) share. Each is a teacher-student problem (but
-// lj_cluster): the data come from a teacher of the model class, the unknowns
-// are the student's, the residuals the student's model minus the data, the
-// objective 1/2 ||r||^2; lj_cluster's objective is the cluster's energy, with
-// its gradient.
+// lj_cluster (lj.hpp), and of task 20 (§24.6.2) morse_cluster (morse.hpp),
+// circles_in_circle and circles_in_square (circles.hpp) share. Each of task
+// 19's is a teacher-student problem (but lj_cluster): the data come from a
+// teacher of the model class, the unknowns are the student's, the residuals
+// the student's model minus the data, the objective 1/2 ||r||^2;
+// lj_cluster's and morse_cluster's objective is the cluster's energy, with
+// its gradient; the circles' residuals are their overlaps.
 //
 // An instance is named by its family and the numbers of Instance below; what
 // it draws (teachers, data points, noise, starts) comes from the library's
@@ -81,6 +83,8 @@ struct Instance {
     double observed = 1.0;        // lowrank: the share of entries observed
     std::string variant;          // sumexp "lanczos"; mlp_plateau's start "random", "duplicate" or "bias"
     double embed = 0.5;           // mlp_plateau: duplicate's lambda, bias's w
+    double rho = 0.0;             // morse_cluster: the potential's rho (task 20, §24.6.2)
+    double container = 0.0;       // circles_in_circle: R; circles_in_square: L
     int instance = 1;
 };
 
@@ -153,7 +157,7 @@ inline double norm(const double* v, std::size_t n)
 inline bool is_family(const std::string& f)
 {
     for (const char* name : {"sumexp", "lowrank", "cp3", "cp3_degenerate", "rbfnet", "mlp_plateau", "chaboche1d",
-                             "lj_cluster"})
+                             "lj_cluster", "morse_cluster", "circles_in_circle", "circles_in_square"})
         if (f == name) return true;
     return false;
 }

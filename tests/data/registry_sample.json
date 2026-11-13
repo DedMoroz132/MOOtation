@@ -1,6 +1,6 @@
 {
  "format": 1,
- "code_stamp": "v6-3a0465fb566ff3a4",
+ "code_stamp": "v6-c7c666d89371ca25",
  "reference_version": 6,
  "mootation": "0.1.0",
  "names": {
@@ -315,7 +315,9 @@
    "aprd_pbi",
    "int_repair",
    "inner",
-   "local_solver"
+   "local_solver",
+   "dc_stages",
+   "pap_members"
   ],
   "text_knobs": [
    [
@@ -1054,6 +1056,10 @@
   "solver_knobs": [
    "inner",
    "local_solver"
+  ],
+  "json_knobs": [
+   "dc_stages",
+   "pap_members"
   ]
  },
  "problems": [

@@ -1776,7 +1776,7 @@ def the_registry_has_problems_at_one_objective():
     sym = [k for k in one if k.startswith(tuple(f + "_" for f in SYMMETRIC))]
     cec = [k for k in one if k.startswith("cec2013_p")]   # task 18, stage 3, §3.5 (suite/cec2013.hpp)
     assert len(one) - len(sym) - len(cec) == 252, len(one)
-    assert len(sym) == 27 and len(cec) in (0, 20), (len(sym), len(cec))
+    assert len(sym) == 27 + 16 and len(cec) in (0, 20), (len(sym), len(cec))   # task 20, §24.6.2: 4 + 4 + 8
     for k in by["bbob"]:
         q = one[k]
         fid, D = int(k[4:6]), int(k[8:10])
@@ -1854,8 +1854,9 @@ def single_objective_measures_agree_with_their_python_cross_check():
     assert all(abs(a - b) <= 4.5e-16 * b for a, b in zip(C.coco_precisions(), P.coco_precisions()))   # pow: an ulp or two
     assert len(C.coco_precisions()) == 51 and len(C.coco_precisions(-6)) == 41
     one = [q for q in PROBLEMS.values() if q.n_obj == 1]
-    # lj_cluster (task 19, symmetric.py, SYMR-3): absolute, as bbob
-    assert all(q.targets == ("absolute" if q.name.startswith(("bbob", "lj_cluster", "cec2013")) else "relative") for q in one)
+    # lj_cluster (task 19, symmetric.py, SYMR-3): absolute, as bbob; and task 20's global problems (§24.6.2)
+    assert all(q.targets == ("absolute" if q.name.startswith(("bbob", "lj_cluster", "cec2013", "morse_cluster",
+                                                             "circles_in_")) else "relative") for q in one)
 
     def compare(runs, kind, f_ref, budgets):
         eps = C.default_precisions(kind)
