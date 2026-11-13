@@ -6,8 +6,8 @@ SOM-7) are that header's: targets absolute (COCO, H22 §III-F item 2) or
 relative (Moré and Wild, item 1), the runtime to a target, ERT, the ECDF and
 the value at a fixed budget, read off a run's improvement records
 (evaluations, grad_calls, f, cv); the simulated restarts (H16 §3.2, H22
-§V-A), bit for bit: std::mt19937(seed) is NumPy's MT19937 with its legacy
-seeding, and rnd::below and rnd::shuffle (random.hpp) are written out here.
+§V-A), bit for bit: std::mt19937(seed), rnd::below and rnd::shuffle
+(random.hpp) are written out here.
 
 Python's 10 ** k is the C library's pow, the header's dm::pow the library's
 own: the absolute grid may differ in the last bit, and a test holds the two
@@ -81,15 +81,32 @@ def ecdf(runtimes, xs) -> list:
 
 
 class _Words:
-    """std::mt19937(seed)'s 32-bit words (NumPy's MT19937, legacy seeding)."""
+    """std::mt19937(seed)'s 32-bit words: Matsumoto & Nishimura's MT19937
+    (the standard's std::mt19937, its seed by init_genrand), written out so
+    that the mirror depends on no library's generator."""
 
     def __init__(self, seed: int):
-        from numpy.random import MT19937
-        self._g = MT19937(0)
-        self._g._legacy_seeding(seed)
+        mt = [seed & 0xFFFFFFFF]
+        for i in range(1, 624):
+            mt.append((1812433253 * (mt[-1] ^ (mt[-1] >> 30)) + i) & 0xFFFFFFFF)
+        self._mt, self._i = mt, 624
+
+    def _twist(self) -> None:
+        mt = self._mt
+        for k in range(624):
+            y = (mt[k] & 0x80000000) | (mt[(k + 1) % 624] & 0x7FFFFFFF)
+            mt[k] = mt[(k + 397) % 624] ^ (y >> 1) ^ (0x9908B0DF if y & 1 else 0)
+        self._i = 0
 
     def word32(self) -> int:
-        return int(self._g.random_raw())
+        if self._i >= 624:
+            self._twist()
+        y = self._mt[self._i]
+        self._i += 1
+        y ^= y >> 11
+        y ^= (y << 7) & 0x9D2C5680
+        y ^= (y << 15) & 0xEFC60000
+        return y ^ (y >> 18)
 
 
 def _below(g: _Words, n: int) -> int:
