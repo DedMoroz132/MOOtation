@@ -281,6 +281,13 @@ struct Problem {
     std::function<double(const Vec& x, const std::vector<std::size_t>& block, const Vec& values)> delta;
     double delta_cost = 1.0;
     std::function<std::vector<std::vector<std::size_t>>(const Vec& x)> neighbors;
+    // MIXED VARIABLES (task 25, §24.3.4): each variable's values where the
+    // caller's f takes it rounded to one of them (minimize's var_types: an
+    // integer, a discrete value, a bit), sorted and in the box; empty, and
+    // empty lists: continuous. The methods search the reals as before; cmaes
+    // with cma_margin = on takes them as HM22's discrete values (scalar.hpp
+    // SINGLE-6).
+    std::vector<Vec> discrete;
 
     bool has_residuals() const { return residuals || residuals_jac; }
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }

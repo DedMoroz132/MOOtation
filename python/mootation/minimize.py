@@ -39,6 +39,7 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
                "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
                "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau", "n_starts",
+               "lm_max_iter", "lm_geodesic_alpha", "lm_geodesic_h", "cma_eigen_every", "cma_margin_alpha",
                "threads", "min_dist", "min_df", "start_share", "bipop_large", "mlsl_n", "mlsl_sigma",
                "mlsl_gamma", "mlsl_tau", "mlsl_nu", "start_budget", "bh_temperature", "bh_step",
                "bh_accept_rate", "bh_interval", "ils_step", "ils_restart", "ils_temperature", "memetic_every",
@@ -57,6 +58,7 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index"
               "theta_ties", "k_share", "lm_loss", "pso_topology", "pso_v0",
               "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
               "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
+              "lm_failed", "lm_geodesic", "cma_margin",
               "cma_weights", "cma_cmu", "cma_stop", "cma_stagnation", "start_points", "cma_bounds", "ils_accept", "memetic_pick", "keep_points", "sym",
               "cv_rule", "cv_norm",
               "nadir_source",
@@ -350,7 +352,15 @@ def minimize(
                 failed; off unless given.
     var_types   one entry per variable: "real", "int", ("discrete", values),
                 "bin" or ("cat", labels) (mootation.var_types); fn gets the
-                decoded point, a categorical variable as its label.
+                decoded point, a categorical variable as its label. The
+                single-objective methods (scalar.SINGLE; task 25, SO-VT)
+                take "real", "int", "discrete" and "bin" (a bit an integer
+                in [0, 1]), not "cat": they search reals, fn gets the
+                decoded point, every call counted (residuals, as before, not
+                with var_types); with int_repair =
+                "lamarck" (the default) the answer's variables are decoded
+                too; no grad or jac; cmaes with cma_margin = "on" keeps the
+                integer and discrete ones from fixing (Hamano et al. 2022).
     budget_counts
                 "calls" (the default): max_evaluations counts calls, and fn
                 runs for every one. "unique": a decoded point evaluated before
@@ -672,11 +682,17 @@ def minimize(
     if int_repair not in ("lamarck", "baldwin"):
         raise ValueError(f"int_repair = '{int_repair}': lamarck or baldwin")
     layout = None
+    so_discrete = None                  # the single-objective methods' values per variable (SO-VT)
     if var_types is not None:
         from .var_types import Layout
+        from .scalar import SINGLE as _SO_NAMES
+        if algorithm in _SO_NAMES:
+            var_types, bounds = _so_var_types(algorithm, var_types, list(bounds))
         layout = Layout(var_types, list(bounds))
         if layout.trivial():
             layout = None
+        elif algorithm in _SO_NAMES:
+            so_discrete = _so_discrete(layout)
     n_bin = 0
     if layout is not None:
         user_fn, user_cons, user_batch = fn, constraints, batch
@@ -685,6 +701,9 @@ def minimize(
             constraints = lambda xc, _c=user_cons: _c(layout.to_user(xc))   # noqa: E731
         if user_batch is not None:
             batch = lambda X, _b=user_batch: _b([layout.to_user(x) for x in X])  # noqa: E731
+        if so_discrete is not None and (grad is not None or jac is not None):   # SO-VT
+            raise ValueError(f"{algorithm} with integer, discrete or binary var_types: no grad or "
+                             "jac (f is not smooth in them; differences of the decoded f instead)")
         bounds = layout.core_bounds()
         n_bin = len(layout.genes)
         if n_bin and init != "uniform":
@@ -765,7 +784,7 @@ def minimize(
 
     if algorithm in SCALAR_NAMES:
         # scalarization with a local solver (mootation.scalar, _core.scalar): not a core
-        if layout is not None:
+        if layout is not None and so_discrete is None:
             raise ValueError(f"{algorithm} takes real variables only: no var_types other "
                              "than 'real'")
         if constraint_mode != "feasibility":
@@ -806,9 +825,12 @@ def minimize(
                 unique_count=lambda: points.count, guard=guard, grad=grad,
                 residuals=residuals, jac=jac, x0=x0, gauge_basis=gauge_basis, f_stop=f_stop,
                 sym_blocks=sym_blocks, canon=canon, align=align, res_blocks=residual_blocks,
-                res_weights=block_weights)
+                res_weights=block_weights, discrete=so_discrete)
             result._lsq = lsq
             result = _polished(result)
+            if so_discrete is not None and int_repair == "lamarck":   # SO-VT: the answer decoded
+                result.variables = [[float(layout.decode_one(i, v)) for i, v in enumerate(row)]
+                                    for row in result.variables]
         finally:
             if log is not None:
                 log.close()
@@ -1001,6 +1023,50 @@ def minimize(
     # values as floats), its binary_variables the integer genome: bits, and
     # categorical variables' label indices (var_types.py; Layout.to_user)
     return result
+
+
+_SO_INT_LEVELS = 100000               # SO-VT: an integer range longer is continuous for cma_margin
+
+
+def _so_var_types(algorithm, var_types, bounds):
+    """var_types for a single-objective method (task 25, §24.3.4; SO-VT): the
+    methods search reals only, so a bit is an integer in [0, 1] (fn still
+    gets 0 or 1) and a categorical variable is refused (CatCMA: task 26)."""
+    var_types = list(var_types)
+    if len(var_types) != len(bounds):
+        raise ValueError(f"var_types has {len(var_types)} entries for {len(bounds)} variables")
+    out_t, out_b = [], []
+    for t, b in zip(var_types, bounds):
+        if isinstance(t, (tuple, list)) and len(t) == 2 and t[0] == "cat":
+            raise ValueError(f"{algorithm}: categorical var_types need an integer genome (the "
+                             "multi-objective cores); single-objective methods take real, int, "
+                             "discrete and bin variables")
+        if t == "bin":
+            out_t.append("int")
+            out_b.append((0.0, 1.0))
+        else:
+            out_t.append(t)
+            out_b.append(tuple(b))
+    return out_t, out_b
+
+
+def _so_discrete(layout):
+    """Each variable's values for _core.scalar's Problem::discrete (SO-VT):
+    the integers of an integer variable's range, a discrete one's values,
+    nothing for a real one (and for an integer range of more than
+    _SO_INT_LEVELS values)."""
+    import math
+    out = []
+    for i, kind in enumerate(layout.kinds):
+        if kind == "int":
+            lo, hi = layout.bounds[i]
+            a, b = math.ceil(lo), math.floor(hi)
+            out.append([float(v) for v in range(a, b + 1)] if b - a + 1 <= _SO_INT_LEVELS else [])
+        elif kind == "discrete":
+            out.append(sorted({float(v) for v in layout.values[i]}))
+        else:
+            out.append([])
+    return out
 
 
 def _wrapped_minimize(wrap, fn, bounds, n_objs, *, constraints, eq_constraints, batch, var_types, grad,

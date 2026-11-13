@@ -257,6 +257,18 @@ always listed under **Changed** or **Removed**.
   the problem's own move (`perturb = user`); `basin_hopping` with the
   threshold and its adaptive step warns once. Default runs are unchanged,
   bit for bit.
+- Added (task 25, §24.3.1, §24.3.4, §24.3.5; each off by default and in the
+  settings only where given): for `lm`, `lm_max_iter` (the short polish of
+  Kommenda et al. 2020; `scalar/lm.hpp` LM-10, `Status::max_iter`),
+  `lm_failed = stop | refuse` (a trial point whose residuals are not finite
+  refused as `lm.hpp`'s LM-9 refuses one, instead of ending the run) and
+  `lm_geodesic` with `lm_geodesic_alpha`, `lm_geodesic_h` from `minimize` and
+  campaigns (LOCAL-8); for `cmaes`, `cma_eigen_every` and CMA-ES with margin
+  (`cma_margin`, `cma_margin_alpha`; SINGLE-6) on the problem's discrete
+  values (`scalar::Problem::discrete`); `minimize`'s `var_types` for the
+  single-objective methods: integer, discrete and binary variables, the
+  methods searching reals, `fn` and `residuals` at the decoded point
+  (categorical ones refused). Default runs are unchanged, bit for bit.
 
 - Added (`scalar/cmaes.hpp`, `restarts.hpp`; task 18): the knob
   `cma_stagnation` = `h09` | `either` | `off` for `cmaes` (with `cma_stop =

@@ -399,7 +399,8 @@ inline void cmaes(Run& run, const std::vector<double>& y0, const std::vector<std
                     if (yc[j] != y[j]) tally.out();
                     d2 += (y[j] - yc[j]) * (y[j] - yc[j]);
                 }
-                const double v = pen(yc);
+                // with the margin f is taken at HM22's encoding (cmaes.hpp; scalar.hpp SINGLE-6)
+                const double v = pen(options.margin_alpha > 0.0 ? es.encode(yc) : yc);
                 vals.push_back(std::isfinite(v) ? v + d2 * (1.0 + std::fabs(v)) : kInf);
             }
             es.tell(vals);

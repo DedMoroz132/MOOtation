@@ -12306,6 +12306,85 @@ params = { tiktak_n = 40, inner = { solver = "nelder_mead", local_tol = 1e-10 } 
 
 
 @test
+def single_objective_methods_take_mixed_variables_and_lm_s_new_knobs():
+    """Task 25, §24.3.4-24.3.5 (minimize.py SO-VT; scalar.hpp SINGLE-6,
+    LOCAL-8): cmaes, de and ils take int, bin and discrete var_types — fn
+    gets the decoded point (int, 0/1, a listed value), the answer's variables
+    decoded; cma_margin = on through minimize, its alpha in the settings;
+    cat, grad and jac refused with var_types, residuals still too;
+    lm_max_iter = 10 and lm_failed = refuse through minimize."""
+    if _core_with("scalar") is None:
+        print("  skip  single_objective_methods_take_mixed...: no _core.scalar"); return
+    import math
+    import mootation
+    box = [(-1.0, 1.0), (-5.0, 5.0), (0.0, 1.0), (0.0, 3.0)]
+    types = ["real", "int", "bin", ("discrete", [0.1, 0.5, 2.0])]
+    seen = []
+
+    def f(x):
+        seen.append(tuple(type(v).__name__ for v in x))
+        assert isinstance(x[1], int) and x[2] in (0, 1) and x[3] in (0.1, 0.5, 2.0), x
+        return [(x[0] - 0.3) ** 2 + (x[1] - 2) ** 2 + (x[2] - 1) ** 2 + (x[3] - 0.5) ** 2]
+    for algorithm, knobs in (("cmaes", {}), ("cmaes", {"cma_margin": "on"}), ("de", {}),
+                             ("ils", {"inner": {"solver": "nelder_mead"}})):
+        out = mootation.minimize(f, box, 1, algorithm=algorithm, var_types=types, max_evaluations=4000,
+                                 seed=2, **knobs)
+        v = out.variables[0]
+        assert v[1] == round(v[1]) and v[2] in (0.0, 1.0) and v[3] in (0.1, 0.5, 2.0), (algorithm, v)
+        assert out.objectives[0][0] < 1e-6 and v[1:] == [2.0, 1.0, 0.5], (algorithm, knobs, out.objectives, v)
+    assert set(seen) == {("float", "int", "int", "float")}, set(seen)
+    st = dict(out.settings)
+    margin = dict(mootation.minimize(f, box, 1, algorithm="cmaes", var_types=types, max_evaluations=500,
+                                     seed=2, cma_margin="on").settings)
+    lam = 4 + math.floor(3 * math.log(4))
+    assert margin["cma_margin"] == "on" and float(margin["cma_margin_alpha"]) == 1.0 / (4 * lam), margin
+    assert "cma_margin" not in st
+    for bad, why in ((dict(var_types=["real", "int", "bin", ("cat", ["a", "b"])]), "categorical"),
+                     (dict(var_types=types, grad=lambda x: [0.0] * 4), "no grad or jac")):
+        try:
+            mootation.minimize(f, box, 1, algorithm="cmaes", max_evaluations=100, **bad)
+        except ValueError as e:
+            assert why in str(e), str(e)
+        else:
+            raise AssertionError(f"{bad} was not refused")
+    try:
+        mootation.minimize(f, box, 1, algorithm="slsqp", var_types=types, max_evaluations=100,
+                           cma_margin="on")
+    except ValueError:
+        raise AssertionError("cma_margin is a knob slsqp ignores, not one it refuses")
+
+    # lm: residuals still not with var_types; lm_max_iter and lm_failed through minimize
+    try:
+        mootation.minimize(None, [(-2.0, 2.0), (0.0, 6.0)], 1, algorithm="lm", residuals=lambda x: [x[0], x[1]],
+                           var_types=["real", "int"], x0=[0.0, 0.0], max_evaluations=30, seed=1)
+    except ValueError as e:
+        assert "var_types" in str(e), str(e)
+    else:
+        raise AssertionError("residuals with var_types were not refused")
+
+    def rosen(x):
+        return [10.0 * (x[1] - x[0] * x[0]), 1.0 - x[0]]
+    inf = float("inf")
+    plain = mootation.minimize(None, [(-inf, inf)] * 2, 1, algorithm="lm", residuals=rosen, x0=[-1.2, 1.0],
+                               max_evaluations=2000, seed=1)
+    short = mootation.minimize(None, [(-inf, inf)] * 2, 1, algorithm="lm", residuals=rosen, x0=[-1.2, 1.0],
+                               max_evaluations=2000, seed=1, lm_max_iter=10)
+    s_short = dict(short.settings)
+    assert "lm_max_iter" not in dict(plain.settings) and s_short["lm_max_iter"] == "10", s_short
+    assert s_short["lm_iterations"] == "10" and short.evaluations < plain.evaluations, (s_short, short.evaluations)
+
+    def holed(x):
+        return [math.nan] if 1.4 <= x[0] <= 1.6 else [(x[0] - 3.0) ** 2]
+    stop = mootation.minimize(None, [(-inf, inf)], 1, algorithm="lm", residuals=holed, x0=[0.0],
+                              max_evaluations=500, seed=1)
+    refuse = mootation.minimize(None, [(-inf, inf)], 1, algorithm="lm", residuals=holed, x0=[0.0],
+                                max_evaluations=500, seed=1, lm_failed="refuse")
+    # stop: the run ends at the first trial point in the hole, x0 and its difference point evaluated
+    assert 40.0 < stop.objectives[0][0] <= 40.5 and refuse.objectives[0][0] < 1e-12, (stop.objectives, refuse.objectives)
+    assert dict(refuse.settings)["lm_failed"] == "refuse" and refuse.n_failed >= 1, refuse.n_failed
+
+
+@test
 def a_campaign_of_the_task19_strategies_writes_the_same_files_from_both_engines():
     """Task 19, §19.6: data_continuation (its stages an array of tables),
     pap (its members an array) and tiktak in a campaign of both engines, the

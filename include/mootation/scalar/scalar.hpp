@@ -916,7 +916,8 @@ inline Result run_boostdms_named(const Problem& P, double eq_tol, bool has_tol0,
 // local_tol, and cma_weights = active | positive, cma_cmu = tutorial2016 |
 // hansen2009, cma_stop = spread | h09: the tutorial's weights and c_mu or
 // those of BIPOP-CMA-ES 2009, the run stopped by its spread at local_tol or
-// by H09's termination criteria, cmaes.hpp); the others are ignored and
+// by H09's termination criteria, cmaes.hpp; cma_eigen_every, cma_margin,
+// cma_margin_alpha: SINGLE-6); the others are ignored and
 // reported. n_objs = 1 only. The run:
 //   1. the initial plan, as scalar's (THE PLAN, 1);
 //   2. the solver once, from the plan's best point (feasible first, then f;
@@ -948,6 +949,17 @@ inline Result run_boostdms_named(const Problem& P, double eq_tol, bool has_tol0,
 //     range of SINGLE-2 is taken from its values as they come, its best is
 //     kept in the best's slot; a point asked for again is evaluated again
 //     and counted.
+//   SINGLE-6. cmaes's knobs of task 25 (§24.3.1, §24.3.4), each in the
+//     settings only where given: cma_eigen_every (1, every iteration, the
+//     default; k > 1 every k-th; 0 H09's interval; cmaes.hpp CMA-5, CMA-7);
+//     cma_margin = off | on, CMA-ES with margin (cmaes.hpp, Hamano et al.
+//     2022, HM22): the problem's discrete values (Problem::discrete, from
+//     minimize's var_types), mapped into the normalized box of SINGLE-2, are
+//     HM22's, and f is taken at HM22's encoding of each sample (the
+//     coordinate moved to its value by the midpoint thresholds), the clip to
+//     the box first; cma_margin_alpha (0: HM22 §5.1's 1/(N lambda), lambda
+//     cmaes.hpp's 4 + floor(3 ln N); the alpha used goes to the settings). A
+//     problem without a variable of two values or more is refused.
 inline const std::vector<std::string>& single_names()
 {
     static const std::vector<std::string> v{"slsqp", "nelder_mead", "cmaes"};
@@ -971,13 +983,16 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
     if (local == "sqp") own.insert(own.end(), {"fd_step", "sqp_line_search"});
     if (local == "nm") own.push_back("nm_coefficients");
     if (local == "cmaes") own.insert(own.end(), {"cma_sigma0", "cma_weights", "cma_cmu", "cma_stop", "cma_stagnation"});
-    Knobs taken;
+    Knobs taken, cma_more;                           // cma_more: SINGLE-6's knobs, in the caller's order
     std::vector<std::string> ignored, none;
     double grad_cost = 1.0;
     bool lean = false;
     for (const auto& kv : knobs) {
         if (kv.first == "keep_points") {                                             // SINGLE-5
             lean = detail::lean_word(kv.second);
+        } else if (local == "cmaes" && (kv.first == "cma_margin" || kv.first == "cma_margin_alpha" ||
+                                        kv.first == "cma_eigen_every")) {              // SINGLE-6
+            cma_more.push_back(kv);
         } else if (kv.first == "grad_cost") {
             grad_cost = detail::number_of(kv.first, kv.second);
             if (!std::isfinite(grad_cost) || grad_cost < 0.0) throw std::invalid_argument("grad_cost must be a number >= 0");
@@ -1006,6 +1021,43 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
     if (cma["cma_cmu"] == "hansen2009") cma_options.cmu = CMAESOptions::Cmu::hansen2009;
     if (cma["cma_stagnation"] == "either") cma_options.stagnation = CMAESOptions::Stagnation::either;   // CMA-6
     if (cma["cma_stagnation"] == "off") cma_options.stagnation = CMAESOptions::Stagnation::off;
+    std::string margin = "off";                       // SINGLE-6
+    double margin_alpha = 0.0;                        // 0: HM22's 1/(N lambda)
+    for (const auto& [k, v] : cma_more) {
+        if (k == "cma_margin") {
+            const std::string w = detail::shown(v);
+            if (!v.is_word || (w != "off" && w != "on")) throw std::invalid_argument("cma_margin = '" + w + "': off, on");
+            margin = w;
+            continue;
+        }
+        const double x = detail::number_of(k, v);
+        if (k == "cma_margin_alpha") {
+            if (!(x >= 0.0 && x < 0.5)) throw std::invalid_argument("cma_margin_alpha must be in [0, 1/2) (0: 1/(N lambda))");
+            margin_alpha = x;
+        } else {
+            if (!(x >= 0.0) || x != std::floor(x) || x > 1e9)
+                throw std::invalid_argument("cma_eigen_every must be a whole number >= 0 (0: H09's interval)");
+            cma_options.eigen_every = static_cast<int>(x);                              // CMA-5
+        }
+    }
+    if (margin == "on") {                             // HM22's discrete values in the normalized box
+        const std::size_t n = P.lo.size();
+        cma_options.margin_values.assign(n, {});
+        bool any = false;
+        for (std::size_t j = 0; j < n && j < P.discrete.size(); ++j) {
+            if (P.discrete[j].size() < 2) continue;
+            for (double v : P.discrete[j]) cma_options.margin_values[j].push_back((v - P.lo[j]) / (P.hi[j] - P.lo[j]));
+            any = true;
+        }
+        if (!any)
+            throw std::invalid_argument("cma_margin = 'on' needs integer, discrete or binary variables "
+                                        "(minimize's var_types; SINGLE-6)");
+        if (margin_alpha == 0.0) {                    // HM22 §5.1: alpha = 1/(N lambda), lambda cmaes.hpp's
+            const double lam = 4.0 + std::floor(3.0 * dm::log(static_cast<double>(n)));
+            margin_alpha = 1.0 / (static_cast<double>(n) * lam);
+        }
+        cma_options.margin_alpha = margin_alpha;
+    }
     if (start.has_x0 && start.x0.size() != P.lo.size())
         throw std::invalid_argument(name + ": x0 has " + std::to_string(start.x0.size()) + " values for " +
                                     std::to_string(P.lo.size()) + " variables");
@@ -1083,6 +1135,15 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
                                              {"cma_stop", cma["cma_stop"]}});
     if (local == "cmaes" && cma["cma_stagnation"] != "h09")          // CMA-6: a default run's settings as before
         r.settings.push_back({"cma_stagnation", cma["cma_stagnation"]});
+    for (const auto& kv : cma_more) {                                 // SINGLE-6: only where given
+        const std::string& k = kv.first;
+        if (k == "cma_margin") r.settings.push_back({k, margin});
+        else if (k == "cma_margin_alpha") r.settings.push_back({k, g_format(margin_alpha)});
+        else r.settings.push_back({k, std::to_string(cma_options.eigen_every)});
+    }
+    if (margin == "on" && std::none_of(cma_more.begin(), cma_more.end(),
+                                       [](const auto& kv) { return kv.first == "cma_margin_alpha"; }))
+        r.settings.push_back({"cma_margin_alpha", g_format(margin_alpha)});
     if (P.has_gradient()) r.settings.push_back({"grad_cost", g_format(grad_cost)});
     r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
     return r;
@@ -1106,7 +1167,8 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
 // Knobs: lm_ftol, lm_xtol, lm_gtol (Moré's (8.3)-(8.4); 1e-8, 1e-8, 0),
 // lm_loss (linear | huber | cauchy; lm.hpp's IRLS), lm_f_scale (1) and
 // lm_gauge (off | on: the step in the complement of the problem's
-// gauge_basis, lm.hpp LMN; task 19, §19.3.1) for lm; lbfgsb_m (5),
+// gauge_basis, lm.hpp LMN; task 19, §19.3.1), lm_max_iter, lm_failed,
+// lm_geodesic, lm_geodesic_alpha, lm_geodesic_h (LOCAL-8) for lm; lbfgsb_m (5),
 // lbfgsb_pgtol (1e-5), lbfgsb_ftol (0) for lbfgsb; grad_cost (1;
 // evaluator.hpp THE COUNTS) for both; for eki (eki.hpp's Options, task 19,
 // §19.4.1) eki_ensemble (J; 0: max(10, 2 n), EKI-4), eki_init (around |
@@ -1136,6 +1198,17 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
 //   LOCAL-6. lm_gauge = on needs the problem's gauge_basis; its k and ||J N||
 //     / ||J|| at lm's solution (lm.hpp LMN-4) go to the settings
 //     (lm_gauge_k, lm_gauge_ratio).
+//   LOCAL-8. lm's knobs of task 25 (§24.3.5), each off by default and in the
+//     settings only where given (then with lm_iterations, lm's accepted
+//     steps): lm_max_iter (0: no limit; lm.hpp LM-10, the short polish of
+//     Kommenda et al. 2020, 10 there); lm_failed = stop | refuse: stop is
+//     LOCAL-3; with refuse a failed point (residuals not finite: NaN, +-inf,
+//     ||r|| overflowing) is what lm.hpp's LM-9 makes of one, a refused trial
+//     step, and the run goes on (the point counted, never the answer); a
+//     failed start or Jacobian still ends lm (LM-9); lm_geodesic = off | on
+//     with lm_geodesic_alpha (0.75) and lm_geodesic_h (0.1), Transtrum &
+//     Sethna's acceleration (lm.hpp LMG), refused with a finite bound
+//     (LMB-5: so with a start x0, LOCAL-4) and with lm_gauge (LMN-3).
 // ── THE USER'S LOCAL SEARCH (task 24, §24.1.1) ──────────────────────────────
 // The solver "local_search": the problem's local_search hook (evaluator.hpp),
 // called once from the start — x0, else the best of the initial plan (as
@@ -1324,18 +1397,22 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
                 throw std::invalid_argument(name + ": a bound that is not finite needs a start x0 (LOCAL-4)");
     const std::vector<std::string> own =
         name == "lm"    ? std::vector<std::string>{"lm_ftol", "lm_xtol", "lm_gtol", "lm_loss", "lm_f_scale", "lm_gauge",
-                                                   "grad_cost"}
+                                                   "grad_cost", "lm_max_iter", "lm_failed", "lm_geodesic",
+                                                   "lm_geodesic_alpha", "lm_geodesic_h"}
         : name == "eki" ? std::vector<std::string>{"eki_ensemble", "eki_init", "eki_sigma0", "eki_gamma", "eki_perturb",
                                                    "eki_noise", "eki_tau"}
                         : std::vector<std::string>{"lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol", "grad_cost"};
     static const std::map<std::string, std::vector<std::string>> words{
         {"lm_loss", {"linear", "huber", "cauchy"}}, {"lm_gauge", {"off", "on"}},
-        {"eki_init", {"around", "sobol", "lhs"}}, {"eki_perturb", {"yes", "no"}}};
+        {"eki_init", {"around", "sobol", "lhs"}}, {"eki_perturb", {"yes", "no"}},
+        {"lm_failed", {"stop", "refuse"}}, {"lm_geodesic", {"off", "on"}}};
     lm::Options lo;
+    std::vector<std::string> lm_given;                 // LOCAL-8: the task-25 knobs given, for the settings
     lbfgsb::Options bo;
     eki::Options eo;
     std::map<std::string, std::string> word{{"lm_loss", "linear"}, {"lm_gauge", "off"},
-                                            {"eki_init", "around"}, {"eki_perturb", "yes"}};
+                                            {"eki_init", "around"}, {"eki_perturb", "yes"},
+                                            {"lm_failed", "stop"}, {"lm_geodesic", "off"}};
     double grad_cost = 1.0;
     std::vector<std::string> ignored;
     bool lean = false;
@@ -1348,6 +1425,9 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
             ignored.push_back(k);
             continue;
         }
+        if (k == "lm_max_iter" || k == "lm_failed" || k == "lm_geodesic" || k == "lm_geodesic_alpha" ||
+            k == "lm_geodesic_h")
+            lm_given.push_back(k);
         if (words.count(k)) {
             const std::string w = detail::shown(v);
             if (!v.is_word || !detail::listed(words.at(k), w))
@@ -1357,7 +1437,16 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
         }
         const double x = detail::number_of(k, v);
         if (!std::isfinite(x) || x < 0.0) throw std::invalid_argument(k + " must be a number >= 0");
-        if (k == "lm_ftol") lo.ftol = x;
+        if (k == "lm_max_iter") {                                                    // LM-10
+            if (x != std::floor(x) || x > 1e15) throw std::invalid_argument("lm_max_iter must be a whole number >= 0");
+            lo.max_iter = static_cast<long long>(x);
+        } else if (k == "lm_geodesic_alpha") {
+            if (!(x > 0.0)) throw std::invalid_argument("lm_geodesic_alpha must be > 0");
+            lo.geodesic_alpha = x;
+        } else if (k == "lm_geodesic_h") {
+            if (!(x > 0.0)) throw std::invalid_argument("lm_geodesic_h must be > 0");
+            lo.geodesic_h = x;
+        } else if (k == "lm_ftol") lo.ftol = x;
         else if (k == "lm_xtol") lo.xtol = x;
         else if (k == "lm_gtol") lo.gtol = x;
         else if (k == "lm_f_scale") lo.f_scale = x;
@@ -1391,6 +1480,14 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
     eo.seed = static_cast<std::uint32_t>(seed);
     lo.loss = loss == "huber" ? lm::Options::Loss::huber
             : loss == "cauchy" ? lm::Options::Loss::cauchy : lm::Options::Loss::linear;
+    lo.geodesic = word["lm_geodesic"] == "on";                                      // LOCAL-8
+    if (lo.geodesic)
+        for (std::size_t j = 0; j < n; ++j)
+            if (!periodic::is(P.periodic, j) && (std::isfinite(P.lo[j]) || std::isfinite(P.hi[j])))
+                throw std::invalid_argument("lm_geodesic = 'on' takes no finite bound (lm.hpp LMB-5): "
+                                            "bounds -inf, +inf and a start x0");
+    if (lo.geodesic && gauge) throw std::invalid_argument("lm_geodesic and lm_gauge: one or the other (lm.hpp LMN-3)");
+    const bool refuse_failed = word["lm_failed"] == "refuse";                       // LOCAL-3, LOCAL-8
     const long long no_limit = std::numeric_limits<long long>::max() / 4;   // LOCAL-2
     lo.max_nfev = no_limit;
     bo.max_nfev = no_limit;
@@ -1449,7 +1546,14 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
                 p.m = static_cast<std::size_t>(ev.n_res);
                 p.lo = slo;
                 p.hi = shi;
-                p.residuals = [&](const Vec& x, Vec& r) { r = ev.R[value(x)]; };
+                if (!refuse_failed)
+                    p.residuals = [&](const Vec& x, Vec& r) { r = ev.R[value(x)]; };
+                else                                  // LOCAL-8: lm refuses the step there (LM-9)
+                    p.residuals = [&](const Vec& x, Vec& r) {
+                        const std::size_t i = at(x);
+                        r = ev.R[i];
+                        if (r.size() != p.m) r.assign(p.m, std::numeric_limits<double>::quiet_NaN());
+                    };
                 if (P.has_gradient())
                     p.jacobian = [&](const Vec& x, lm::Matrix& J) {
                         const std::size_t i = at_grad(x);
@@ -1506,6 +1610,14 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
         if (gauge)                                    // LOCAL-6 (0 where the run ended before lm did)
             r.settings.insert(r.settings.end(), {{"lm_gauge_k", std::to_string(lr.gauge_k)},
                                                  {"lm_gauge_ratio", g_format(lr.gauge_ratio)}});
+        for (const std::string& k : lm_given) {       // LOCAL-8: only where given
+            if (k == "lm_max_iter") r.settings.push_back({k, std::to_string(lo.max_iter)});
+            else if (k == "lm_geodesic_alpha") r.settings.push_back({k, g_format(lo.geodesic_alpha)});
+            else if (k == "lm_geodesic_h") r.settings.push_back({k, g_format(lo.geodesic_h)});
+            else r.settings.push_back({k, word[k]});
+        }
+        if (!lm_given.empty())                        // LM-10: lm's accepted steps (0 where the run ended first)
+            r.settings.push_back({"lm_iterations", std::to_string(lr.iterations)});
     } else if (name == "eki") {
         r.settings = {{"eki_ensemble", std::to_string(eo.ensemble > 0 ? eo.ensemble
                                                                       : std::max<int>(10, 2 * static_cast<int>(n)))},

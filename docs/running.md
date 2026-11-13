@@ -625,6 +625,15 @@ only the evaluation sees it rounded (`"baldwin"`). Polynomial mutation takes
 run records `dup_x_share`, the share of its evaluations whose decoded point had
 been evaluated before.
 
+The single-objective methods (`scalar.SINGLE`: `cmaes`, `de`, `lm`, the
+strategies; task 25, SO-VT in `minimize.py`) take `"real"`, `"int"`,
+`("discrete", values)` and `"bin"` (a bit as an integer in [0, 1]), not
+`"cat"`: they search reals in the core's boxes above, `fn` gets the decoded
+point and every call counts (`residuals` stay refused with `var_types`); with `int_repair = "lamarck"`
+the answer's variables are decoded too. No `grad` or `jac` with them. `cmaes`
+with `cma_margin = "on"` keeps the integer and discrete variables from fixing
+(an integer range of more than 100000 values stays continuous for it).
+
 `("cat", labels)` — or `("cat", k)` for the labels 0 .. k−1 — is a
 categorical variable: k ≥ 2 unordered values, which `fn` receives as the
 label itself. Bits and categorical variables form the cores' integer genome
@@ -1493,7 +1502,13 @@ default, or `standard`, Lagarias et al.'s (1.3); also `eps_nm`'s) for
 `cma_weights` (`active`, the default, or `positive`: only the μ best, weighted
 ln(μ + 1) − ln i), `cma_cmu` (`tutorial2016` or `hansen2009`) and `cma_stop`
 (`spread`: the step's spread below `local_tol`; `h09`: the termination criteria
-of BIPOP-CMA-ES 2009, `scalar/cmaes.hpp`) for `cmaes`; the others are ignored
+of BIPOP-CMA-ES 2009, `scalar/cmaes.hpp`) for `cmaes`, and three of task 25,
+each in the settings only where given (SINGLE-6): `cma_eigen_every` (1, every
+iteration, the default; k: every k-th; 0: H09's interval — the lazy
+decomposition for a large D), `cma_margin` (`off`, the default, or `on`: CMA-ES
+with margin, Hamano et al. 2022, for the integer, discrete and binary
+variables of `var_types`; refused without one) and `cma_margin_alpha` (0: their
+1/(Nλ)); the others are ignored
 and named in `result.ignored`. A run that
 stops early leaves the budget unspent, and a shorter budget gives the same run
 cut short: these runs do not depend on `max_evaluations` (SINGLE-1, SINGLE-2 in
@@ -1512,6 +1527,9 @@ Bounds only — a problem with constraints is refused (LOCAL-1). Knobs:
 | `lm_ftol`, `lm_xtol`, `lm_gtol` | Moré's stopping tests (8.3)-(8.4) (1e-8, 1e-8, 0) |
 | `lm_loss`, `lm_f_scale` | `linear` (the default), `huber` or `cauchy` by IRLS; the scale c (1) |
 | `lm_gauge` | `off` (the default) or `on`: the step in the complement of the problem's `gauge_basis` (`minimize(..., gauge_basis=N)`, N(x) n rows of k; lm.hpp LMN); its k and ‖J N‖/‖J‖ at the solution in the settings (LOCAL-6) |
+| `lm_max_iter` | lm's accepted steps at most (0: no limit, the default; lm.hpp LM-10): the short polish of Kommenda et al. 2020, who stop after 10; where given, the settings say it and `lm_iterations` (LOCAL-8) |
+| `lm_failed` | `stop` (the default): a failed evaluation ends the run (LOCAL-3); `refuse`: a trial point whose residuals are not finite (NaN, ±inf) is a refused step and lm goes on (lm.hpp LM-9; LOCAL-8) |
+| `lm_geodesic`, `lm_geodesic_alpha`, `lm_geodesic_h` | `off` (the default) or `on`: Transtrum & Sethna's geodesic acceleration (lm.hpp LMG), α (0.75) and h (0.1); bounds `-inf` / `+inf` only, so with `x0` (LMB-5), and not with `lm_gauge` (LMN-3) |
 | `lbfgsb_m`, `lbfgsb_pgtol`, `lbfgsb_ftol` | the memory (5), the projected-gradient test (1e-5), the relative reduction test (0: off) |
 | `grad_cost` | what a call of the problem's gradient or Jacobian costs of the budget (1); every single-objective algorithm but `eki` |
 

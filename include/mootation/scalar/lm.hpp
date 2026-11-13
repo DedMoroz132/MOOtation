@@ -76,6 +76,19 @@
 //     The wrappers below: solve_robust stops there; solve_eq is not
 //     converged (LMC); a profile's node whose fit stops so has cost +inf
 //     (LMP).
+//   LM-10. max_iter (lm_max_iter; 0, off, by default; task 25, §24.3.5): the
+//     short polish of M. Kommenda, B. Burlacu, G. Kronberger, M. Affenzeller,
+//     "Parameter identification for symbolic regression using nonlinear
+//     least squares", Genet. Program. Evolvable Mach. 21 (2020) 471-501
+//     (source parameter-identification-symbolic_kommenda2019), §2.2 and
+//     Algorithm 1: an iteration computes the residuals and the Jacobian once
+//     and updates theta once, "per default the LM algorithm is stopped after
+//     ten iterations". Ours: an iteration is Moré's outer one, one Jacobian
+//     and the trial steps until one is accepted; the run stops with
+//     Status::max_iter once max_iter steps are accepted (Result::iterations),
+//     before the next Jacobian, unless ftol or xtol holds at that step (they
+//     win, as they win over max_nfev); in solve_robust the rounds' accepted
+//     steps count together, as their evaluations do (LM-6).
 //   Checked against Moré's §8 table (tests/test_lm_sets.cpp): on four of
 //   his twelve runs (Kowalik-Osborne from x_0, Bard from 10 x_0 and 100 x_0,
 //   the helical valley from x_0) his NF and NJ come out exactly.
@@ -239,10 +252,12 @@ struct Options {
     double irls_tol = 1e-10;                // LM-6
     int irls_max = 50;
     std::vector<Vec>* iterates = nullptr;   // where given, every accepted x is appended
+    long long max_iter = 0;                 // lm_max_iter: accepted steps at most (LM-10); 0: no limit
 };
 
 enum class Status { ftol, xtol, ftol_xtol, gtol, max_nfev, ftol_eps, xtol_eps, gtol_eps,
-                    nonfinite };   // LM-9: r(x_0) or a Jacobian not finite
+                    nonfinite,     // LM-9: r(x_0) or a Jacobian not finite
+                    max_iter };    // LM-10
 
 struct Result {
     Vec x, r;
@@ -886,6 +901,10 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
                 done = true;
             } else {                                  // the later test wins
                 if (res.nfev >= max_nfev) { res.status = Status::max_nfev; done = true; }
+                if (o.max_iter > 0 && res.iterations >= o.max_iter) {   // LM-10
+                    res.status = Status::max_iter;
+                    done = true;
+                }
                 if (predicted <= kEps) { res.status = Status::ftol_eps; done = true; }
                 if (delta <= kEps * xnorm) { res.status = Status::xtol_eps; done = true; }
                 if (gcos <= kEps) { res.status = Status::gtol_eps; done = true; }
@@ -969,6 +988,10 @@ inline Result solve_robust(const Problem& p, Vec x, const Options& o)
     for (int round = 0; round < o.irls_max; ++round) {
         const long long cap = o.max_nfev > 0 ? o.max_nfev : (p.jacobian ? 100 : 200) * static_cast<long long>(p.n + 1);
         oi.max_nfev = std::max(1LL, cap - total.nfev);
+        if (o.max_iter > 0) {                         // LM-10: the rounds together
+            if (total.iterations >= o.max_iter) break;
+            oi.max_iter = o.max_iter - total.iterations;
+        }
         const Result step = solve(q, x, oi);
         total.nfev += step.nfev;
         total.njev += step.njev;
@@ -986,6 +1009,7 @@ inline Result solve_robust(const Problem& p, Vec x, const Options& o)
             sw[i] = std::sqrt(wi);
         }
         if (moved <= o.irls_tol || step.status == Status::max_nfev || total.nfev >= cap) break;
+        if (step.status == Status::max_iter) break;   // LM-10
     }
     total.x = x;
     total.r = r;

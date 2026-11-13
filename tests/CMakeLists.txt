@@ -69,6 +69,8 @@ set(MOOTATION_TESTS
     test_rgn
     test_atomic_measure
     test_lm_ma_es
+    test_lm_polish
+    test_so_mixed
     test_store_codec
     test_json
     test_toml
