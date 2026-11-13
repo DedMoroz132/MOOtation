@@ -11740,6 +11740,137 @@ def the_cost_to_an_optimum_with_95_percent_confidence():
 
 
 @test
+def nemenyi_and_bonferroni_dunn_by_demsar():
+    """Task 26, Г5 (stats.py): the critical values of Demšar 2006, Table 5,
+    within 1.5e-3 for k = 2 ... 10 (its Bonferroni-Dunn 2.724 at k = 9 is
+    z_(1 - 0.05/16) = 2.7344, ST-1); his example of §3.2.2 (four algorithms,
+    fourteen data sets, Table 6): F_F = 3.69 from chi2_F = 9.28, F(3, 39)'s
+    0.05 point 2.85, the mean ranks 3.143, 2.000, 2.893, 1.964, CD 1.25
+    (Nemenyi, 0.05), 1.12 (0.10) and 1.16 (Bonferroni-Dunn); at 0.10 pure
+    C4.5 differs from C4.5+m and C4.5+m+cf, against C4.5 as the control at
+    0.05 only C4.5+m+cf differs; Kendall's tau-b by hand."""
+    from mootation.run import stats as S
+    nem = {0.05: [1.960, 2.343, 2.569, 2.728, 2.850, 2.949, 3.031, 3.102, 3.164],
+           0.10: [1.645, 2.052, 2.291, 2.459, 2.589, 2.693, 2.780, 2.855, 2.920]}
+    bd = {0.05: [1.960, 2.241, 2.394, 2.498, 2.576, 2.638, 2.690, 2.7344, 2.773],
+          0.10: [1.645, 1.960, 2.128, 2.241, 2.326, 2.394, 2.450, 2.498, 2.539]}
+    for a in (0.05, 0.10):
+        for k in range(2, 11):
+            assert abs(S.nemenyi_q(k, a) - nem[a][k - 2]) < 1.5e-3, (k, a, S.nemenyi_q(k, a))
+            assert abs(S.bonferroni_dunn_q(k, a) - bd[a][k - 2]) < 1.5e-3, (k, a)
+    id_ = S.iman_davenport(9.28, 14, 4)
+    assert abs(id_["statistic"] - 3.69) < 5e-3 and id_["df"] == (3, 39) and id_["p"] < 0.05, id_
+    assert abs(S.f_sf(2.845, 3, 39) - 0.05) < 1e-3 and abs(S.f_sf(1.0, 1, 1) - 0.5) < 1e-12
+    assert abs(S.f_sf(1.0, 2, 2) - 0.5) < 1e-12        # F(2, 2): P(F >= x) = 1 / (1 + x)
+    # Table 6's ranks (its AUCs are rounded: voting's 0.975 and 0.975 rank 2 and 3)
+    ranks = [(4, 3, 2, 1), (1, 2, 3, 4), (4, 1, 2, 3), (4, 1, 3, 2), (4, 2, 3, 1),
+             (1, 2.5, 4, 2.5), (3, 2, 4, 1), (2.5, 2.5, 4, 1), (4, 3, 2, 1), (2.5, 2.5, 2.5, 2.5),
+             (4, 2.5, 1, 2.5), (3, 2, 4, 1), (4, 1, 2, 3), (3, 1, 4, 2)]
+    names = ["C4.5", "C4.5+m", "C4.5+cf", "C4.5+m+cf"]
+    r = S.compare_ranks(ranks, names, alpha=0.10)
+    for a, want in zip(names, (3.143, 2.000, 2.893, 1.964)):
+        assert abs(r["mean_ranks"][a] - want) < 1e-3, r["mean_ranks"]
+    assert abs(r["cd"] - 1.12) < 5e-3, r["cd"]
+    assert abs(S.critical_difference(4, 14, 0.05) - 1.25) < 5e-3
+    assert ["C4.5+m+cf", "C4.5+m", "C4.5+cf"] in r["groups"] and ["C4.5+cf", "C4.5"] in r["groups"], r
+    c = S.compare_ranks(ranks, names, alpha=0.05, control="C4.5")
+    assert abs(c["cd"] - 1.16) < 1e-2 and c["differ"] == ["C4.5+m+cf"], c
+    assert S.kendall_tau([1, 2, 3, 4], [1, 2, 3, 4]) == 1.0
+    assert S.kendall_tau([1, 2, 3, 4], [4, 3, 2, 1]) == -1.0
+    # (1, 2, 2, 3) against (1, 3, 2, 4): 5 concordant, 0 discordant, one tie in a
+    assert abs(S.kendall_tau([1, 2, 2, 3], [1, 3, 2, 4]) - 5 / (5 * 6) ** 0.5) < 1e-12
+    assert S.kendall_tau([1, 1], [1, 2]) is None
+
+
+@test
+def performance_profiles_by_hand():
+    """Task 26, Г4 (run/profiles.py, Dolan and Moré 2002, §2): ratios to the
+    best per problem, inf where unsolved; rho_s(1) the wins (ties win for
+    both, DM-3), rho_s* the share solved, rho_s nondecreasing and right
+    continuous; a problem no solver solves stays in n_p (DM-1); a cost of 0
+    is refused (DM-2)."""
+    import math
+    from mootation.run import profiles as P
+    costs = {"p1": {"A": 1.0, "B": 2.0, "C": None},
+             "p2": {"A": 4.0, "B": 2.0, "C": 1.0},
+             "p3": {"A": 3.0, "B": 3.0, "C": 6.0},
+             "p4": {"A": None, "B": math.inf, "C": float("nan")}}
+    s = P.summary(costs, taus=(1.0, 2.0, 4.0))
+    r = s["ratios"]
+    assert r["p2"] == {"A": 4.0, "B": 2.0, "C": 1.0} and r["p1"]["C"] == math.inf
+    assert all(v == math.inf for v in r["p4"].values())
+    A, B, C = (s["solvers"][x] for x in "ABC")
+    assert A["wins"] == 0.5 and B["wins"] == 0.25 and C["wins"] == 0.25
+    assert A["solved"] == 0.75 and B["solved"] == 0.75 and C["solved"] == 0.5
+    assert A["at"] == {1.0: 0.5, 2.0: 0.5, 4.0: 0.75} and C["at"][2.0] == 0.5
+    assert A["breakpoints"] == [(1.0, 0.5), (4.0, 0.75)]
+    try:
+        P.ratios({"p": {"A": 0.0, "B": 1.0}})
+        raise AssertionError("a cost of 0 must be refused")
+    except ValueError:
+        pass
+
+
+@test
+def portfolio_at_one_objective_by_hand():
+    """Task 26, Г1 (portfolio.so_portfolio): on a hand-made ERT table the
+    coverage per rule (PF-1: 7 of ten runs is 4 of five, rounded up), the
+    oracle and the single best, Shapley values adding up to the oracle;
+    relERT the ratio to the best ERT, PAR10 ten times the largest finite one
+    (Kerschke and Trautmann 2019, §4.6), the single best by mean relERT, a
+    problem nobody hits left out (PF-2)."""
+    import math
+    from mootation.run.portfolio import so_portfolio
+    inf = math.inf
+
+    def cell(ert, hits, runs=5):
+        return {"precisions": [1e-2], "ert": [ert], "hits": [hits], "runs": runs}
+    t = {("p1", "a"): cell(100.0, 5), ("p1", "b"): cell(200.0, 5), ("p1", "c"): cell(inf, 0),
+         ("p2", "a"): cell(900.0, 3), ("p2", "b"): cell(300.0, 4), ("p2", "c"): cell(450.0, 5),
+         ("p3", "a"): cell(inf, 0), ("p3", "b"): cell(inf, 0), ("p3", "c"): cell(50.0, 1),
+         ("p4", "a"): cell(inf, 0), ("p4", "b"): cell(inf, 0), ("p4", "c"): cell(inf, 0)}
+    r = so_portfolio(t)[0]
+    c7 = r["coverage"][7]                                     # 4 of 5 runs
+    assert c7["covers"] == {"a": 1, "b": 2, "c": 1} and c7["oracle"] == 2 and c7["sbs"] == "b"
+    assert abs(sum(c7["shapley"].values()) - c7["oracle"]) < 1e-12
+    assert c7["shapley"] == {"a": 0.5, "b": 1.0, "c": 0.5}
+    c5 = r["coverage"][5]                                     # 3 of 5
+    assert c5["covers"] == {"a": 2, "b": 2, "c": 1} and c5["unique"]["c"] == set()
+    assert r["coverage"][10]["covers"] == {"a": 1, "b": 1, "c": 1}
+    assert r["unsolved"] == ["p4"] and sorted(r["relert"]) == ["p1", "p2", "p3"]
+    assert r["relert"]["p2"] == {"a": 3.0, "b": 1.0, "c": 1.5}
+    assert r["par10"] == 30.0 and r["relert"]["p1"]["c"] == 30.0 and r["relert"]["p3"]["a"] == 30.0
+    assert abs(r["mean_relert"]["c"] - (30.0 + 1.5 + 1.0) / 3) < 1e-12 and r["sbs"] == "c", r
+
+
+@test
+def model_choice_rules_by_hand():
+    """Task 26, 24.7.5 (run/model_select.py): eps-economy takes the simplest
+    model below (1 + eps) C_min, strictly (EUCLID; MS-1), with a floor; the
+    knee of a front with one bend is the bend (Branke et al. 2004, utility
+    measure; MS-2, MS-3); BIC = n ln(RSS / n) + k ln n."""
+    import math
+    from mootation.run import model_select as M
+    ms = [{"name": "k1", "k": 1, "err": 1.00, "rss": 50.0, "n": 100},
+          {"name": "k2", "k": 2, "err": 0.105, "rss": 5.0, "n": 100},
+          {"name": "k3", "k": 3, "err": 0.100, "rss": 4.9, "n": 100},
+          {"name": "k4", "k": 4, "err": 0.0995, "rss": 4.85, "n": 100}]
+    assert M.eps_economy(ms, 0.01)["name"] == "k3"           # 0.1 < 1.01 x 0.0995
+    assert M.eps_economy(ms, 0.1)["name"] == "k2"
+    assert M.eps_economy(ms, 0.0)["name"] == "k4"            # C_min itself qualifies
+    assert M.eps_economy(ms, 0.0, floor=2.0)["name"] == "k1"
+    tie = [{"k": 2, "err": 1.1}, {"k": 1, "err": 1.1 * 1.0}, {"k": 1, "err": 1.0}]
+    assert M.eps_economy(tie, 0.1) is tie[2]                 # 1.1 is not < 1.1 C_min
+    assert M.knee([(1.0, 1), (0.105, 2), (0.100, 3), (0.0995, 4)]) == 1
+    assert M.knee([(0.0, 1.0), (0.5, 0.5), (1.0, 0.0)]) in (0, 2)   # a straight front: no bend
+    mu = M.marginal_utilities([(0.0, 1.0), (0.2, 0.2), (1.0, 0.0), (0.5, 0.5)])
+    assert mu[3] == 0.0 and mu[1] > max(mu[0], mu[2])        # (0.5, 0.5) is dominated
+    assert abs(M.bic(4.9, 100, 3) - (100 * math.log(0.049) + 3 * math.log(100))) < 1e-12
+    ch = M.choose(ms)
+    assert ch["eps_0.1"]["name"] == "k2" and ch["knee"]["name"] == "k2" and ch["bic"]["name"] == "k2"
+
+
+@test
 def the_single_objective_report_reads_a_campaign():
     """Task 18, stage 5 (run/report_so.py): on a small bbob campaign the ERT
     of a cell is the evaluations of all its runs to the target over the hits

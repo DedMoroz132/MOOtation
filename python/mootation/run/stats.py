@@ -299,6 +299,220 @@ def friedman(blocks: Sequence[Sequence[float]], *, lower_better: bool = True) ->
     return {"n": n, "k": k, "statistic": t, "p": _chi2_sf(t, k - 1), "mean_ranks": [rj / n for rj in R]}
 
 
+# ── after Friedman: Iman-Davenport, Nemenyi, Bonferroni-Dunn (task 26, Г5) ────
+# J. Demšar, "Statistical comparisons of classifiers over multiple data sets",
+# JMLR 7:1-30, 2006 (source statistical-comparisons-classifiers_demsar2006),
+# §3.2.2 and §3.2.4:
+#   Iman and Davenport's F_F = (N - 1) chi2_F / (N (k - 1) - chi2_F) against
+#     F with k - 1 and (k - 1)(N - 1) degrees of freedom;
+#   Nemenyi (all against all): two algorithms differ when their mean ranks
+#     differ by at least CD = q_alpha sqrt(k (k + 1) / (6 N));
+#   Bonferroni-Dunn (all against a control): the same CD with the critical
+#     value of alpha / (k - 1);
+#   the CD diagram: the mean ranks on an axis, the groups of algorithms no
+#     two of which differ by CD connected (Figure 1(a)), or the interval of
+#     one CD around the control (Figure 1(b)).
+# READINGS:
+#   ST-1. The critical values are computed, not looked up, so any k works:
+#     Nemenyi's q_alpha is the studentized range's 1 - alpha quantile with
+#     infinite degrees of freedom over sqrt 2 (Demšar's Table 5(a) at k = 2 is
+#     z_0.975 = 1.960 = 2.772 / sqrt 2), P(range of k standard normals <= w) =
+#     k int phi(z) (Phi(z + w) - Phi(z))^(k - 1) dz by Simpson's rule on
+#     [-9, 9]; Bonferroni-Dunn's is z_(1 - alpha / (2 (k - 1))) (two-tailed).
+#     Both agree with Table 5 within 1.5e-3 for k = 2 ... 10 (tests): the
+#     table rounds from the studentized range's three-digit values (k = 7:
+#     4.17 / sqrt 2 = 2.949, the quantile 4.1696 gives 2.9483), and its
+#     Bonferroni-Dunn entry 2.724 at k = 9 is a misprint of z_(1 - 0.05/16) =
+#     2.7344, the value this function gives (the test takes it).
+#   ST-2. F_F takes the chi2_F it is given: `friedman` returns Conover's
+#     statistic corrected for ties, Demšar's formula has no correction; they
+#     agree without ties. The example of Demšar's §3.2.2 (chi2_F = 9.28, N =
+#     14, k = 4, F_F = 3.69) checks the formula.
+#   ST-3. The groups of the diagram are the maximal runs of algorithms,
+#     sorted by mean rank, whose first and last differ by less than CD (a
+#     difference of exactly CD is significant, "at least the critical
+#     difference"); a run inside a longer one is not listed.
+def f_sf(x: float, d1: float, d2: float) -> float:
+    """P(F_{d1,d2} >= x) = I_{d2/(d2 + d1 x)}(d2/2, d1/2), the regularized
+    incomplete beta function by its continued fraction (DLMF 8.17.22, Lentz's
+    method), to about 1e-13."""
+    if x <= 0.0:
+        return 1.0
+    return _betainc(d2 / 2.0, d1 / 2.0, d2 / (d2 + d1 * x))
+
+
+def _betainc(a: float, b: float, x: float) -> float:
+    """The regularized incomplete beta function I_x(a, b)."""
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    if x > (a + 1.0) / (a + b + 2.0):              # the fraction converges fast below
+        return 1.0 - _betainc(b, a, 1.0 - x)
+    front = math.exp(math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+                     + a * math.log(x) + b * math.log1p(-x)) / a
+    tiny = 1e-300
+    f, c, d = 1.0, 1.0, 0.0
+    for i in range(0, 2000):                   # DLMF 8.17.22: 1 / (1 + d1 / (1 + d2 / ...))
+        m = i // 2
+        if i == 0:
+            num = 1.0
+        elif i % 2 == 0:
+            num = m * (b - m) * x / ((a + 2 * m - 1) * (a + 2 * m))
+        else:
+            num = -(a + m) * (a + b + m) * x / ((a + 2 * m) * (a + 2 * m + 1))
+        d = 1.0 + num * d
+        d = 1.0 / (d if abs(d) > tiny else tiny)
+        c = 1.0 + num / c
+        c = c if abs(c) > tiny else tiny
+        f *= c * d
+        if abs(c * d - 1.0) < 1e-15:
+            break
+    return front * (f - 1.0)
+
+
+def iman_davenport(chi2: float, n: int, k: int) -> dict:
+    """Iman and Davenport's F_F from Friedman's chi2_F over n blocks and k
+    treatments, and its p against F(k - 1, (k - 1)(n - 1)) (Demšar §3.2.2;
+    ST-2). Where chi2_F reaches n (k - 1), its largest value (every block
+    ranks alike), F_F is infinite and p is 0."""
+    d1, d2 = k - 1, (k - 1) * (n - 1)
+    den = n * (k - 1) - chi2
+    if d1 < 1 or d2 < 1:
+        return {"statistic": 0.0, "df": (d1, d2), "p": 1.0}
+    if den <= 0.0:
+        return {"statistic": math.inf, "df": (d1, d2), "p": 0.0}
+    ff = (n - 1) * chi2 / den
+    return {"statistic": ff, "df": (d1, d2), "p": f_sf(ff, d1, d2)}
+
+
+def _range_cdf(w: float, k: int) -> float:
+    """P(max - min of k standard normals <= w) (ST-1)."""
+    from statistics import NormalDist
+    nd = NormalDist()
+    steps, lo, hi = 1800, -9.0, 9.0
+    h = (hi - lo) / steps
+    total = 0.0
+    for i in range(steps + 1):
+        z = lo + i * h
+        g = nd.pdf(z) * (nd.cdf(z + w) - nd.cdf(z)) ** (k - 1)
+        total += g * (1 if i in (0, steps) else 4 if i % 2 else 2)
+    return k * total * h / 3.0
+
+
+def nemenyi_q(k: int, alpha: float = 0.05) -> float:
+    """Nemenyi's two-tailed critical value q_alpha for k algorithms (ST-1):
+    the studentized range's quantile at infinite degrees of freedom over
+    sqrt 2, by bisection to 1e-10."""
+    if k < 2:
+        raise ValueError("nemenyi_q: at least two algorithms")
+    lo, hi = 0.0, 20.0
+    while hi - lo > 1e-10:
+        mid = 0.5 * (lo + hi)
+        if _range_cdf(mid, k) < 1.0 - alpha:
+            lo = mid
+        else:
+            hi = mid
+    return 0.5 * (lo + hi) / math.sqrt(2.0)
+
+
+def bonferroni_dunn_q(k: int, alpha: float = 0.05) -> float:
+    """Bonferroni-Dunn's two-tailed critical value for k algorithms, the
+    control among them: z at 1 - alpha / (2 (k - 1)) (Demšar §3.2.2; ST-1)."""
+    from statistics import NormalDist
+    if k < 2:
+        raise ValueError("bonferroni_dunn_q: at least two algorithms")
+    return NormalDist().inv_cdf(1.0 - alpha / (2.0 * (k - 1)))
+
+
+def critical_difference(k: int, n: int, alpha: float = 0.05, *, test: str = "nemenyi") -> float:
+    """CD = q_alpha sqrt(k (k + 1) / (6 n)) for k algorithms over n blocks;
+    `test` "nemenyi" (all against all) or "bonferroni_dunn" (against a
+    control)."""
+    if test == "nemenyi":
+        q = nemenyi_q(k, alpha)
+    elif test == "bonferroni_dunn":
+        q = bonferroni_dunn_q(k, alpha)
+    else:
+        raise ValueError(f"critical_difference: test = {test!r}: nemenyi or bonferroni_dunn")
+    return q * math.sqrt(k * (k + 1) / (6.0 * n))
+
+
+def cd_groups(mean_ranks: dict, cd: float) -> list:
+    """The groups a CD diagram connects (Demšar Figure 1(a); ST-3): from
+    {algorithm: mean rank}, the maximal runs, by mean rank, whose first and
+    last differ by less than `cd`, each as a list of algorithms from the best
+    rank; runs of one algorithm are left out."""
+    algs = sorted(mean_ranks, key=lambda a: (mean_ranks[a], a))
+    runs, last_end = [], -1
+    for i in range(len(algs)):
+        j = i
+        while j + 1 < len(algs) and mean_ranks[algs[j + 1]] - mean_ranks[algs[i]] < cd:
+            j += 1
+        if j > last_end and j > i:
+            runs.append(algs[i:j + 1])
+        last_end = max(last_end, j)
+    return runs
+
+
+def compare_ranks(blocks: Sequence[Sequence[float]], names: Sequence[str], *,
+                  lower_better: bool = True, alpha: float = 0.05,
+                  control: str | None = None) -> dict:
+    """Friedman over the blocks (each a value of every algorithm, in the order
+    of `names`), Iman and Davenport's F_F, and the post-hoc test: with no
+    `control`, Nemenyi's CD and the groups of the CD diagram; with one,
+    Bonferroni-Dunn's CD and the algorithms whose mean rank differs from the
+    control's by at least CD (Demšar §3.2.2, §3.2.4)."""
+    fr = friedman(blocks, lower_better=lower_better)
+    n, k = fr["n"], fr["k"]
+    ranks = dict(zip(names, fr["mean_ranks"]))
+    out = {"n": n, "k": k, "mean_ranks": ranks, "friedman": fr,
+           "iman_davenport": iman_davenport(fr["statistic"], n, k)}
+    if n == 0 or k < 2:
+        return out
+    if control is None:
+        cd = critical_difference(k, n, alpha, test="nemenyi")
+        out.update(test="nemenyi", cd=cd, groups=cd_groups(ranks, cd))
+    else:
+        if control not in ranks:
+            raise ValueError(f"compare_ranks: control {control!r} is not among the algorithms")
+        cd = critical_difference(k, n, alpha, test="bonferroni_dunn")
+        out.update(test="bonferroni_dunn", cd=cd, control=control,
+                   differ=sorted(a for a in ranks if a != control
+                                 and abs(ranks[a] - ranks[control]) >= cd))
+    return out
+
+
+def kendall_tau(a: Sequence[float], b: Sequence[float]) -> float | None:
+    """Kendall's tau-b between two rankings of the same items (ties allowed):
+    (concordant - discordant) / sqrt((n0 - n1)(n0 - n2)), n0 the pairs, n1 and
+    n2 those tied in a and in b (M.G. Kendall, "The treatment of ties in
+    ranking problems", Biometrika 33(3):239-251, 1945). None when either
+    ranking is constant. For the ranks of the algorithms at two budgets
+    (Г5: how stable the order is along the ladder of budgets)."""
+    n = len(a)
+    if n != len(b):
+        raise ValueError("kendall_tau: two rankings of the same length")
+    conc = disc = ta = tb = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            da, db = a[i] - a[j], b[i] - b[j]
+            if da == 0 and db == 0:
+                ta += 1
+                tb += 1
+            elif da == 0:
+                ta += 1
+            elif db == 0:
+                tb += 1
+            elif (da > 0) == (db > 0):
+                conc += 1
+            else:
+                disc += 1
+    n0 = n * (n - 1) // 2
+    den = math.sqrt((n0 - ta) * (n0 - tb))
+    return None if den == 0 else (conc - disc) / den
+
+
 def mark(p: float | None, better: str | None, alpha: float = 0.05) -> str:
     """The usual table marker: '+' A significantly better, '-' worse, '=' neither."""
     if p is None or better is None or p >= alpha:

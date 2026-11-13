@@ -368,3 +368,139 @@ def run(root: Path, *, taus=None, floor_taus=None, budgets=None, workers: int = 
     text = "\n".join(lines)
     (out_dir / "portfolio_report.txt").write_text(text + "\n", encoding="utf-8")
     return text
+
+
+# ── one objective (task 26, Г1) ──────────────────────────────────────────────
+# The same analysis for a campaign at one objective, read off report_so's ERT
+# table (report_so.ert_table: per problem and algorithm the ERT, the hits and
+# the runs at the table's precisions, so_metrics.hpp). Per precision:
+#   * COVERAGE: algorithm a covers problem p when at least ceil(rule / 10 x
+#     runs) of its runs hit the target (PF-1), for the rules 5, 7, 10 of
+#     SEED_RULES; on that coverage the oracle, the single best solver, the
+#     Shapley values (shapley above), the problems covered alone and, at 7,
+#     the complementarity — as for the groups at several objectives;
+#   * relERT (P. Kerschke, H. Trautmann, "Automated algorithm selection on
+#     continuous black-box problems by combining exploratory landscape
+#     analysis and machine learning", Evol. Comput. 27(1):99-127, 2019, §4.6;
+#     source automated-algorithm-selection_kerschke2018): ERT(a, p) / min_a
+#     ERT(a, p), the best of the portfolio's; where a never hits, the PAR10
+#     score, ten times the largest finite relERT of the precision over all
+#     problems and algorithms; the single best solver is the algorithm of the
+#     smallest mean relERT, and the virtual best solver's relERT is 1 on every
+#     problem by definition (§4.6).
+# READINGS:
+#   PF-1. A rule r of SEED_RULES reads "r of ten seeds" as the share r / 10
+#     of the runs a cell has, rounded up, so campaigns with other than ten
+#     runs keep the same three levels.
+#   PF-2. A problem no algorithm of the portfolio hits has no best ERT: it is
+#     left out of the relERT means and counted apart ("unsolved"); the
+#     paper's portfolio has a solver for each of its problems (HCMA solved
+#     all 96) and says nothing of this case.
+#   PF-3. Every algorithm's mean relERT is over the same problems (those some
+#     algorithm hits); an algorithm without a cell on such a problem gets the
+#     PAR10 score there.
+
+def so_portfolio(table: dict, rules=SEED_RULES) -> dict:
+    """The portfolio at one objective from report_so.ert_table's {(problem,
+    algorithm): {"precisions", "ert", "hits", "runs"}}: {precision index:
+    {"precision", "coverage": {rule: {"oracle", "sbs", "sbs_covers", "unique",
+    "shapley", "covers", "complementarity"}}, "relert": {problem: {algorithm:
+    relERT}}, "par10", "mean_relert": {algorithm: mean}, "sbs", "unsolved"}}."""
+    problems = sorted({p for p, _ in table})
+    algs = sorted({a for _, a in table})
+    n_prec = min((len(c["ert"]) for c in table.values()), default=0)
+    out = {}
+    for i in range(n_prec):
+        prec = next(iter(table.values()))["precisions"][i]
+        cov_by_rule = {}
+        for rule in rules:
+            cov = {a: set() for a in algs}
+            for (p, a), c in table.items():
+                if c["runs"] and c["hits"][i] >= math.ceil(rule * c["runs"] / 10.0):
+                    cov[a].add(p)
+            o = oracle(cov)
+            cov_by_rule[rule] = {"oracle": o["oracle"], "sbs": o["sbs"],
+                                 "sbs_covers": o["sbs_covers"], "unique": o["unique"],
+                                 "shapley": shapley(cov),
+                                 "covers": {a: len(cov[a]) for a in algs},
+                                 "complementarity": complementarity(cov) if rule == 7 else {}}
+        best = {}
+        for p in problems:
+            erts = [table[(p, a)]["ert"][i] for a in algs if (p, a) in table
+                    and math.isfinite(table[(p, a)]["ert"][i])]
+            if erts:
+                best[p] = min(erts)
+        rel = {p: {a: (table[(p, a)]["ert"][i] / best[p]
+                       if (p, a) in table and math.isfinite(table[(p, a)]["ert"][i]) else None)
+                   for a in algs} for p in best}
+        finite = [v for row in rel.values() for v in row.values() if v is not None]
+        par10 = 10.0 * max(finite) if finite else None
+        for row in rel.values():
+            for a in algs:
+                if row[a] is None:
+                    row[a] = par10
+        mean = {a: (sum(rel[p][a] for p in rel) / len(rel) if rel else None) for a in algs}
+        sbs = min(algs, key=lambda a: (mean[a], a)) if rel else None
+        out[i] = {"precision": prec, "coverage": cov_by_rule, "relert": rel, "par10": par10,
+                  "mean_relert": mean, "sbs": sbs,
+                  "unsolved": [p for p in problems if p not in best]}
+    return out
+
+
+def run_so(root: Path, *, out_dir: Path | None = None, problems=None) -> str:
+    """The portfolio of a campaign at one objective: CSV under
+    <results>/_portfolio_so/ and a text summary."""
+    from . import report_so as RS
+    from .behaviour import family_of
+    root = Path(root)
+    out_dir = Path(out_dir) if out_dir else root / "_portfolio_so"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    rs = RS.runs(root, problems)
+    if not rs:
+        return "portfolio (one objective): no finished runs"
+    res = so_portfolio(RS.ert_table(rs))
+    fam = family_of()
+    summary, values, rel_rows, pairs = [], [], [], []
+    for i, r in res.items():
+        for rule, c in r["coverage"].items():
+            summary.append([i, _fmt(r["precision"]), rule, len(r["relert"]) + len(r["unsolved"]),
+                            c["oracle"], c["sbs"], c["sbs_covers"], c["oracle"] - c["sbs_covers"],
+                            r["sbs"], _fmt(r["mean_relert"].get(r["sbs"])), _fmt(r["par10"]),
+                            len(r["unsolved"])])
+            for a in sorted(c["shapley"]):
+                values.append([i, _fmt(r["precision"]), rule, a, fam.get(a, "?"),
+                               f"{c['shapley'][a]:.6g}", c["covers"][a], len(c["unique"][a]),
+                               _fmt(r["mean_relert"][a])])
+            for (a, b), n in c["complementarity"].items():
+                pairs.append([i, _fmt(r["precision"]), a, b, n])
+        for p in sorted(r["relert"]):
+            for a in sorted(r["relert"][p]):
+                rel_rows.append([i, _fmt(r["precision"]), p, a, _fmt(r["relert"][p][a])])
+    heads = {"portfolio_so_summary.csv": ["level", "precision", "seeds_required", "problems",
+                                          "oracle_covers", "covers_most", "its_covers", "gap",
+                                          "single_best_relert", "its_mean_relert", "par10",
+                                          "unsolved"],
+             "portfolio_so_shapley.csv": ["level", "precision", "seeds_required", "algorithm",
+                                          "family", "shapley", "covers", "covers_alone",
+                                          "mean_relert"],
+             "portfolio_so_relert.csv": ["level", "precision", "problem", "algorithm", "relert"],
+             "portfolio_so_complementarity.csv": ["level", "precision", "algorithm_a",
+                                                  "algorithm_b", "a_covers_b_does_not"]}
+    for name, rows_ in (("portfolio_so_summary.csv", summary), ("portfolio_so_shapley.csv", values),
+                        ("portfolio_so_relert.csv", rel_rows),
+                        ("portfolio_so_complementarity.csv", pairs)):
+        with (out_dir / name).open("w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(heads[name])
+            w.writerows(rows_)
+    lines = [f"portfolio (one objective): {len({r['problem'] for r in rs})} problems; CSV in "
+             f"{out_dir}"]
+    for i, r in res.items():
+        c = r["coverage"][7]
+        lines.append(f"  precision {_fmt(r['precision'])}: oracle {c['oracle']}, most covered by "
+                     f"{c['sbs']} ({c['sbs_covers']}, 7/10); single best by mean relERT "
+                     f"{r['sbs']} ({_fmt(r['mean_relert'].get(r['sbs']))}), PAR10 "
+                     f"{_fmt(r['par10'])}, unsolved by all {len(r['unsolved'])}")
+    text = "\n".join(lines)
+    (out_dir / "portfolio_so_report.txt").write_text(text + "\n", encoding="utf-8")
+    return text

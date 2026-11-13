@@ -10,6 +10,19 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 26, items 24.7.2, 24.7.4, 24.7.5): the report layer's
+  comparisons at one objective. `run/stats.py`: Iman and Davenport's F after
+  Friedman, Nemenyi's and Bonferroni-Dunn's critical differences (critical
+  values computed for any number of algorithms, checked against Demšar
+  2006, Table 5) and the groups of a CD diagram (`compare_ranks`), Kendall's
+  tau-b for the stability of ranks between budgets. `run/profiles.py`: Dolan
+  and Moré's performance profiles. `run/portfolio.py`: `so_portfolio` and
+  `run_so`, the portfolio of a campaign at one objective (coverage per seed
+  rule, oracle, single best, Shapley values, complementarity; relERT with
+  PAR10 after Kerschke and Trautmann 2019). `run/model_select.py`: choosing
+  a model off an error-against-parameters front (eps-economy, the knee by
+  Branke et al.'s utility measure, BIC with k the rank). Reports only: no
+  run changes.
 - Added (task 24, §24.1.3, §24.1.4, §24.1.6): the problem's hooks for the
   strategies over minima, in C++: `scalar::Problem::perturb`, `distance`,
   `contributions`, `canon_key`, `cache = off | exact | canon` (a structure
