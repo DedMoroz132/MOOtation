@@ -225,7 +225,8 @@ struct Result {
     Vec ls_state;
     long long decode_invalid = 0;    // genomes that did not decode, not evaluated (task 24, §24.1.2)
     long long cache_hits = 0;        // THE CACHE (task 24, §24.1.4): points given their structure's values
-    bool cache_ended = false;        // ... and the run ended on them (evaluator.hpp CACHE-5)
+    bool cache_ended = false;        // ... the run ended on them (evaluator.hpp CACHE-5)
+    bool cache_capped = false;       // ... or on their cap (CACHE-6)
     long long delta_calls = 0;       // THE DELTA (task 24, §24.1.6): the hook's calls, their declared cost
     double delta_spent = 0.0;
 };
@@ -523,6 +524,7 @@ inline Result result_of(Evaluator& ev, const std::vector<std::size_t>& idx)
     r.decode_invalid = ev.decode_invalid;
     r.cache_hits = ev.cache_hits;
     r.cache_ended = ev.cache_ended;
+    r.cache_capped = ev.cache_capped;
     r.delta_calls = ev.delta_calls;
     r.delta_spent = ev.delta_spent;
     r.improvements = ev.improvements.records();

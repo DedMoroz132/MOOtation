@@ -421,7 +421,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-389 items: 340 yes, 49 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+390 items: 340 yes, 50 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -497,6 +497,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `evaluator` | CACHE-3 | Off by default. A structure's values are its first point's, in the order the run met them. | no: option | `evaluator.hpp` |
 | `evaluator` | CACHE-4 | Off by default. A strategy's start (strategy.hpp, View) reads the run's cache as it was at the round's start and keeps its own; its hits go to the run at the merge, its points as known ones (free). | no: option | `evaluator.hpp` |
 | `evaluator` | CACHE-5 | Off by default (with the cache). As many points in a row as the budget, each a cache hit (CACHE-1, CACHE-2) and none evaluated between, end the run as its budget's end would (Result::cache_ended): on a finite space of... | no: option | `evaluator.hpp` |
+| `evaluator` | CACHE-6 | Off by default (with the cache). The run's cache hits in all are at most Problem::cache_hit_cap (100) times the budget: the next one ends the run as its budget's end would (Result::cache_capped). | no: option | `evaluator.hpp` |
 | `evaluator` | SO-1 | A problem with residuals takes its objective from them: evaluate, if it is given too, is not called, and such a problem has no constraints (n_cons = 0; the least-squares solvers of this library take none). | yes | `evaluator.hpp` |
 | `evaluator` | SO-2 | A gradient asked for at a point not yet evaluated is a joint call where the problem has one (value_grad, residuals_jac), else the values and then the gradient: either way one evaluation and one grad_call. | yes | `evaluator.hpp` |
 | `evaluator` | SO-3 | A problem that gives only the joint call (value_grad without evaluate, residuals_jac without residuals) is evaluated by it every time: every evaluation is then a grad_call too. | yes | `evaluator.hpp` |

@@ -17,6 +17,8 @@
 //   * CACHE-5: ga_sbx, de and pso with the cache canon, and ga_sbx of the
 //     user's operators with exact, on 8 structures and a budget of 200 end
 //     on the repeats; de on a continuous problem spends its budget;
+//     CACHE-6: with cache_hit_cap 0.5 the same runs end at 100 hits, the
+//     cap 0 is refused;
 //   * the active variables: memetic's nelder_mead on a genome with decode
 //     keeps the inactive slots (and moves them without decode), one thread =
 //     three; local_search's ctx.mask is decode(x0).active.
@@ -373,11 +375,31 @@ int main()
             auto calls = std::make_shared<long long>(0);
             const sc::Result r =
                 sc::run(m, tiny(calls, sc::Problem::Cache::canon), 1e-6, false, 0.0, 20, 200, 3, {}, {}, 0, {});
-            check(r.cache_ended && *calls <= 8 && r.evaluations == *calls && r.cache_hits >= 200,
+            check(r.cache_ended && !r.cache_capped && *calls <= 8 && r.evaluations == *calls && r.cache_hits >= 199,
                   m + ", canon, 8 structures, budget 200: ends on the repeats (" + std::to_string(*calls) +
                       " evaluated, " + std::to_string(r.cache_hits) + " hits)");
             std::printf("  %s, cache canon, 8 structures, budget 200: %lld evaluated, %lld hits, ended by CACHE-5\n",
                         m.c_str(), r.evaluations, r.cache_hits);
+        }
+        // CACHE-6: hits past cache_hit_cap x budget in all (0.5 x 200) end it first
+        for (const std::string m : {"ga_sbx", "de", "pso"}) {
+            auto calls = std::make_shared<long long>(0);
+            sc::Problem H = tiny(calls, sc::Problem::Cache::canon);
+            H.cache_hit_cap = 0.5;
+            const sc::Result r = sc::run(m, H, 1e-6, false, 0.0, 20, 200, 3, {}, {}, 0, {});
+            check(r.cache_capped && !r.cache_ended && r.cache_hits == 100 && *calls <= 8,
+                  m + ", cache_hit_cap 0.5, budget 200: ends at 100 hits (" + std::to_string(r.cache_hits) + ")");
+        }
+        {
+            sc::Problem H = tiny(std::make_shared<long long>(0), sc::Problem::Cache::canon);
+            H.cache_hit_cap = 0.0;
+            std::string why;
+            try {
+                sc::run("de", H, 1e-6, false, 0.0, 20, 200, 3, {}, {}, 0, {});
+            } catch (const std::invalid_argument& e) {
+                why = e.what();
+            }
+            check(why.find("cache_hit_cap") != std::string::npos, "cache_hit_cap 0 refused");
         }
         // exact: a GA of the user's operators on the 8 genomes of {0, 1}^3
         auto calls = std::make_shared<long long>(0);

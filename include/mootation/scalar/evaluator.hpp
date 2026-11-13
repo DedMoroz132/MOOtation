@@ -92,7 +92,13 @@
 //     space of structures a run that has met them all asks only for repeats,
 //     spends nothing and would not end (as STRAT-8, SRCH-9, SRCH-10, RST-8).
 //     An evaluation starts the count again, so a run that still finds new
-//     structures goes on; it makes at most budget x (budget + 1) points.
+//     structures goes on; it makes at most budget x (budget + 1) points. The
+//     point that ends the run is not kept, nor counted in cache_hits.
+//   CACHE-6. Off by default (with the cache). The run's cache hits in all are
+//     at most Problem::cache_hit_cap (100) times the budget: the next one
+//     ends the run as its budget's end would (Result::cache_capped). CACHE-5
+//     alone bounds a run by budget x (budget + 1) points, 1e10 at a budget of
+//     1e5; task 27's GA on its grammar met about 12 hits an evaluation.
 // THE DELTA (task 24, §24.1.6): Evaluator::delta(x, block, values) is the
 // problem's delta, its declared delta_cost charged after the call
 // (DELTA-1, as SUCC-2), counted in delta_calls, delta_spent; a value not
@@ -265,6 +271,7 @@ struct Problem {
     std::function<std::string(const Vec& x)> canon_key;
     enum class Cache { off, exact, canon };
     Cache cache = Cache::off;
+    double cache_hit_cap = 100.0;     // CACHE-6: the run's cache hits, at most this times the budget
     // THE SUBPROBLEM AND THE DELTA (task 24, §24.1.6; hooks.hpp): the user's
     // subproblem on the variables idx, the others frozen at x_frozen
     // (default restricted()); f(x with x[block] = values) - f(x), at the
@@ -340,7 +347,8 @@ public:
     double hook_seconds = 0.0;         // ... and its time (reported, never in a trajectory)
     long long decode_invalid = 0;      // THE USER'S GENOME: genomes that did not decode, not evaluated
     long long cache_hits = 0;          // THE CACHE: points not evaluated, their structure's values taken
-    bool cache_ended = false;          // ... and the run ended by CACHE-5
+    bool cache_ended = false;          // ... the run ended by CACHE-5
+    bool cache_capped = false;         // ... or by CACHE-6
     long long delta_calls = 0;         // THE DELTA: the hook's calls,
     double delta_spent = 0.0;          // ... their declared cost in the budget
 
@@ -363,6 +371,8 @@ public:
                     throw std::invalid_argument("var_repair: variable " + std::to_string(j) +
                                                 ": -1 or a bound repair but resample (0 ... 7, not 4)");
         }
+        if (p.cache != Problem::Cache::off && !(p.cache_hit_cap > 0.0 && std::isfinite(p.cache_hit_cap)))
+            throw std::invalid_argument("cache_hit_cap must be a number > 0 (CACHE-6)");
         if (!p.periodic.empty()) {                                  // periodic.hpp
             if (p.periodic.size() != p.lo.size())
                 throw std::invalid_argument("periodic: " + std::to_string(p.periodic.size()) + " flags for " +
@@ -385,10 +395,7 @@ public:
         const std::string key = key_of(x);
         auto it = where_.find(key);
         if (it != where_.end()) {
-            if (P.cache == Problem::Cache::exact) {                            // CACHE-1
-                ++cache_hits;
-                free_point();                                                  // CACHE-5
-            }
+            if (P.cache == Problem::Cache::exact) free_point();                // CACHE-1, CACHE-5, CACHE-6
             return it->second;
         }
         if (const Cached* c = cached(x)) return from_cache(x, *c, key);
@@ -412,19 +419,26 @@ public:
     // x kept with its structure's values, not evaluated (CACHE-2)
     std::size_t from_cache(const std::vector<double>& x, const Cached& c, const std::string& key)
     {
-        ++cache_hits;
-        free_point();                                                          // CACHE-5
+        free_point();                                                          // CACHE-5, CACHE-6
         r_ = c.r;
         return keep(x, c.f, c.g, c.bad, key, false);
     }
 
-    // CACHE-5: the budget's worth of points in a row that the cache gave free
-    // ends the run as its budget's end would
+    // a point the cache gives free, counted in cache_hits; it ends the run as
+    // its budget's end would where it is the budget's worth in a row (CACHE-5)
+    // or past cache_hit_cap x budget in all (CACHE-6), and is then not kept
     void free_point()
     {
-        if (++free_run_ < budget) return;
-        cache_ended = true;
-        throw BudgetSpent{};
+        if (static_cast<double>(cache_hits) >= P.cache_hit_cap * static_cast<double>(budget)) {
+            cache_capped = true;
+            throw BudgetSpent{};
+        }
+        if (free_run_ + 1 >= budget) {
+            cache_ended = true;
+            throw BudgetSpent{};
+        }
+        ++cache_hits;
+        ++free_run_;
     }
 
     // THE DELTA (task 24, §24.1.6): f(x with x[block] = values) - f(x) — the
