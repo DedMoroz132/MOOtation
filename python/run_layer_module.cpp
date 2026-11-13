@@ -1664,6 +1664,8 @@ void bind_run_layer(py::module_& m)
            py::arg("records"), py::arg("target"), py::arg("grad_cost") = 1.0);
     sm.def("ert", &so::ert, py::arg("runtimes"), py::arg("lengths"));
     sm.def("ecdf", &so::ecdf, py::arg("runtimes"), py::arg("xs"));
+    sm.def("simulated_runtimes", &so::simulated_runtimes, py::arg("runtimes"), py::arg("lengths"), py::arg("n"),
+           py::arg("seed"), py::arg("first_permuted") = true);
     sm.def("value_at",
            [records_of](const std::vector<Rec>& rs, double budget, double grad_cost) {
                return so::value_at(records_of(rs), budget, grad_cost);

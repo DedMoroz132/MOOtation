@@ -4046,6 +4046,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="print the report of the runs at one objective (run/report_so.py: ERT, "
                          "ECDF by class, values at budgets, the methods no worse than the best "
                          "by Friedman and Wilcoxon + Holm at --alpha) and exit")
+    ap.add_argument("--so-simulated", type=int, default=0, metavar="N",
+                    help="with --so-report: add the simulated restarts (H16 §3.2), N samples per "
+                         "problem, algorithm and target: runtime percentiles and their ECDF")
     ap.add_argument("--bias", action="store_true",
                     help="print where each algorithm searched (Kudela et al. 2026): binsizes "
                          "over 20 bins at the bounds and in the centre for the final "
@@ -4336,7 +4339,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.so_report:
         from . import report_so
-        print(report_so.report(root, alpha=args.alpha, problems=only_problems))
+        print(report_so.report(root, alpha=args.alpha, problems=only_problems, simulated=args.so_simulated))
         return 0
     if args.behaviour:
         if args.scenario == "archive":

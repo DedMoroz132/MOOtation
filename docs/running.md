@@ -1649,6 +1649,15 @@ prints four tables off the runs' improvement records, with the measures of
 A run's cost is evaluations + `grad_cost` x gradient calls. The test is
 Friedman + Holm until the atlas's protocol decides one (task 18, §5).
 
+`--so-simulated N` adds COCO's simulated restarts (Hansen et al. 2016 §3.2,
+2022 §V-A; `so_metrics.hpp` SIMULATED RESTARTS): per problem, algorithm and
+table precision the 10th, 50th and 90th percentile and the mean of N
+simulated runtimes of the restarted algorithm (runs drawn until one hit, the
+first of each sample from a permutation of the runs), and per dimension and
+class their ECDF. A cell without a hit has none. The samples are the same on
+every platform and each time (a cell's seed is the CRC-32 of its name); the
+four tables without it are as before.
+
 `[campaign] stop_at = 1e-8` ends a run at one objective at its first feasible
 point within that much of the problem's `f_opt`, as COCO's runs end at the
 final target (task 18, stage 3; `Problem::stop_at`, evaluator.hpp THE
