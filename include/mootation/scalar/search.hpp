@@ -116,6 +116,33 @@
 //     phases of a few evaluations each (5380 phases of a budget of 20000 on a
 //     linear f with its minimum in the box's corner), or of none at all once
 //     every archive point has been a local start.
+//   SRCH-15. step_units (task 25, §24.2.4; box by default, the old move):
+//     absolute moves every coordinate by U[-1, 1] times the step in the
+//     problem's own units instead of times the box's width.
+//   SRCH-16. Acceptance by a threshold (ils_accept = threshold, bh_accept =
+//     threshold; task 25, §24.2.4): X. Lai, J.-K. Hao, R. Yue, Z. Lü, Z.-H.
+//     Fu, EJOR 299 (2022), §3.4, Algorithm 3 (source iterated-dynamic-
+//     thresholding_lai2021, DTS): the new minimum is taken when dE = E(new) -
+//     E(current) < Th and dE != 0; then Th <- mu Th when more were taken than
+//     refused so far, else Th <- Th / mu; Th_0 = walk_th0 (1e-4), mu =
+//     walk_th_mu (0.75). The
+//     counts run over the whole walk (DTS-1, as Algorithm 3). Points of
+//     different violation are compared by feasibility first (SRCH-8).
+//     A new minimum equal to the current one (dE = 0) is a refusal, as in
+//     Algorithm 3: a step so small that the local search mostly returns to
+//     the current minimum drives Th up without end (basin_hopping's shrinking
+//     step does that on Rastrigin) — Lai et al.'s move is a fixed one.
+//   SRCH-17. Metropolis on a relative scale (ils_accept = lsmc_rel, bh_accept
+//     = metropolis_rel; task 25): the first walk_t0_trials (10) steps accept
+//     the better only and record |dE| != 0; then T = walk_t_rel (1) times
+//     their median, fixed for the rest of the walk; with no nonzero |dE|
+//     recorded, T = 1e-12 (1 + |f|) of the current minimum.
+//   SRCH-18. The strength ladder (task 25, §24.2.4; IDLS, Lai et al. 2025,
+//     source structural-optimization-atomic_lai2025, Algorithm 1): with
+//     ladder_max > 0 the step is ladder_min after a new
+//     best, else grows by ladder_step, back to ladder_min past ladder_max;
+//     ladder_min = ladder_max, ladder_step = 0 is a constant step. With the
+//     ladder basin_hopping's step adaptation (SRCH-5) is off.
 //   SRCH-10. ils and basin_hopping: 100 steps in a row that spend nothing end
 //     the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing
 //     ends it (its sample would grow without end); basin_hopping's step grows
@@ -396,8 +423,10 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     using namespace strategy;
     const bool bh = name == "basin_hopping";
     std::vector<std::string> own{"inner", "start_budget", "min_dist", "min_df", "keep_points"};
-    if (bh) own.insert(own.end(), {"bh_temperature", "bh_step", "bh_accept_rate", "bh_interval"});
+    if (bh) own.insert(own.end(), {"bh_temperature", "bh_step", "bh_accept_rate", "bh_interval", "bh_accept"});
     else own.insert(own.end(), {"ils_accept", "ils_step", "ils_restart", "ils_temperature"});
+    own.insert(own.end(), {"step_units", "walk_th0", "walk_th_mu", "walk_t0_trials", "walk_t_rel", "ladder_min",
+                           "ladder_max", "ladder_step"});                                     // task 25, §24.2.4
     StrategyKnobs k(name, knobs, own);
     const Inner inner = k.inner("inner");
     const long long cap = k.whole("start_budget", 0, 0);
@@ -410,13 +439,33 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
         step = k.number("bh_step", 0.05);
         target = k.number("bh_accept_rate", 0.5);
         interval = k.whole("bh_interval", 10, 1);
+        if (k.find("bh_accept")) {                                                        // SRCH-16, SRCH-17
+            const std::string a = k.word("bh_accept", "metropolis", {"metropolis", "threshold", "metropolis_rel"});
+            accept = a == "metropolis" ? "lsmc" : a == "threshold" ? "threshold" : "lsmc_rel";
+        }
     } else {
-        accept = k.word("ils_accept", "better", {"better", "rw", "restart", "lsmc"});
+        accept = k.word("ils_accept", "better", {"better", "rw", "restart", "lsmc", "threshold", "lsmc_rel"});
         step = k.number("ils_step", 0.1);
         restart_after = k.whole("ils_restart", 10, 1);
         T = k.number("ils_temperature", 1.0);
     }
     if (!(step > 0.0) || !(T > 0.0)) throw std::invalid_argument(name + ": the step and the temperature must be > 0");
+    // task 25, §24.2.4: each knob in the settings only where given
+    const bool absolute = k.find("step_units") && k.word("step_units", "box", {"box", "absolute"}) == "absolute";
+    double th = k.find("walk_th0") ? k.number("walk_th0", 1e-4) : 1e-4;                        // SRCH-16
+    const double th_mu = k.find("walk_th_mu") ? k.number("walk_th_mu", 0.75) : 0.75;
+    const long long t0_trials = k.find("walk_t0_trials") ? k.whole("walk_t0_trials", 10, 1) : 10;   // SRCH-17
+    const double t_rel = k.find("walk_t_rel") ? k.number("walk_t_rel", 1.0) : 1.0;
+    const double ladder_max = k.find("ladder_max") ? k.number("ladder_max", 0.0) : 0.0;         // SRCH-18
+    const double ladder_min = k.find("ladder_min") ? k.number("ladder_min", ladder_max) : ladder_max;
+    const double ladder_step = k.find("ladder_step") ? k.number("ladder_step", 0.0) : 0.0;
+    const bool ladder = ladder_max > 0.0;
+    if (accept == "threshold" && !(th > 0.0 && th_mu > 0.0 && th_mu <= 1.0))
+        throw std::invalid_argument(name + ": walk_th0 > 0 and walk_th_mu in (0, 1]");
+    if (accept == "lsmc_rel" && !(t_rel > 0.0)) throw std::invalid_argument(name + ": walk_t_rel must be > 0");
+    if (ladder && !(ladder_min > 0.0 && ladder_min <= ladder_max && ladder_step >= 0.0))
+        throw std::invalid_argument(name + ": 0 < ladder_min <= ladder_max and ladder_step >= 0");
+    if (ladder) step = ladder_min;
     search::finite_box(name, P);
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
@@ -434,6 +483,9 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
         if (b.ok) log.add(b.x, b.f, s);
         return b;
     };
+    long long th_taken = 0, th_refused = 0;                                           // SRCH-16 (DTS-1)
+    std::vector<double> t0_seen;                                                      // SRCH-17
+    double T_rel = 0.0;
     try {
         search::Found cur = local(start, 0), best = cur;
         long long since = 0, accepted = 0, tried = 0, idle = 0;
@@ -441,7 +493,8 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
             const double before = ev.used();
             Vec y = cur.x;
             for (std::size_t j = 0; j < n; ++j) {                                                // SRCH-4
-                const double moved = y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step * search::width(P, j);
+                const double moved = y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step *
+                                                (absolute ? 1.0 : search::width(P, j));        // SRCH-15
                 y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(moved, P.lo[j], P.hi[j])  // PER-2
                                                    : std::min(P.hi[j], std::max(P.lo[j], moved));
             }
@@ -454,13 +507,35 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
             else if (accept == "lsmc")
                 take = search::better(next, cur) ||
                        (next.cv == cur.cv && u < dm::exp((cur.f - next.f) / T));
-            else take = search::better(next, cur);
+            else if (accept == "threshold") {                                                 // SRCH-16
+                const double dE = next.f - cur.f;
+                take = next.cv != cur.cv ? search::better(next, cur) : (dE < th && dE != 0.0);
+                (take ? th_taken : th_refused) += 1;
+                th = th_taken > th_refused ? th * th_mu : th / th_mu;
+            } else if (accept == "lsmc_rel") {                                                // SRCH-17
+                if (static_cast<long long>(steps) <= t0_trials) {
+                    if (next.cv == cur.cv && next.f != cur.f) t0_seen.push_back(std::fabs(next.f - cur.f));
+                    take = search::better(next, cur);
+                    if (static_cast<long long>(steps) == t0_trials) {
+                        std::vector<double> v = t0_seen;
+                        std::sort(v.begin(), v.end());
+                        const std::size_t m = v.size();
+                        const double med = m == 0 ? 0.0 : (m % 2 ? v[m / 2] : (v[m / 2 - 1] + v[m / 2]) / 2.0);
+                        T_rel = med > 0.0 ? t_rel * med : 1e-12 * (1.0 + std::fabs(cur.f));
+                    }
+                } else {
+                    take = search::better(next, cur) ||
+                           (next.cv == cur.cv && u < dm::exp((cur.f - next.f) / T_rel));
+                }
+            } else take = search::better(next, cur);
             ++tried;
             if (take) {
                 ++accepted;
                 ++accepted_all;
                 cur = next;
             }
+            if (ladder) step = search::better(next, best) ? ladder_min                       // SRCH-18
+                               : (step + ladder_step > ladder_max ? ladder_min : step + ladder_step);
             if (search::better(next, best)) {
                 best = next;
                 since = 0;
@@ -471,7 +546,7 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
                 if (fresh.ok) cur = fresh;
                 since = 0;
             }
-            if (bh && tried == interval) {                                                       // SRCH-5
+            if (bh && !ladder && tried == interval) {                                            // SRCH-5, SRCH-18
                 step = static_cast<double>(accepted) / static_cast<double>(tried) > target ? step / 0.9 : step * 0.9;
                 step = std::min(step, 1.0);                                                       // SRCH-10
                 accepted = tried = 0;
@@ -483,6 +558,8 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     std::vector<std::pair<std::string, std::string>> extra{{"steps", std::to_string(steps)},
                                                            {"accepted", std::to_string(accepted_all)}};
     if (bh) extra.push_back({"bh_step_end", detail::g_format(step)});
+    if (accept == "threshold") extra.push_back({"walk_th_end", detail::g_format(th)});
+    if (accept == "lsmc_rel") extra.push_back({"walk_t_rel_end", detail::g_format(T_rel)});
     return search::finish(ev, k, log, extra);
 }
 

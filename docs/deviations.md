@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-340 items: 296 yes, 44 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+344 items: 299 yes, 45 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -696,6 +696,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `search` | SRCH-13 | mlsl_stop = bayes (task 24, §24.2.5; off by default: budget): mlsl stops after the iteration where w (gamma k N - 1) / (gamma k N - w - 2) <= w + 1/2 (part II, (3)), w the minima log's minima (at least one), gamma k N... | no: option | `search.hpp` |
 | `search` | SRCH-14 | mlsl_cells = on (task 24, §24.2.5; off by default): the check "a sample point of lower f within r_k" looks in the cell of the point and its 3^n neighbours only — the sample in cubes of side r_k (1 + 1e-9) of the norma... | no: option | `search.hpp` |
 | `search` | SRCH-9 | memetic: a phase whose global run spends nothing is the last (as RST-8): the global solver has stopped by its own criteria (rerun, it evaluates nothing new), and the local searches alone would go on in phases of a few... | yes | `search.hpp` |
+| `search` | SRCH-15 | step_units (task 25, §24.2.4; box by default, the old move): absolute moves every coordinate by U[-1, 1] times the step in the problem's own units instead of times the box's width. | no: option | `search.hpp` |
+| `search` | SRCH-16 | Acceptance by a threshold (ils_accept = threshold, bh_accept = threshold; task 25, §24.2.4): X. | yes | `search.hpp` |
+| `search` | SRCH-17 | Metropolis on a relative scale (ils_accept = lsmc_rel, bh_accept = metropolis_rel; task 25): the first walk_t0_trials (10) steps accept the better only and record \|dE\| != 0; then T = walk_t_rel (1) times their median,... | yes | `search.hpp` |
+| `search` | SRCH-18 | The strength ladder (task 25, §24.2.4; IDLS, Lai et al. 2025, source structural-optimization-atomic_lai2025, Algorithm 1): with ladder_max > 0 the step is ladder_min after a new best, else grows by ladder_step, back t... | yes | `search.hpp` |
 | `search` | SRCH-10 | ils and basin_hopping: 100 steps in a row that spend nothing end the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing ends it (its sample would grow without end); basin_hopping's step grows to the box's... | yes | `search.hpp` |
 | `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-2 | E\|\|N(0, I)\|\| = sqrt(n) (1 - 1/(4n) + 1/(21 n^2)). | yes | `sep_cmaes.hpp` |

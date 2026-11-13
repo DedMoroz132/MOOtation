@@ -50,6 +50,7 @@ set(MOOTATION_TESTS
     test_strategy
     test_restarts
     test_search
+    test_walk_accept
     test_tiktak
     test_continuation
     test_pap
