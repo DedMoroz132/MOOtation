@@ -813,7 +813,8 @@ inline void group_by_symmetry(StrategyKnobs& k, const Problem& P, MinimaLog& log
 inline const std::vector<std::string>& strategy_names()
 {
     static const std::vector<std::string> v{"multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl",
-                                            "basin_hopping", "ils", "memetic", "tiktak", "data_continuation", "pap"};
+                                            "basin_hopping", "ils", "memetic", "tiktak", "data_continuation", "pap",
+                                            "pbh"};
     return v;
 }
 
@@ -829,6 +830,10 @@ inline Result run_halving(const Problem& P, double eq_tol, bool has_tol0, double
 inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
                           long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every,
                           const Start& start);
+
+// pbh (pbh.hpp, included at the end; task 25, §24.2.2)
+inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size, long long budget,
+                      unsigned seed, const Knobs& knobs, Observer observer, int record_every, const Start& start);
 
 // tiktak (tiktak.hpp, included at the end; task 19, §19.6)
 inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
@@ -1079,6 +1084,9 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
     if (name == "data_continuation")
         return run_data_continuation(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
                                      record_every, start);
+    if (name == "pbh")
+        return run_pbh(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer), record_every,
+                       start);
     if (name == "tiktak")
         return run_tiktak(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
                           record_every);
@@ -1092,3 +1100,4 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
 #include "tiktak.hpp"
 #include "continuation.hpp"
 #include "pap.hpp"
+#include "pbh.hpp"

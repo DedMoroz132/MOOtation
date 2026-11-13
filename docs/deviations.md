@@ -416,7 +416,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-344 items: 299 yes, 45 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+349 items: 304 yes, 45 no: option, 0 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -610,6 +610,11 @@ Their readings, from every comment of each file (the first column the file's nam
 | `pbest` | PB-1 | The trial's draws: x_pbest, r1, r2, j_rand, then one U(0, 1) a coordinate, j_rand's included, v_j taken where U < CR or j = j_rand (de.hpp draws the same way). r1 and r2 are drawn again until they differ as asked; r2... | yes | `pbest.hpp` |
 | `pbest` | PB-2 | "The best" of P: ranked by the comparison of evo.hpp, ties by index; x_pbest is drawn from the first `top`, and may be x_i or x_r1. | yes | `pbest.hpp` |
 | `pbest` | PB-3 | sym (task 19, symmetry.hpp SYM-8; off by default): after the draws, x_pbest, x_r1 and x~_r2 aligned to x_i (align), or the four canonical (canon); no draw changes, and sym = off is the trial as before. | no: option | `pbest.hpp` |
+| `pbh` | PBH-1 | Step 2 against the worst compares f(Y_p) (the preprint prints f(Y_q)). | yes | `pbh.hpp` |
+| `pbh` | PBH-2 | "Near" is d < d_cut, as the preprint (the journal's text has <=). | yes | `pbh.hpp` |
+| `pbh` | PBH-3 | The children are made from the population at the iteration's start (their local searches one round of K starts) and placed one after the other in the members' order. | yes | `pbh.hpp` |
+| `pbh` | PBH-4 | The draws: per child its n coordinates' moves and then one more uniform, as ils draws its acceptance's u at every step, so that K = 1 follows ils's stream; the extra members' uniform points come from the same stream b... | yes | `pbh.hpp` |
+| `pbh` | PBH-5 | Ties: the nearest and the worst are the first in the members' order; | yes | `pbh.hpp` |
 | `periodic` | PER-1 | Off by default. The wrap is lo + fmod(v - lo, hi - lo), negatives raised by a period; a result that rounds to hi is lo (no point on the seam). | no: option | `periodic.hpp` |
 | `periodic` | PER-2 | Off by default. A wrapped coordinate is not a repair (RepairCounts, task 20, §20.2.2, does not count it) and costs no penalty (SCALAR-7, POP-4): the point is inside the problem's domain. | no: option | `periodic.hpp` |
 | `periodic` | PER-3 | Off by default. A difference d of a periodic coordinate is min(\|d\|, period - \|d\|). | no: option | `periodic.hpp` |
