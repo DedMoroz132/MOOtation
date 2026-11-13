@@ -76,10 +76,13 @@
 //     dif is 0 off the subset (§3.4: "there is no difference vector").
 //     subset_evals = 0 takes max_evals / 10 of the call (at least 1): a chain
 //     is one long run only when subset_evals is given.
-//   MTS-1. After a worse x_i - SR the coordinate is RESTORED and x_i + 0.5 SR
-//     tried (M11 §3.3's text, T22 Alg. 2 line 8); M11's Fig. 3 adds 0.5 SR to
-//     the moved coordinate (net -0.5 SR), a point on the ray just refused.
-//     Checked on the PDF (task 25 report).
+//   MTS-1. After a worse first trial x_i' = x_i - SR the coordinate is
+//     RESTORED and the second trial is x_i'' = x_i + 0.5 SR (M11 §3.3's text:
+//     "the original solution is restored and then the same variable is
+//     increased by 0.5 SR"; T22 Alg. 2 line 8). M11's Fig. 3 (checked on the
+//     PDF, p. 2207) adds 0.5 SR to the moved coordinate instead: x_i'' =
+//     (x_i - SR) + 0.5 SR = x_i - 0.5 SR, a point on the ray just refused;
+//     MTS-LS2 (Fig. 4) the same with SR D_i. The text's x_i + 0.5 SR is taken.
 //   MTS-2. M11 §4.4's "minimum 0.4, maximum 1e-15" are swapped: SR below
 //     sr_min = 1e-15 is reset to sr_reset = 0.4 (Fig. 3; T22: sigma_init =
 //     0.4 of the width); sr_init = 0.4 too.
