@@ -14143,6 +14143,40 @@ def minimize_runs_a_users_problem_through_the_wrappers():
 
 
 @test
+def cmaes_is_invariant_to_a_wrapped_rotation_and_de_is_not():
+    """Task 20, §20.2.1, the wrappers' invariance check: bbob f02 (the
+    separable ellipsoid, D = 10) through minimize(wrap={"rotate": seed, ...}),
+    a Haar rotation about the instance's x_opt (bbob is defined on R^n, WRAP-3;
+    the box stays [-5, 5]^D in the run's coordinates), 5 seeds, 1000 D
+    evaluations. cmaes reaches f_opt + 1e-8 rotated or not (it is invariant to
+    rotations); de with its default per-coordinate crossover (CR = 0.1) does far
+    worse rotated (median Delta f over 100 times the unrotated one; the report's
+    15 runs: 3.5 against 1.5e4)."""
+    if _core_with("run") is None:
+        print("    (skipped: no extension)"); return
+    from mootation import _core, minimize
+    from mootation.benchmarks.registry import PROBLEMS
+    p = PROBLEMS["bbob02_n10_1D"]
+    spec = {k: dict(p.native.spec, bbob_iid=1)[k] for k in ("family", "n_var", "n_obj", "bbob_fid", "bbob_iid")}
+    native = _core.Native(spec)
+    x_opt, f_opt = list(native.spec["bbob"][0]["x_opt"]), float(native.spec["bbob"][0]["f_opt"])
+    D = p.n_vars
+
+    def delta(alg, seed, rotated):
+        wrap = {"name": "bbob02", "rotate": seed, "defined_everywhere": True, "x_opt": x_opt} if rotated else None
+        res = minimize(lambda x: native.evaluate(x), p.bounds, 1, algorithm=alg, seed=seed,
+                       max_evaluations=1000 * D, wrap=wrap)
+        return min(o[0] for o in res.objectives) - f_opt
+
+    seeds = range(1, 6)
+    cma = [delta("cmaes", s, r) for s in seeds for r in (False, True)]
+    assert max(cma) < 1e-8, cma
+    plain = sorted(delta("de", s, False) for s in seeds)
+    turned = sorted(delta("de", s, True) for s in seeds)
+    assert turned[2] > 100.0 * plain[2], (plain, turned)
+
+
+@test
 def a_run_at_one_objective_counts_the_points_that_left_the_box():
     """Task 20, §20.2.2: result.repairs — the points the method made
     (checked), those outside the box (out_children) and their variables
