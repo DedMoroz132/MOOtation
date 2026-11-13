@@ -40,6 +40,7 @@
 #include <mootation/io/npz.hpp>
 #include <mootation/run_compute.hpp>
 #include <mootation/run_ledger.hpp>
+#include <mootation/so_confidence.hpp>
 #include <mootation/so_metrics.hpp>
 #include <mootation/store/column_codec.hpp>
 #include <mootation/store/crc32c.hpp>
@@ -1671,4 +1672,15 @@ void bind_run_layer(py::module_& m)
            py::arg("records"), py::arg("budget"), py::arg("grad_cost") = 1.0);
     sm.def("peaks_found", &so::peaks_found, py::arg("X"), py::arg("F"), py::arg("height"), py::arg("eps"),
            py::arg("r"));
+    // the cost to an optimum with a prescribed confidence (so_confidence.hpp;
+    // task 25, 24.7.3: Kavetski et al. 2018, Qin et al. 2022)
+    sm.def("reliability", &so::reliability, py::arg("successes"));
+    sm.def("batch_reliability", &so::batch_reliability, py::arg("R"), py::arg("m"));
+    sm.def("characteristic_effort", &so::characteristic_effort, py::arg("R"), py::arg("alpha") = 0.95,
+           py::arg("n_runs"));
+    sm.def("characteristic_cost", &so::characteristic_cost, py::arg("effort"), py::arg("mean_run_cost"));
+    sm.def("efficiency_ratio", &so::efficiency_ratio, py::arg("cost_a"), py::arg("cost_b"));
+    sm.def("typ", &so::typ, py::arg("efforts"));
+    sm.def("spread", &so::spread, py::arg("efforts"));
+    sm.def("q22_budgets", &so::q22_budgets);
 }

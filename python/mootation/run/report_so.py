@@ -33,6 +33,14 @@ TEVC 26(6) 2022, H22):
                 from the best is listed. If Friedman does not reject, all are.
                 The test of the atlas's protocol replaces it once decided
                 (task 18, §5).
+  confidence    per problem and algorithm the share R of runs that reach the
+                finest target (COCO's f_opt + 1e-8, Moré and Wild's 1e-7 of
+                f(x0) - f_opt), the number of runs M_95 that finds it with
+                95 % confidence and its cost M_95 x the mean cost of a run
+                (D. Kavetski, Y. Qin, G. Kuczera, Water Resour. Res. 54,
+                2018, (6), (12), (13); include/mootation/so_confidence.hpp);
+                per algorithm typ M_95 and spread M_95, the median and the
+                interquartile range over the problems ((16), (17)).
 
 READINGS:
   REP-1. The bbob classes are RR-6829's headings (Hansen et al. 2009):
@@ -47,6 +55,10 @@ READINGS:
     f_opt, is not a value: such runs are left out of values_at, and a block
     with one is left out of indistinct. A run without a feasible point at a
     budget counts as +inf there (worse than any value).
+  REP-4. Kavetski's success ("within a tolerance of the best known value")
+    is the run's reaching the finest target of its kind; R is safeguarded to
+    [1/(n + 1), 1 - 1/(n + 1)] over its n runs (K18 after (12)), so a cell
+    without a success has a finite M_95, the safeguard's.
 """
 
 from __future__ import annotations
@@ -247,6 +259,28 @@ def indistinct(rs: list, *, alpha: float = 0.05) -> dict:
     return out
 
 
+def confidence(rs: list, *, alpha: float = 0.95) -> dict:
+    """{"cells": {(problem, algorithm): {"R", "M", "cost", "runs"}},
+    "algorithms": {algorithm: {"typ", "spread", "problems"}}} (REP-4)."""
+    so = _so()
+    by = {}
+    for r in rs:
+        if r["so"].get("f_opt") is not None and r["so"].get("targets"):
+            by.setdefault((r["problem"], r["algorithm"]), []).append(r)
+    cells, efforts = {}, {}
+    for key, group in sorted(by.items()):
+        finest = list(so.default_precisions(group[0]["so"]["targets"]))[-1:]
+        hits = [so.runtime(r["records"], _targets(r, finest)[0], float(r["so"].get("grad_cost", 1.0))) is not None
+                for r in group]
+        R = so.reliability(hits)
+        M = so.characteristic_effort(R, alpha, len(group))
+        mean_cost = sum(_cost(r) for r in group) / len(group)
+        cells[key] = {"R": R, "M": M, "cost": so.characteristic_cost(M, mean_cost), "runs": len(group)}
+        efforts.setdefault(key[1], []).append(M)
+    algs = {a: {"typ": so.typ(v), "spread": so.spread(v), "problems": len(v)} for a, v in sorted(efforts.items())}
+    return {"cells": cells, "algorithms": algs}
+
+
 def _g(v) -> str:
     if v is None:
         return "-"
@@ -256,7 +290,7 @@ def _g(v) -> str:
 
 
 def report(root: Path, *, alpha: float = 0.05, problems=None) -> str:
-    """The four tables as text (markdown)."""
+    """The five tables as text (markdown)."""
     rs = runs(root, problems)
     if not rs:
         return "no finished run at one objective"
@@ -278,4 +312,11 @@ def report(root: Path, *, alpha: float = 0.05, problems=None) -> str:
     for (D, c, b), cell in indistinct(rs, alpha=alpha).items():
         lines.append(f"- D {D} | {c} | budget {b:g}: {', '.join(cell['same'])} "
                      f"(best {cell['best']}, Friedman p = {cell['friedman_p']:.3g}, {cell['blocks']} blocks)")
+    conf = confidence(rs)
+    lines += ["", "## Runs and cost to the finest target with 95 % confidence (Kavetski et al. 2018)", ""]
+    for (p, a), cell in conf["cells"].items():
+        lines.append(f"- {p} | {a}: R = {cell['R']:.3g} ({cell['runs']} runs), M_95 = {cell['M']}, "
+                     f"cost {_g(cell['cost'])}")
+    for a, row in conf["algorithms"].items():
+        lines.append(f"- {a}: typ M_95 = {row['typ']:g}, spread M_95 = {row['spread']:g} ({row['problems']} problems)")
     return "\n".join(lines)

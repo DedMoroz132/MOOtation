@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (task 25): `include/mootation/so_confidence.hpp` (Kavetski et al.
+  2018: the share of successful runs, the runs M_95 that find the optimum
+  with 95 % confidence and their cost, typ and spread over problems; Qin et
+  al. 2022's values at budgets), in `_core.so_metrics` and as a fifth table
+  of the single-objective report (`--so-report`); the solvers
+  `scalar/chain_ls.hpp` (Solis-Wets, SSW, MTS-LS1, MTS-LS2 with their
+  state), `scalar/rgn.hpp` (robust Gauss-Newton), `scalar/atomic_measure.hpp`
+  (the best positive sum of kernel columns, Ruhe 1980), `scalar/lm_ma_es.hpp`
+  (LM-MA-ES) and `scalar/normal_cdf.hpp`, in C++, not yet methods of
+  `minimize`. No existing run changes.
+
 - Added (task 19, §19.2.2, §19.6): the strategies' `min_sym = off | canon |
   align` groups minima equal but for a problem's symmetries as one;
   `pap`'s `sym = align` for its members and the migrants it injects into
