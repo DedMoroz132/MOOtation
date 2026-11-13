@@ -38,7 +38,10 @@
 #include <cmath>
 #include <cstdint>
 #include <stdexcept>
+#include <string>
 #include <vector>
+
+#include "sobol_joe_kuo.hpp"
 
 namespace mootation::sobol {
 
@@ -48,9 +51,13 @@ namespace mootation::sobol {
 // "Constructing Sobol sequences with better two-dimensional projections",
 // SIAM J. Sci. Comput. 30:2635-2654, 2008, criterion D(6), file
 // new-joe-kuo-6.21201 (python/mootation/_sobol/, which holds all 21 201
-// dimensions): its first 100 dimensions, the first being van der Corput's.
+// dimensions), the first being van der Corput's: dimensions 2 ... 100 in
+// table() below, 101 ... 21 201 (task 24, §24.3.2) as the file's lines in
+// sobol_joe_kuo.hpp (tools/gen_sobol_joe_kuo.py writes it from the file).
 // Points in [0, 1)^d with 32-bit precision, unscrambled, from index 1 (the
-// origin, index 0, is left out). For multiglods.hpp's search step.
+// origin, index 0, is left out). For multiglods.hpp's search step (up to
+// max_dims = 100 dimensions, as before) and designs.hpp (up to
+// max_dims_joe_kuo).
 // ============================================================================
 
 struct Poly { int s, a; std::vector<unsigned> m; };
@@ -162,18 +169,41 @@ inline const std::vector<Poly>& table()
     return t;
 }
 
+// table()'s dimensions (multiglods.hpp's limit), and the file's
 constexpr int max_dims = 100;
+constexpr int max_dims_joe_kuo = detail::kJoeKuoLast;
+
+// dimension dim (101 ... max_dims_joe_kuo) from its line in sobol_joe_kuo.hpp,
+// "s a m_1 ... m_s"
+inline Poly joe_kuo(int dim)
+{
+    const char* c = detail::joe_kuo_line(dim - detail::kJoeKuoFirst);
+    std::vector<unsigned> v;
+    while (*c) {
+        while (*c == ' ') ++c;
+        if (!*c) break;
+        unsigned x = 0;
+        for (; *c >= '0' && *c <= '9'; ++c) x = 10u * x + static_cast<unsigned>(*c - '0');
+        v.push_back(x);
+    }
+    Poly p;
+    p.s = static_cast<int>(v.at(0));
+    p.a = static_cast<int>(v.at(1));
+    p.m.assign(v.begin() + 2, v.end());
+    if (p.m.size() != static_cast<std::size_t>(p.s)) throw std::logic_error("sobol: a line of sobol_joe_kuo.hpp");
+    return p;
+}
 
 // The direction numbers of dimensions 1 .. dims, 32 each: V[j][k] is
 // v_{k+1} 2^32 of dimension j + 1, the first van der Corput's.
 inline std::vector<std::vector<unsigned>> directions(int dims)
 {
-    if (dims < 1 || dims > max_dims)
-        throw std::invalid_argument("sobol: 1 to 100 dimensions");
+    if (dims < 1 || dims > max_dims_joe_kuo)
+        throw std::invalid_argument("sobol: 1 to " + std::to_string(max_dims_joe_kuo) + " dimensions");
     std::vector<std::vector<unsigned>> out(static_cast<std::size_t>(dims));
     for (int b = 1; b <= 32; ++b) out[0].push_back(1u << (32 - b));      // van der Corput
     for (int j = 1; j < dims; ++j) {
-        const Poly& p = table()[static_cast<std::size_t>(j - 1)];
+        const Poly p = j < max_dims ? table()[static_cast<std::size_t>(j - 1)] : joe_kuo(j + 1);
         auto& V = out[static_cast<std::size_t>(j)];
         V.resize(33);
         for (int i = 1; i <= p.s; ++i) V[static_cast<std::size_t>(i)] = p.m[static_cast<std::size_t>(i - 1)] << (32 - i);
