@@ -61,6 +61,7 @@ set(MOOTATION_TESTS
     test_chain_ls
     test_rgn
     test_atomic_measure
+    test_lm_ma_es
     test_store_codec
     test_json
     test_toml
