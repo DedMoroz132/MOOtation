@@ -9,3 +9,7 @@ dmulti_mads 2026-10-21: the initial list non-dominated (the filter compared with
 theta_dea 2026-10-24, task 17 supplement 5: equal F_j in one cluster ordered by slot, so copies do not crowd the first theta level (TDEA-1)
 hcca 2026-11-01, verification wave 2: DE parents and replacement scope as MOEA/D-DE, two initial samples, T = 20 (HCCA-11..13)
 lis_lcs 2026-11-01, verification wave 2: DE base x_i, K by PP's share (LIS-1, LIS-2; the old runs by de_base = rand1, k_share = dp)
+irea 2026-11-14, verification wave 2: fitness_reading = ibea by default, Eq.7 as printed (IREA-1; the old runs by fitness_reading = swap)
+lis_lcs 2026-11-14, verification wave 2: the DE mutant clipped to the box by default (LIS-3; the old runs by bound_repair = random)
+moead_de 2026-11-14, verification wave 2: Step 2.3 clips by default, the paper's tables (MDE-6; the letter by bound_repair = random)
+moead_dra 2026-11-14, verification wave 2: Step 3.3 clips by default, as moead_de (DRA-13; the letter by bound_repair = random)

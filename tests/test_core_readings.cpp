@@ -143,14 +143,21 @@ MOOTATION_TEST_PROBLEM(AP, NSGAII_Individual,    DTLZ2Spec)
 using namespace mootation;
 using namespace mootation::testing;
 
+template <typename Ind>
+void lis_lcs_before(LISLCSCore<Ind>& c)
+{
+    c.set_bound_repair(ops::BoundRepair::Random);       // LIS-3: random reset until 2026-11-14
+    c.set_word("de_base", "rand1");
+    c.set_word("k_share", "dp");
+}
+
 void test_lis_lcs_earlier_reading()
 {
-    std::cout << "-- lis_lcs: de_base = rand1, k_share = dp give the code before 2026-11-01 --\n";
-    const std::vector<std::pair<std::string, std::string>> before = {{"de_base", "rand1"}, {"k_share", "dp"}};
+    std::cout << "-- lis_lcs: de_base = rand1, k_share = dp, bound_repair = random give the code before 2026-11-01 --\n";
     // tests/golden_fingerprints.txt for lis_lcs up to 2026-11-01
-    check(fingerprint<LD, LISLCSCore<LD>>(91, before) == "91 332ca4b1bab3cc59", "dtlz2_3 as before");
-    check(fingerprint<LZ, LISLCSCore<LZ>>(100, before) == "100 fd4af147181c2c4d", "zdt1 as before");
-    check(fingerprint<LN, LISLCSCore<LN>>(100, before) == "100 d692df5db454806b", "zdt1_nan as before");
+    check(fingerprint_with<LD, LISLCSCore<LD>>(91, 30, lis_lcs_before<LD>) == "91 332ca4b1bab3cc59", "dtlz2_3 as before");
+    check(fingerprint_with<LZ, LISLCSCore<LZ>>(100, 30, lis_lcs_before<LZ>) == "100 fd4af147181c2c4d", "zdt1 as before");
+    check(fingerprint_with<LN, LISLCSCore<LN>>(100, 30, lis_lcs_before<LN>) == "100 d692df5db454806b", "zdt1_nan as before");
     // the defaults, each knob alone, and the defaults named: other runs or the same
     const std::string now = fingerprint<LZ, LISLCSCore<LZ>>(100, {});
     check(now != "100 fd4af147181c2c4d", "the defaults run otherwise");
@@ -218,7 +225,10 @@ void test_knobs_of_2026_11_02()
     word_knob<ED, EDVCore<ED>>("edv", "91 535f03f7cd2cb7ec", "pm_literal", "on", "off");
     word_knob<NA, NAEMOCore<NA>>("naemo", "91 6bbfd8997ef61273", "flag1", "off", "on");
     word_knob<NA, NAEMOCore<NA>>("naemo", "91 6bbfd8997ef61273", "flag2", "off", "on");
-    word_knob<IR, IREACore<IR>>("irea", "91 fa799b2a4188d24b", "fitness_reading", "swap", "ibea");
+    // irea: ibea by default since 2026-11-14; swap keeps the earlier golden run
+    word_knob<IR, IREACore<IR>>("irea", golden_of<IR, IREACore<IR>>(), "fitness_reading", "ibea", "swap");
+    check(fingerprint_with<IR, IREACore<IR>>(91, 30, [](IREACore<IR>& c) { c.set_word("fitness_reading", "swap"); })
+          == "91 fa799b2a4188d24b", "irea fitness_reading = swap: the run before 2026-11-14");
     word_knob<DS, MOEADDSCore<DS>>("moead_ds", "91 8fd287030360a665", "extreme_weights", "nsga3", "literal");
     word_knob<AP, APRDCore<AP>>("aprd", "91 dee9a93dd30901ff", "slot_exclusive", "off", "on", 300);
     // 2026-11-06: aprd's aprd_pbi (APRD-12)
@@ -229,20 +239,21 @@ void test_knobs_of_2026_11_02()
     word_knob<IF, IFMaOEACore<IF>>("if_maoea", golden_of<IF, IFMaOEACore<IF>>(), "if_range", "pool", "alg1");
     word_knob<NV, NRVMOEACore<NV>>("nrv_moea", golden_of<NV, NRVMOEACore<NV>>(), "nrv_archive", "letter", "platemo");
     word_knob<NV, NRVMOEACore<NV>>("nrv_moea", golden_of<NV, NRVMOEACore<NV>>(), "nrv_pool", "letter", "platemo");
-    // 2026-11-13: isde_rd's isde_directions (ISDE-11). At M = 3 the lattice attains
-    // the default K = 10, so exact is the default run there; K = 8 is off it.
+    // 2026-11-13: isde_rd's isde_directions (ISDE-11), exact by default since
+    // 2026-11-14. At M = 3 the lattice attains the default K = 10, so lattice is
+    // the default run there; K = 8 is off it.
     {
         using C = ISDERDCore<IS>;
-        std::cout << "-- isde_rd: isde_directions (lattice by default, exact) --\n";
+        std::cout << "-- isde_rd: isde_directions (exact by default, lattice) --\n";
         const std::string golden = golden_of<IS, C>();
         auto lattice = [](C& c) { c.set_word("isde_directions", "lattice"); };
         auto exact   = [](C& c) { c.set_word("isde_directions", "exact"); };
         auto k8      = [](C& c) { c.set_K(8); };
-        auto k8exact = [](C& c) { c.set_K(8); c.set_word("isde_directions", "exact"); };
-        check(fingerprint_with<IS, C>(91, 30, lattice) == golden, "isde_rd isde_directions = lattice as golden");
-        check(fingerprint_with<IS, C>(91, 30, exact) == golden, "isde_rd isde_directions = exact on the lattice as golden");
-        check(fingerprint_with<IS, C>(91, 30, k8exact) != fingerprint_with<IS, C>(91, 30, k8),
-              "isde_rd isde_directions = exact runs otherwise at K = 8");
+        auto k8lat   = [](C& c) { c.set_K(8); c.set_word("isde_directions", "lattice"); };
+        check(fingerprint_with<IS, C>(91, 30, exact) == golden, "isde_rd isde_directions = exact as golden");
+        check(fingerprint_with<IS, C>(91, 30, lattice) == golden, "isde_rd isde_directions = lattice on the lattice as golden");
+        check(fingerprint_with<IS, C>(91, 30, k8lat) != fingerprint_with<IS, C>(91, 30, k8),
+              "isde_rd isde_directions = lattice runs otherwise at K = 8");
         C core;
         bool threw = false;
         try { core.set_word("isde_directions", "maybe"); } catch (const std::invalid_argument&) { threw = true; }

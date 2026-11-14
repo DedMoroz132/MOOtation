@@ -46,7 +46,9 @@
 //     detail/sphere_directions.hpp (Das–Dennis candidates -> FPS by angle ->
 //     Riesz s-energy repulsion, no RNG) — and moead_m2m and sms_m2m both REFUSE
 //     the round-up, falling back to it whenever the lattice misses K.
-//     RESOLVED (2026-08-08). The default stays the lattice: MOEA/D-M2M's own
+//     CHANGED (2026-11-14, the owner's decision): the default is exact (ISDE-11);
+//     the lattice is isde_directions = lattice. Before, RESOLVED (2026-08-08):
+//     the default stayed the lattice: MOEA/D-M2M's own
 //     decomposition — the thing §II-B delegates to — is a lattice one, and the
 //     paper reports no K to reproduce, so switching the default would replace
 //     a traceable choice with an untraceable one. The cost is real and now
@@ -110,11 +112,12 @@
 //     reading used for the same rule in moead_m2m / sms_m2m. Previously the
 //     draws were i.i.d. over the whole pool, so a member of P_k itself, or the
 //     same outsider, could be added twice.
-//   ISDE-11 (READING; knob isde_directions, off by default: lattice). The
-//     run-layer switch of ISDE-2: lattice keeps the Das-Dennis round-up of K;
-//     exact honours K through set_exact_directions(true), the way moead_m2m
-//     and sms_m2m build their subregions. Where the lattice attains K the two
-//     are the same run.
+//   ISDE-11 (READING; knob isde_directions, exact by default). The run-layer
+//     switch of ISDE-2: exact honours K through the deterministic sphere
+//     directions, the way moead_m2m and sms_m2m build their subregions (the
+//     default since 2026-11-14, the owner's decision); lattice keeps the
+//     Das-Dennis round-up of K, the default before. Where the lattice attains
+//     K the two are the same run.
 //
 // CONSTRAINTS (beyond the paper, off by default). ISDE+RD's only preference
 //   relation is the per-subregion truncation by I_SDE^+ (smallest indicator
@@ -153,7 +156,7 @@ public:
 
 private:
     int    K_req_=10;
-    bool   exact_K_=false;   // ISDE-2: opt out of the Das-Dennis round-up
+    bool   exact_K_=true;    // ISDE-11: K honoured exactly (isde_directions = lattice: ISDE-2's round-up)
     bool   ideal_shift_=true;  // ISDE-3: shift every objective by its pool minimum (default); false = [4] letter
     double inprob_=0.7;
     double eta_c_=20.0, eta_m_=20.0, pc_=1.0, pm_=-1.0;
@@ -263,9 +266,9 @@ private:
 public:
     ISDERDCore() = default;
     void set_K(int k){ K_req_=k; }
-    // ISDE-2. false (default): K is rounded UP to the nearest attainable
+    // ISDE-2. false (isde_directions = lattice): K is rounded UP to the nearest attainable
     // Das-Dennis lattice size, matching MOEA/D-M2M's lattice decomposition,
-    // which is what §II-B of the paper delegates to. true: K_req_ is honoured
+    // which is what §II-B of the paper delegates to. true (the default, ISDE-11): K_req_ is honoured
     // exactly via detail::uniform_sphere_directions, matching moead_m2m and
     // sms_m2m. The generator draws no random numbers, so the switch changes
     // the geometry without shifting the RNG stream.

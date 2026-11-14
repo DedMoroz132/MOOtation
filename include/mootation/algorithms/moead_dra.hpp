@@ -22,7 +22,8 @@
 //      admitted); DE (Eq.4, ops::de_eq6, no j_rand term) + the literal
 //      polynomial mutation (Eq.5, ops::polynomial_mutation_eq7, may leave the
 //      box); 3.3 repair of the FINAL y — random reset inside the domain
-//      (ops::repair_out_of_box, DERepair::RandomReset); 3.4 update z;
+//      (ops::repair_out_of_box, DERepair::RandomReset; the letter, the
+//      default clips, DRA-13); 3.4 update z;
 //      3.5 up to n_r replacements at random j ∈ P without replacement,
 //      x^j ← y / FV^j ← F(y) by COPYING (seed_individual, without
 //      re-evaluation; FE per generation = exactly |I|).
@@ -74,15 +75,21 @@
 //   - DRA-12 (task 15 of 2026-10-21, §1; off by default). de_base, de_index, de_p and
 //     bound_repair = r_reflect or resample, as MDE-7 in moead_de.hpp (the
 //     pbest by subproblem i's Tchebycheff value, Eq.3); the defaults are
-//     Step 3.2's current1 and wr and Step 3.3's random reset.
+//     Step 3.2's current1 and wr and clipping (DRA-13).
+//   - DRA-13 (DEVIATION; knob bound_repair, clip by default). Step 3.3's random
+//     reset is the letter, as Step 2.3 of MOEA/D-DE; the default clips to the
+//     bound since 2026-11-14, by the owner's rule of MDE-6 in moead_de.hpp
+//     (where the letter disagrees with the paper's own tables, the default is
+//     what reproduces the tables). bound_repair = random is the letter, the
+//     default before.
 //   - EP archive (vault.archive_*): in the paper Output = {x^1..x^N};
 //     enabled via set_use_ep(true), adds no extra FE.
 //   - ConstraintMode::FEASIBILITY — g^te + penalty·cv.
 //   - Binary variables: inheritance from x^i + bit-flip 1/n_bin.
-// The random-reset repair of Step 3.3 is the paper's and stays the default;
-// it is expensive on a Pareto set at a bound, see MDE-6 in moead_de.hpp.
-// set_de_repair(ops::DERepair::Clip) selects clamping to the bound (the
-// PlatEMO / jMetal convention).
+// The random-reset repair of Step 3.3 is the paper's letter, bound_repair =
+// random; the default clips to the bound since 2026-11-14 (DRA-13). The
+// random reset is expensive on a Pareto set at a bound, see MDE-6 in
+// moead_de.hpp.
 // ============================================================================
 
 #include <algorithm>
@@ -118,9 +125,10 @@ private:
     double pm_           = -1.0;  // Sec.III: p_m = 1/n; <0 → auto 1/n
     double feas_penalty_ = 1e6;   // extension beyond the paper (FEASIBILITY)
     bool   use_ep_       = false; // EP — beyond the paper, off by default
-    // Step 3.3 repair; Clip = PlatEMO/jMetal variant. bound_repair (2026-09-23):
-    // any of ops::BoundRepair but resample and native; midpoint moves to x^i.
-    ops::BoundRepair repair_ = ops::BoundRepair::Random;
+    // Step 3.3 repair; clip by default since 2026-11-14 (DRA-13), random the
+    // letter. bound_repair (2026-09-23): any of ops::BoundRepair but resample
+    // and native; midpoint moves to x^i.
+    ops::BoundRepair repair_ = ops::BoundRepair::Clip;
     // DRA-12: the DE mutation's strategy and index selection (de_mutation.hpp)
     ops::DEBase  base_  = ops::DEBase::Current1;
     ops::DEIndex index_ = ops::DEIndex::WR;

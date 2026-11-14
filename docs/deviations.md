@@ -8,7 +8,7 @@ The header is the source: there each item is given in full, with its reasons and
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-404 items: 316 yes, 31 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+406 items: 319 yes, 30 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -68,7 +68,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `moead` | 2026-09-05 | Step 2.1 says "Randomly select two indexes k, l from B(i)" — | yes | `moead.hpp` |
 | `moead_de` | MDE-3 | the j_rand gene of de_rand_1_bin (absent from Eq.6) — removed. | yes | `moead_de.hpp` |
 | `moead_de` | MDE-4 | r2, r3 were forced distinct from i and from each other (up to 10 rejections) — now two plain draws, as Step 2.2 says. | yes | `moead_de.hpp` |
-| `moead_de` | MDE-6 | Step 2.3's RANDOM RESET is the paper's and stays the default, but it is expensive: with CR = 1 every out-of-box gene of the final y is replaced by a fresh uniform draw, and early in a run that is a large fraction of t... | yes | `moead_de.hpp` |
+| `moead_de` | MDE-6 (DEVIATION; knob bound_repair, clip by default) | Step 2.3's RANDOM RESET is the paper's letter, but the paper's own tables (LZ09 F2 and F9, UF3) are reproduced only by clipping to the bound. | yes | `moead_de.hpp` |
 | `moead_de` | MDE-7 (task 15 of 2026-10-21, §1; off by default) | The three components of the DE mutation after Tanabe & Ishibuchi, Soft Computing 2019 (source moead-de-mutation-components_tanabe2019; operators/de_mutation.hpp): de_base (current1, the default: Eq.6 with r1 = i; rand... | no: option | `moead_de.hpp` |
 | `moead_dra` | DRA-6 | the j_rand gene of de_rand_1_bin (absent from Eq.4) — removed. | yes | `moead_dra.hpp` |
 | `moead_dra` | DRA-7 | r2, r3 were forced distinct from i and from each other (up to 10 rejections) — now two plain draws, as Step 3.2 says. | yes | `moead_dra.hpp` |
@@ -77,7 +77,8 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `moead_dra` | DRA-9 (MINOR) | the 10-tournament draws WITHOUT replacement from the not-yet-selected indexes (Step 2 says "select OTHER ⌊N/5⌋ − m indexes", which reads as "not already in I"); it shrinks to min(10, \|candidates\|) when fewer than ten... | yes | `moead_dra.hpp` |
 | `moead_dra` | DRA-10 (READING) | Δ^i = (old − new)/old compares the g^te snapshot taken at the previous Step-5 update (with the z of THAT moment) against the current g^te (current z); the paper says only "old function value − new function value" and... | yes | `moead_dra.hpp` |
 | `moead_dra` | DRA-11 (READING, the paper against itself; 2026-09-16) | Step 5's factor 0.95 + 0.05·Δ^i/0.001 is negative once Δ^i < −0.019, and that happens: Δ^i compares g^te across a moving z (DRA-10), so a subproblem that did not improve can read as worse. | yes | `moead_dra.hpp` |
-| `moead_dra` | DRA-12 (task 15 of 2026-10-21, §1; off by default) | de_base, de_index, de_p and bound_repair = r_reflect or resample, as MDE-7 in moead_de.hpp (the pbest by subproblem i's Tchebycheff value, Eq.3); the defaults are Step 3.2's current1 and wr and Step 3.3's random reset. | no: option | `moead_dra.hpp` |
+| `moead_dra` | DRA-12 (task 15 of 2026-10-21, §1; off by default) | de_base, de_index, de_p and bound_repair = r_reflect or resample, as MDE-7 in moead_de.hpp (the pbest by subproblem i's Tchebycheff value, Eq.3); the defaults are Step 3.2's current1 and wr and clipping (DRA-13). | no: option | `moead_dra.hpp` |
+| `moead_dra` | DRA-13 (DEVIATION; knob bound_repair, clip by default) | Step 3.3's random reset is the letter, as Step 2.3 of MOEA/D-DE; the default clips to the bound since 2026-11-14, by the owner's rule of MDE-6 in moead_de.hpp (where the letter disagrees with the paper's own tables, t... | yes | `moead_dra.hpp` |
 | `moead_dd` | moead_dd.1 | \|S\| = 1: one offspring of the SBX pair is used (Alg.1 line 6 allows several; one offspring yields exactly N FE per generation). | yes | `moead_dd.hpp` |
 | `moead_dd` | moead_dd.2 | Eq.6 (READING): the angle is computed w.r.t. | yes | `moead_dd.hpp` |
 | `moead_dd` | moead_dd.3 | z* is the running component-wise MINIMUM over everything evaluated. | yes | `moead_dd.hpp` |
@@ -164,7 +165,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `isde_rd` | ISDE-8 (FIXED 2026-09-05) | Alg.3 line 13, P = P ∪ o, is written INSIDE the "for each p in P_k" loop, so the line-10 partner ("randomly choose q from P") is drawn from P as it grows during the generation and can be an offspring bred earlier in t... | no: fixed | `isde_rd.hpp` |
 | `isde_rd` | ISDE-9 (FIXED 2026-09-06, full-paper checklist) | Alg.3 line 2 only ASSIGNS the initial population to the subregions; the quota selection (line 17 = Alg.1) sits inside the generation loop. | no: fixed | `isde_rd.hpp` |
 | `isde_rd` | ISDE-10 (FIXED 2026-09-06, full-paper checklist) | Alg.1 line 6 / §II-C Case 2: "randomly select S_k − \|P_k\| individuals from P" — DISTINCT members of P that are not already in P_k (partial Fisher–Yates), the reading used for the same rule in moead_m2m / sms_m2m. | no: fixed | `isde_rd.hpp` |
-| `isde_rd` | ISDE-11 (READING; knob isde_directions, off by default: lattice) | The run-layer switch of ISDE-2: lattice keeps the Das-Dennis round-up of K; exact honours K through set_exact_directions(true), the way moead_m2m and sms_m2m build their subregions. | no: option | `isde_rd.hpp` |
+| `isde_rd` | ISDE-11 (READING; knob isde_directions, exact by default) | The run-layer switch of ISDE-2: exact honours K through the deterministic sphere directions, the way moead_m2m and sms_m2m build their subregions (the default since 2026-11-14, the owner's decision); lattice keeps the... | yes | `isde_rd.hpp` |
 | `dhea` | DHEA-1 (FIXED 2026-09-05, second primary-source pass) | §Mating selection: binary tournament (dominance→Knee→Div, "select one solution randomly if all the three principles fail"), "Repeat until N solutions are selected" — the mating pool P' holds N winners. | no: fixed | `dhea.hpp` |
 | `dhea` | DHEA-4 (ARBITRATED) | Alg.1 line 6-7 passes FrontNo to MatingSelection, but the prose defines the first tournament level as "If one solution is dominated by the other" — a pairwise test, not a rank comparison. | yes | `dhea.hpp` |
 | `dhea` | DHEA-2 (MINOR) | w (the local nadir) with protection against zero components (1e-12); cos is clamped to [−1,1]. | yes | `dhea.hpp` |
@@ -195,7 +196,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `mombi2` | mombi2.1 | the binary tournament criterion (the paper gives none; | yes | `mombi2.hpp` |
 | `nimmo` | nimmo.1 | floor(0.1mu) versus the paper's "[0.1mu]", which may mean rounding — identical for mu in {200, 210, 230}, but off by one for the paper's mu=156 (15 vs 16) and mu=135 (13 vs 14) settings; initialization is uniform rand... | yes | `nimmo.hpp` |
 | `irea` | irea.1 | Eq. 7 and §3.6/Alg. 4 are internally contradictory: the literal Eq. 7 (F = Sum −e^{−I(x2,x1)/kappa}), combined with selecting the MINIMUM F, would pick the worst solutions. | yes | `irea.hpp` |
-| `irea` | IREA-1 (READING; knob fitness_reading, swap by default) | The other consistent resolution is IBEA's own: Eq.7 as printed, F(x1) = Sum −e^{−I(x2,x1)/kappa}, with the LARGEST F kept — what "as done in [31]" (Li et al. 2016, after IBEA) does. | yes | `irea.hpp` |
+| `irea` | IREA-1 (READING; knob fitness_reading, ibea by default) | The other consistent resolution is IBEA's own: Eq.7 as printed, F(x1) = Sum −e^{−I(x2,x1)/kappa}, with the LARGEST F kept — what "as done in [31]" (Li et al. 2016, after IBEA) does. | yes | `irea.hpp` |
 | `irea` | irea.2 | Eq. 6 as printed is a distance to a point, not a perpendicular. | yes | `irea.hpp` |
 | `irea` | irea.3 | §3.4: "if extreme point set contains duplicate extreme points, or intercepts are nonnegative [an evident typo for non-positive], then intercept can be replaced with each maximum objective functions" — a degenerate mat... | yes | `irea.hpp` |
 | `irea` | irea.4 | das_dennis::generate_exact requires N to equal the lattice point count, which is stricter than Table II of the paper, where N may differ slightly. | yes | `irea.hpp` |
@@ -336,6 +337,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `lis_lcs` | lis_lcs.11 | setup() initializes both populations at random (2N evaluations, as in the paper); setup_seeded() copies the seeded population into both DP and PP. | yes | `lis_lcs.hpp` |
 | `lis_lcs` | LIS-1 (reading; knob de_base, current1 by default) | The DE base vector is the member i of M_DP itself: x_i + F·(x_r2 − x_r3), r2 and r3 from i's mating scope (B(i) with probability δ, else all of DP), different from i and from each other. | yes | `lis_lcs.hpp` |
 | `lis_lcs` | LIS-2 (reading; knob k_share, pp by default) | Eq.9 as printed sets K = [EI_DP'·N], yet K is the number of PP offspring (M_PP, line 10), and the text under it says "A better performance of offspring will generally lead to a larger number of clusters and, thus, a l... | yes | `lis_lcs.hpp` |
+| `lis_lcs` | LIS-3 (READING; knob bound_repair, clip by default) | The paper does not say how a DE mutant that leaves the box is repaired. | yes | `lis_lcs.hpp` |
 | `clia` | CLIA-1 (MAJOR, the RPIL classifier) | The paper uses an INCREMENTAL SVM (Gaussian kernel <S,C> = <0.056,10>) on reference points projected by Gram-Schmidt from M to M−1, to estimate the "effective regions" of the simplex. | yes | `clia.hpp` |
 | `clia` | CLIA-2 (MINOR) | The M -> M−1 Gram-Schmidt projection for the classifier is replaced by working directly on the simplex, where the points already lie on Sum = 1. | yes | `clia.hpp` |
 | `clia` | CLIA-3 (MINOR) | PDM uses \|\|o\|\|_2 * sin(o,z), the full form of Eq.1; the pseudocode of Alg.1 writes mean(f) + sin(z,f). | yes | `clia.hpp` |
