@@ -113,6 +113,8 @@ public:
                 for (const auto& [k, v] : res.settings)
                     if (k == "restarts") restarts_ = json::parse(v);
             profiles_ = profiles_of(res);                // task 28, §28.4 (lm's profiles = all | list)
+            for (const auto& [k, v] : res.settings)      // task 28, §28.6.1: max_seconds ended the run?
+                if (k == "time_up") time_up_ = v;
             repairs_ = res.repairs;
             success_calls_ = res.success_calls;                  // task 24, §24.1.5
             success_spent_ = res.success_spent;
@@ -211,6 +213,7 @@ public:
         if (restarts_.kind == V::Kind::Array) s.set("restarts", restarts_);
         if (wrapped_) s.set("wrap", wrap_meta());
         if (profiles_.kind == V::Kind::Object) s.set("profiles", profiles_);
+        if (!time_up_.empty()) s.set("time_up", V::boolean(time_up_ == "yes"));
         if (spec_.success == "user") {                   // task 24, §24.1.5: the problem's own measure
             V u = V::object();
             u.set("calls", V::integer(success_calls_));
@@ -631,6 +634,7 @@ private:
     json::Value peaks_;
     json::Value restarts_;                            // keep_restarts: the strategy's "restarts" setting
     json::Value profiles_;                            // task 28, §28.4: lm's profiles of its answer
+    std::string time_up_;                             // task 28, §28.6.1: "yes" | "no" with max_seconds
 
     // lm's profiles (scalar.hpp LOCAL-10): {rank, params, evaluations,
     // jacobians}, or null where the run has none

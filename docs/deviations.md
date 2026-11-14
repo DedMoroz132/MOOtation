@@ -421,7 +421,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-481 items: 409 yes, 69 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+485 items: 409 yes, 73 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -795,6 +795,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | POP-10 | keep_points = best (task 24, §24.3.3; off by default: all) keeps the best point and the last (evaluator.hpp THE LEAN MODE): a point asked for again is evaluated again and counted (POP-2 does not hold), so a method tha... | no: option | `scalar.hpp` |
 | `scalar` | POP-8 | lshade's MAX_NFE is the run's budget unless lshade_max_nfe is set: §III's MAX_NFE is the budget the run is given. | yes | `scalar.hpp` |
 | `scalar` | POP-9 | sym = off \| canon \| align (task 19, §19.2.2; symmetry.hpp SYM-7 ... | yes | `scalar.hpp` |
+| `scalar` | TIME-1 (only when asked: max_seconds) | The deadline is absolute and goes with the problem: a strategy's starts (their views, their threads) and its inner runs keep the one deadline of the run; a run inside a run with its own max_seconds sets its own (it ne... | no: option | `scalar.hpp` |
+| `scalar` | TIME-2 (only when asked: max_seconds) | It is checked before every call the budget pays for — an evaluation, a gradient, a part of the residual blocks — and before the user's local_search and delta hooks: past it, the call ends the run as the budget's end w... | no: option | `scalar.hpp` |
+| `scalar` | TIME-3 (only when asked: max_seconds) | Result::seconds is every run's wall-clock time (steady clock); with max_seconds the settings say max_seconds and time_up (yes where the deadline passed before the run ended). | no: option | `scalar.hpp` |
+| `scalar` | TIME-4 (only when asked: max_seconds) | The deadline makes a run depend on the machine's speed: two runs of one seed agree only while the deadline does not end them. | no: option | `scalar.hpp` |
 | `search` | SRCH-1 | MLSL's r_k: part II's (2) prints it without Γ; it refers to part I's Single Linkage analysis, whose (35) has Γ(1 + n/2) (the volume of the unit ball): taken with Γ. m(S) = 1, distances in the box normalized to [0, 1]^n. | yes | `search.hpp` |
 | `search` | SRCH-2 | MLSL as part II's experiments (§4): τ = ν = 0 by default (no boundary set Q_τ, no neighbourhood X*_ν of the minima found), σ = 4, γ = 0.2. | yes | `search.hpp` |
 | `search` | SRCH-3 | MLSL: the local searches of an iteration are one round; a point that started one never starts another; the sample is the uniform points only (a local search's points are in the archive, not in the sample). | yes | `search.hpp` |

@@ -93,6 +93,14 @@ always listed under **Changed** or **Removed**.
   a model off an error-against-parameters front (eps-economy, the knee by
   Branke et al.'s utility measure, BIC with k the rank). Reports only: no
   run changes.
+- Added (task 28, §28.6, off by default): `max_seconds`, a time limit of
+  every single-objective method and strategy (`Problem::deadline`, checked
+  before every call the budget pays for and before the user's hooks;
+  `Result::seconds`, `time_up`; scalar.hpp TIME-1 ... TIME-4), `meta.json`'s
+  `so.time_up` in both engines, `report_so`'s ERT in seconds (REP-T); and
+  `[campaign] memory_share`, memory protection of a campaign
+  (`run/memory_guard.py`: estimates, refusal, a capped pool, a queue;
+  MEM-1 ... MEM-5).
 - Added (task 28, everything off by default, runs as before bit for bit):
   - §28.4: lm's `profiles = all | list` (+ `profile_params`) and `lm_rank`:
     lm.hpp's profiles and the Jacobian's rank at the answer, outside the

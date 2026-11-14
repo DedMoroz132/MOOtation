@@ -12639,6 +12639,83 @@ def continuous_symmetries_align_and_check_the_gauge():
     assert b["distance"] < 1e-7, b
 
 
+@test
+def max_seconds_and_the_memory_guard():
+    """Task 28, §28.6: minimize(max_seconds=) on a slow function ends near
+    the deadline with time_up = "yes" and the result's seconds; without it
+    no time setting. The memory guard (memory_guard.py): the estimate's
+    archive term only where every point is kept; a limit below every
+    estimate refuses all, capped_workers keeps at least one; a campaign
+    with memory_share = 1e-9 refuses its runs (none run), with 1.0 it runs
+    them as without it (the same files); memory_share = 2 refused by both
+    configs; report_so's ERT in seconds beside the ERT."""
+    if _core_with("scalar") is None:
+        print("    (skipped: no extension)"); return
+    import contextlib
+    import io
+    import time as _time
+    import mootation
+    from mootation.run import campaign as C
+    from mootation.run import memory_guard as MG
+    from mootation.run import report_so
+
+    def slow(x):
+        until = _time.perf_counter() + 0.001
+        while _time.perf_counter() < until:
+            pass
+        return [sum(v * v for v in x)]
+    r = mootation.minimize(slow, [(-5.0, 5.0)] * 3, 1, algorithm="de", pop_size=20, max_evaluations=10 ** 6,
+                           seed=1, max_seconds=0.3)
+    s = dict(r.settings)
+    assert s["time_up"] == "yes" and r.evaluations < 10 ** 5, (s, r.evaluations)
+    q = mootation.minimize(lambda x: [sum(v * v for v in x)], [(-5.0, 5.0)] * 3, 1, algorithm="de", pop_size=20,
+                           max_evaluations=500, seed=1)
+    assert "time_up" not in dict(q.settings)
+
+    class J:
+        def __init__(self, n_objs, params, budget, pop=1):
+            self.n_objs, self.params, self.budget, self.pop = n_objs, params, budget, pop
+
+    class Spec:
+        all_evaluated, memory_share = False, 0.5
+    keep = MG.estimate(J(1, {}, 1000), Spec, 10)
+    lean = MG.estimate(J(1, {"keep_points": "best"}, 1000), Spec, 10)
+    assert keep - lean == 1000 * (10 + 1 + 4) * 8 * 3 and lean == MG.BASE + 8 * 1 * 11 * 4, (keep, lean)
+    assert MG.capped_workers(8, 10 ** 9, 5 * 10 ** 8) == 1 and MG.capped_workers(8, 10, 35) == 3
+    if C.engine_path() is None or not _have_numpy() or _core_with("so_metrics") is None:
+        print("  skip  max_seconds_and_the_memory_guard's campaigns: no C++ engine or _core.so_metrics"); return
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, share in (("off", None), ("one", 1.0), ("tiny", 1e-9)):
+            path = Path(td) / f"{name}.toml"
+            text = _TASK28_BLOCKS_TOML.replace("NAME", name)
+            if share is not None:
+                text = text.replace('storage = "store"', f'storage = "store"\nmemory_share = {share}')
+            path.write_text(text, encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            said = io.StringIO()
+            with contextlib.redirect_stderr(said):
+                made[name] = (C.out_root(cfg, C.campaign_spec(cfg)), C.expand_jobs(cfg, C.campaign_spec(cfg)),
+                              C.run_campaign(cfg, workers=2, engine="python"), said.getvalue())
+        (r0, jobs, c0, _), (r1, _, c1, _), (_, _, c2, t2) = made["off"], made["one"], made["tiny"]
+        assert c0["done"] == c1["done"] == 3 and c2.get("refused") == 3 and c2["done"] == 0, (c0, c1, c2)
+        assert "refused: memory" in t2, t2
+        for job in jobs:
+            _same_run(C.run_dir_of(r0, job), C.run_dir_of(r1, job))
+        assert "ERT (seconds" in report_so.report(r0)
+        bad = Path(td) / "bad.toml"
+        bad.write_text(_TASK28_BLOCKS_TOML.replace("NAME", "bad").replace(
+            'storage = "store"', 'storage = "store"\nmemory_share = 2'), encoding="utf-8")
+        try:
+            C.campaign_spec(load(bad))                   # the [campaign] table's own check
+        except ConfigError as e:
+            assert "memory_share" in str(e), str(e)
+        else:
+            raise AssertionError("memory_share = 2 not refused")
+
+
 _TASK28_BLOCKS_TOML = """[run]
 name = "NAME"
 [problem]

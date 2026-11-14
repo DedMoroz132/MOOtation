@@ -343,7 +343,8 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
             **({"restarts": json.loads(dict(res.settings)["restarts"])}
                if spec.keep_restarts and "restarts" in dict(res.settings) else {}),
             **({"wrap": wrap} if wrap is not None else {}),
-            **_profiles(res)},
+            **_profiles(res),
+            **({"time_up": dict(res.settings)["time_up"] == "yes"} if "time_up" in dict(res.settings) else {})},
         final=({} if best is None else {"f": best[2], "delta_f": delta(best[2]), "cv": best[3],
                                          "fe_best": best[0], "grad_calls_best": best[1]}),
         finished=time.strftime("%Y-%m-%dT%H:%M:%S"), seconds=round(time.perf_counter() - t0, 3))

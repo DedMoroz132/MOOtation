@@ -241,6 +241,9 @@ class CampaignSpec:
     # bipop_2009 (their "restarts" setting: regime, lambda, sigma0,
     # evaluations, the criterion that stopped each), when true
     keep_restarts: bool = False
+    # Memory protection (task 28, §28.6.2; memory_guard.py): the runs that run
+    # at once kept within this share of the free memory; 0 (the default): off
+    memory_share: float = 0.0
     # One objective (task 20, §20.2.1; suite/wrap.hpp, campaign_so.py): the
     # wrappers of every problem, shift, rotate and perm in that order from the
     # run's x — an instance number each (0: off), or "by_run" (the run's
@@ -398,7 +401,7 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
              "noise_cell", "coords_diag", "set_metrics", "set_answer", "all_evaluated", "all_levels",
              "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout",
              "archive_cap", "bbob_instance", "stop_at", "keep_restarts", "wrap_perm", "wrap_rotate", "wrap_shift",
-             "wrap_shift_scale"}
+             "wrap_shift_scale", "memory_share"}
     unknown = sorted(set(raw) - known)
     if unknown:
         raise ConfigError("campaign", f"unknown key(s): {', '.join(unknown)}. "
@@ -514,6 +517,10 @@ def campaign_spec(cfg: Config) -> CampaignSpec:
     spec.keep_restarts = raw.get("keep_restarts", False)
     if not isinstance(spec.keep_restarts, bool):
         raise ConfigError("campaign.keep_restarts", "true or false")
+    share = raw.get("memory_share", 0.0)
+    if isinstance(share, bool) or not isinstance(share, (int, float)) or not 0.0 <= share <= 1.0:
+        raise ConfigError("campaign.memory_share", f"a share in [0, 1] (0: off), not {share!r}")
+    spec.memory_share = float(share)
     for key in ("wrap_perm", "wrap_rotate", "wrap_shift"):
         v = raw.get(key, 0)
         if not ((isinstance(v, int) and not isinstance(v, bool) and v >= 0) or v == "by_run"):
@@ -1033,6 +1040,16 @@ def _record_timeout(root: Path, spec: CampaignSpec, job: Job, pid: int, seconds:
             "detmath_path": _detmath_path()})
         w.append(store.job_key(job), [store.format_block()] + store.pack_run_dir(d, keep=spec.keep))
         shutil.rmtree(mine, ignore_errors=True)
+
+
+def _n_vars_of(cfg, job) -> int:
+    """A job's problem's number of variables, for memory_guard's estimate
+    (MEM-1): the benchmark registry's, else 1."""
+    try:
+        from ..benchmarks.registry import PROBLEMS
+        return int(PROBLEMS[job.problem].n_vars)
+    except (KeyError, ImportError, AttributeError, TypeError, ValueError):
+        return 1
 
 
 def _detmath_path() -> str:
@@ -2305,7 +2322,7 @@ def _readable(conns: list, timeout: float) -> list:
 
 def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
                  force: bool, label: str, worker=None, timeout: float = 0.0,
-                 on_timeout=None) -> dict:
+                 on_timeout=None, admit=None) -> dict:
     """Run `todo` with a pool whose size follows `_workers.txt` while it runs.
 
     Each worker has its own pipe and asks for one job at a time, so the runner
@@ -2313,6 +2330,8 @@ def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
     fails exactly that job. `worker` stands in for `_worker_main` in tests.
     A job held past `timeout` seconds (0: never) stops its worker and counts
     as "timeout"; on_timeout(job index, the worker's pid) records it.
+    admit(job index, the indices running) -> bool (memory_guard.py, MEM-5):
+    a worker asking for a job the memory does not admit yet waits for one.
     """
     import multiprocessing as mp
     from collections import deque
@@ -2329,6 +2348,7 @@ def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
     pool: dict = {}          # the runner's end of a worker's pipe -> [process, job it holds]
     taken: dict = {}         # the same -> when it took its job
     retired: list = []       # workers told to leave, joined at the end
+    waiting: list = []       # workers that asked while admit() said no (MEM-5)
     counts = {"done": 0, "failed": 0}
     finished = 0
     want = 0
@@ -2390,6 +2410,10 @@ def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
                     lose(conn)
                     continue
                 if msg[0] == "ready":
+                    if (pending and len(pool) <= want and admit is not None
+                            and not admit(pending[0], [j for _, j in pool.values() if j is not None])):
+                        waiting.append(conn)                # MEM-5: asks again below
+                        continue
                     if pending and len(pool) <= want:
                         pool[conn][1] = index = pending.popleft()
                         taken[conn] = time.time()
@@ -2415,6 +2439,29 @@ def _run_dynamic(cfg_path: str, todo: list, root: Path, *, workers: int,
                     print(f"a worker could not start: {msg[2]}", file=sys.stderr)
                     state = "broken"
                     break
+            for conn in list(waiting):                # MEM-5: the waiting workers, again
+                if conn not in pool:
+                    waiting.remove(conn)
+                    continue
+                running = [j for _, j in pool.values() if j is not None]
+                if pending and not admit(pending[0], running):
+                    continue
+                waiting.remove(conn)
+                index = pending.popleft() if pending else None
+                pool[conn][1] = index
+                if index is not None:
+                    taken[conn] = time.time()
+                try:
+                    conn.send(index)
+                except OSError:
+                    if index is not None:
+                        pool[conn][1] = None
+                        pending.appendleft(index)
+                    lose(conn)
+                    continue
+                if index is None:                     # nothing left: it leaves
+                    retired.append(pool.pop(conn)[0])
+                    conn.close()
             # a job past the time limit: its worker stopped where it is
             for conn, (p, job) in list(pool.items()):
                 if timeout <= 0 or job is None or time.time() - taken[conn] <= timeout:
@@ -2627,6 +2674,25 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
         check_trajectory_versions(root, selected)       # task 14, §10: no mixing
     _warn_exact_hv_time(todo)
     counts = {"done": 0, "failed": 0, "skipped": len(selected) - len(todo)}
+    from . import memory_guard                          # task 28, §28.6.2 (off by default)
+    todo, refused, largest, limit = memory_guard.plan(todo, spec, lambda j: _n_vars_of(cfg, j))
+    for j, e in refused:                                # MEM-3
+        print(f"[{j.index}] {j.problem} {j.key} seed {j.seed}: refused: memory: its estimate "
+              f"{memory_guard.mb(e)} > memory_share x free = {memory_guard.mb(limit)}", file=sys.stderr)
+    if refused:
+        counts["refused"] = len(refused)
+    capped = memory_guard.capped_workers(workers, largest, limit)
+    if capped < workers:
+        print(f"memory_share: {capped} worker(s), not {workers}: the largest estimate "
+              f"{memory_guard.mb(largest)} in {memory_guard.mb(limit)} (MEM-4)", file=sys.stderr)
+        workers = capped
+    est = {j.index: memory_guard.estimate(j, spec, _n_vars_of(cfg, j)) for j in todo} if limit is not None else {}
+
+    def admit(index, running) -> bool:                  # MEM-5
+        if not running:
+            return True
+        free = memory_guard.free_bytes()
+        return free is None or est.get(index, 0) <= spec.memory_share * free
     fits = cfg.source_path is not None and spec.storage == "store" and cfg.kind == "builtin"
     if engine == "cxx" and not fits:
         raise ValueError("--engine cxx: a campaign of builtin problems with storage = \"store\", "
@@ -2655,7 +2721,8 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
         got = _run_dynamic(str(cfg.source_path), todo, root, workers=workers,
                            force=force, label=label, timeout=spec.run_timeout,
                            on_timeout=lambda index, pid: _record_timeout(
-                               root, spec, jobs[index], pid, spec.run_timeout))
+                               root, spec, jobs[index], pid, spec.run_timeout),
+                           admit=admit if limit is not None else None)
         for k, v in got.items():
             counts[k] = counts.get(k, 0) + v
     else:

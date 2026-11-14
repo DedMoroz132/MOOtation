@@ -145,6 +145,7 @@
 // ============================================================================
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -324,7 +325,24 @@ struct Problem {
 
     bool has_residuals() const { return residuals || residuals_jac; }
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }
+
+    // THE TIME (task 28, §28.6.1; scalar.hpp TIME-1 ... TIME-4): the run's
+    // deadline on clock_seconds(), set by scalar::run from max_seconds;
+    // infinite (the default): none
+    double deadline = std::numeric_limits<double>::infinity();
 };
+
+// a steady clock's seconds (THE TIME)
+inline double clock_seconds()
+{
+    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+
+// THE TIME: the run's deadline has passed
+inline bool past_deadline(const Problem& P)
+{
+    return P.deadline < std::numeric_limits<double>::infinity() && clock_seconds() >= P.deadline;
+}
 
 // THE CACHE's key (task 24, §24.1.4): the problem's canon_key, else the bytes
 // of canon(x) — the problem's canon, else its blocks sorted (symmetry.hpp
@@ -496,6 +514,7 @@ public:
         if (P.delta) {
             ++delta_calls;
             delta_spent += P.delta_cost;
+            if (past_deadline(P)) throw BudgetSpent{};                          // TIME-2
             const double d = P.delta(x, block, values);
             if (!std::isfinite(d)) throw std::runtime_error("delta: the hook gave a value not finite (DELTA-2)");
             return d;
@@ -739,6 +758,7 @@ private:
     // allowance (for one evaluation and no gradient: spent >= budget, as before).
     void charge(double cost) const
     {
+        if (past_deadline(P)) throw BudgetSpent{};                           // THE TIME (TIME-2)
         const double after = used() + cost;
         if (after > static_cast<double>(budget)) throw BudgetSpent{};
         if (after > static_cast<double>(limit)) throw SubBudgetSpent{};

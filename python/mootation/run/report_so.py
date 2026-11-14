@@ -83,6 +83,11 @@ READINGS:
     is the run's reaching the finest target of its kind; R is safeguarded to
     [1/(n + 1), 1 - 1/(n + 1)] over its n runs (K18 after (12)), so a cell
     without a success has a finite M_95, the safeguard's.
+  REP-T. ERT in seconds (task 28, §28.6.1): no record carries its time, so a
+    run's time to a target is its runtime (in cost, REP-2) times the run's
+    seconds (meta.json, the whole job's wall clock) per unit of its cost —
+    the evaluations taken as equally long; a run's length is its seconds.
+    Beside the ERT in evaluations, not instead of it.
 """
 
 from __future__ import annotations
@@ -143,7 +148,8 @@ def runs(root: Path, problems=None) -> list:
             continue
         m = json.loads((r["dir"] / "meta.json").read_text(encoding="utf-8"))
         out.append({"problem": r["problem"], "algorithm": r["algorithm"], "seed": r["seed"],
-                    "n_vars": m.get("n_vars"), "so": m.get("so") or {}, "records": _records(r["dir"])})
+                    "n_vars": m.get("n_vars"), "so": m.get("so") or {}, "records": _records(r["dir"]),
+                    "seconds": m.get("seconds")})
     return out
 
 
@@ -191,6 +197,39 @@ def ert_table(rs: list) -> dict:
             erts.append(so.ert(times, lengths))
             hits.append(sum(1 for t in times if t is not None))
         out[key] = {"precisions": eps, "ert": erts, "hits": hits, "runs": len(group)}
+    return out
+
+
+def ert_seconds_table(rs: list) -> dict:
+    """ERT in seconds beside ert_table's (task 28, §28.6.1; REP-T): a run's
+    time to a target is its runtime in cost times the run's seconds per unit
+    of cost (meta.json's seconds over its cost: the evaluations taken as
+    equally long), its length its seconds; the ERT of those (H16 §4.1).
+    {(problem, algorithm): {"precisions", "ert_seconds", "hits", "runs"}};
+    a cell without every run's seconds is left out."""
+    so = _so()
+    by = {}
+    for r in rs:
+        by.setdefault((r["problem"], r["algorithm"]), []).append(r)
+    out = {}
+    for key, group in sorted(by.items()):
+        kind = group[0]["so"].get("targets")
+        if group[0]["so"].get("f_opt") is None or not kind:
+            continue
+        if any(r.get("seconds") is None or _cost(r) <= 0 for r in group):
+            continue
+        eps = _table_precisions(kind)
+        erts, hits = [], []
+        for i in range(len(eps)):
+            times, lengths = [], []
+            for r in group:
+                per = float(r["seconds"]) / _cost(r)
+                t = so.runtime(r["records"], _targets(r, eps)[i], float(r["so"].get("grad_cost", 1.0)))
+                times.append(None if t is None else t * per)
+                lengths.append(float(r["seconds"]))
+            erts.append(so.ert(times, lengths))
+            hits.append(sum(1 for t in times if t is not None))
+        out[key] = {"precisions": eps, "ert_seconds": erts, "hits": hits, "runs": len(group)}
     return out
 
 
@@ -467,6 +506,13 @@ def report(root: Path, *, alpha: float = 0.05, problems=None, simulated: int = 0
         cells = ", ".join(f"{e:g}: {_g(v)} ({h}/{row['runs']})" for e, v, h in
                           zip(row["precisions"], row["ert"], row["hits"]))
         lines.append(f"- {p} | {a}: {cells}")
+    secs = ert_seconds_table(rs)
+    if secs:                                    # task 28, §28.6.1 (REP-T)
+        lines += ["", "## ERT (seconds, at each run's mean seconds per evaluation; hits/runs) by problem", ""]
+        for (p, a), row in secs.items():
+            cells = ", ".join(f"{e:g}: {_g(v)} ({h}/{row['runs']})" for e, v, h in
+                              zip(row["precisions"], row["ert_seconds"], row["hits"]))
+            lines.append(f"- {p} | {a}: {cells}")
     lines += ["", "## ECDF of (run, target) pairs by evaluations / D", ""]
     for D, classes in ecdf(rs).items():
         for c, algs in classes.items():

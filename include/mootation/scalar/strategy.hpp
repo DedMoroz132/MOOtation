@@ -371,6 +371,7 @@ private:
 
     void charge(double cost)
     {
+        if (past_deadline(P_)) throw BudgetSpent{};                          // THE TIME (TIME-2)
         if (spent_ + cost > fresh_) throw BudgetSpent{};
         spent_ += cost;
     }

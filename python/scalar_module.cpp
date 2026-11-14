@@ -476,6 +476,8 @@ void bind_scalar(py::module_& m)
               d["evaluations"] = r.evaluations;
               d["grad_calls"] = r.grad_calls;
               d["n_failed"] = r.n_failed;
+              d["seconds"] = r.seconds;                // THE TIME (task 28, §28.6.1)
+              d["time_up"] = r.time_up;
               d["settings"] = py::cast(r.settings);
               d["solutions"] = rows_to_list(r.solutions);
               py::list imp;

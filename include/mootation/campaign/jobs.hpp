@@ -71,6 +71,7 @@ struct CampaignSpec {
     std::string bbob_instance = "by_run";                 // one objective: a bbob problem's instance (job_run.hpp)
     double stop_at = 0.0;                                 // one objective: end a run at f_opt + stop_at (0: never)
     bool keep_restarts = false;                           // one objective: meta.json so.restarts, a strategy's runs
+    double memory_share = 0.0;                            // task 28, §28.6.2: the Python front end's (memory_guard.py)
     std::string success = "target";                       // one objective: "user", the problem's own measure
                                                           // (task 24, §24.1.5; C++ engine only)
     // one objective: the wrappers of every problem (suite/wrap.hpp; task 20,
@@ -267,7 +268,7 @@ inline CampaignSpec campaign_spec(const Config& cfg, const JobsRegistry& reg)
         "noise_cell", "coords_diag", "set_metrics", "set_answer", "all_evaluated", "all_levels",
         "archive_mode", "native", "storage", "keep", "segment_mb", "run_timeout", "archive_cap",
         "bbob_instance", "stop_at", "keep_restarts", "wrap_perm", "wrap_rotate", "wrap_shift", "wrap_shift_scale",
-        "success"};
+        "success", "memory_share"};
     const std::set<std::string> known_set(known.begin(), known.end());
     std::set<std::string> unknown;
     for (const auto& k : raw.keys)
@@ -365,6 +366,11 @@ inline CampaignSpec campaign_spec(const Config& cfg, const JobsRegistry& reg)
         spec.stop_at = as_float(*v);
     }
     spec.keep_restarts = flag(raw, "keep_restarts", false);
+    if (const Value* v = raw.find("memory_share")) {            // task 28, §28.6.2 (memory_guard.py MEM-4)
+        if ((v->kind != Kind::Int && v->kind != Kind::Float) || !(as_float(*v) >= 0.0 && as_float(*v) <= 1.0))
+            throw ConfigError("campaign.memory_share", "a share in [0, 1] (0: off), not " + py_repr(*v));
+        spec.memory_share = as_float(*v);
+    }
     for (const auto& [key, field] : {std::pair<const char*, Value*>{"wrap_perm", &spec.wrap_perm},
                                      {"wrap_rotate", &spec.wrap_rotate}, {"wrap_shift", &spec.wrap_shift}})
         if (const Value* v = raw.find(key)) {

@@ -108,7 +108,8 @@ set(MOOTATION_TESTS
     test_lm_profiles_run
     test_lm_block_sample
     test_ensembles
-    test_continuous_symmetry)
+    test_continuous_symmetry
+    test_max_seconds)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

@@ -214,6 +214,10 @@ struct Result {
     // al. 2021): every repair, clip and projection of the run, its strategy's
     // starts included (task 20, §20.2.2)
     ops::RepairCounts repairs;
+    // THE TIME (task 28, §28.6.1): the run's wall-clock seconds, and whether
+    // max_seconds ended it
+    double seconds = 0.0;
+    bool time_up = false;
     // THE SUCCESS (evaluator.hpp; task 24, §24.1.5): accept_success's calls,
     // their cost in the budget, the evaluations spent when it accepted (-1: never)
     long long success_calls = 0;
@@ -1417,6 +1421,7 @@ inline Result run_user_local(const Problem& P, double eq_tol, bool has_tol0, dou
         const auto t0 = std::chrono::steady_clock::now();
         ++ev.hook_calls;
         try {
+            if (past_deadline(P)) throw BudgetSpent{};                                 // TIME-2
             out = P.local_search(x0, ctx, start.ls_state);
             returned = true;
         } catch (const BudgetSpent&) {
@@ -2522,13 +2527,54 @@ inline Result run_named(const std::string& name, const Problem& P, double eq_tol
 // strategy on several threads adds its starts' counts to it (strategy.hpp,
 // round). No method reads it: the run's points are the same with it or
 // without.
+// THE TIME (task 28, §28.6.1; off by default): max_seconds = s > 0, a knob of
+// every method and strategy here, sets the run's deadline (Problem::
+// deadline) at s seconds of a steady clock after the run's start.
+//   TIME-1 (only when asked: max_seconds). The deadline is absolute and goes with the problem: a strategy's
+//     starts (their views, their threads) and its inner runs keep the one
+//     deadline of the run; a run inside a run with its own max_seconds sets
+//     its own (it never extends an earlier one: the earlier of the two).
+//   TIME-2 (only when asked: max_seconds). It is checked before every call the budget pays for — an
+//     evaluation, a gradient, a part of the residual blocks — and before the
+//     user's local_search and delta hooks: past it, the call ends the run as
+//     the budget's end would (BudgetSpent), the answer the points evaluated.
+//     A call under way is not interrupted (the problem's own time is its).
+//   TIME-3 (only when asked: max_seconds). Result::seconds is every run's wall-clock time (steady clock);
+//     with max_seconds the settings say max_seconds and time_up (yes where
+//     the deadline passed before the run ended).
+//   TIME-4 (only when asked: max_seconds). The deadline makes a run depend on the machine's speed: two runs
+//     of one seed agree only while the deadline does not end them.
 inline Result run(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
                   double eq_tol0, int pop_size, long long budget, unsigned seed, const Knobs& knobs,
                   Observer observer, int record_every, const Start& start)
 {
     const ops::RepairCounts before = ops::repair_counts();
-    Result r = detail::run_named(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,
-                                 std::move(observer), record_every, start);
+    const double t0 = clock_seconds();
+    double max_seconds = 0.0;
+    Knobs rest;
+    for (const auto& kv : knobs) {
+        if (kv.first != "max_seconds") {
+            rest.push_back(kv);
+            continue;
+        }
+        if (kv.second.is_word || !(kv.second.number > 0.0) || !std::isfinite(kv.second.number))
+            throw std::invalid_argument("max_seconds must be a number of seconds > 0");
+        max_seconds = kv.second.number;
+    }
+    Result r;
+    if (max_seconds > 0.0) {                          // TIME-1
+        Problem Q = P;
+        Q.deadline = std::min(P.deadline, t0 + max_seconds);
+        r = detail::run_named(name, Q, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, rest,
+                              std::move(observer), record_every, start);
+        r.time_up = clock_seconds() >= Q.deadline;
+        r.settings.insert(r.settings.end(), {{"max_seconds", detail::g_format(max_seconds)},
+                                             {"time_up", r.time_up ? "yes" : "no"}});
+    } else {
+        r = detail::run_named(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,
+                              std::move(observer), record_every, start);
+    }
+    r.seconds = clock_seconds() - t0;                 // TIME-3
     r.repairs = ops::repair_counts() - before;
     return r;
 }

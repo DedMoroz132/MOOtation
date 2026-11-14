@@ -1711,6 +1711,16 @@ first run, 1 large, 2 small), λ, σ⁰, the evaluations and the criterion that
 stopped it (H09's, or `budget`: the budget, the target or a small run's cap).
 Off by default; both engines write the same rows.
 
+`max_seconds = s` (a knob of every method and strategy at one objective, in
+`params` or `minimize(..., max_seconds=)`; task 28, §28.6.1) ends a run at
+the first call it pays for after s seconds of a steady clock, as its
+budget's end would (scalar.hpp TIME-1 ... TIME-4): the settings say
+`max_seconds` and `time_up`, `meta.json`'s `so.time_up` too. Off by default.
+A run's wall-clock time is in `meta.json` (`seconds`) and the result
+(`seconds`); `report_so` gives the ERT in seconds beside the ERT in
+evaluations (REP-T: a run's seconds per unit of cost, the evaluations taken
+as equally long).
+
 A run at one objective counts the points its method makes outside the box
 (task 20, §20.2.2; Kononova et al., Inf. Sci. 581, 2021, the multi-objective
 runs' `oob_share`): `meta.json`'s `so.repairs` has `checked` (the points made),
@@ -2385,6 +2395,17 @@ rotated, noisy or failing problem is a problem of its own, never a repeat:
 `{"kind": "rotation", "of": "DTLZ1_3D", "instance": 2, "conditioning": false}`
 for rDTLZ1_3D_i2, `"shift"`, `"control"`, `"noise"`, `"failing"` — and is
 null for a problem of its own (`benchmarks.properties.modification_of`).
+
+`memory_share = s` (`[campaign]`, a share in (0, 1]; 0, the default: off;
+task 28, §28.6.2; `run/memory_guard.py`, MEM-1 ... MEM-5) keeps the runs
+that run at once within s times the free memory: each run's memory is
+estimated (budget x D where it keeps every point evaluated, the population,
+a base), a run larger than s x free is refused (the summary's `refused`;
+a later start runs it), the pool has at most s x free / the largest
+estimate workers, and the Python engine's pool hands a job out only while
+its estimate fits s x the free memory then (else it waits for a run to
+end). The C++ engine under the runner gets the capped worker count; run
+alone it does not apply it.
 
 `run_timeout` (seconds, `[campaign]`) stops a run that takes longer: the
 runner ends its worker, and the run is kept with the status `"timeout"`, its
