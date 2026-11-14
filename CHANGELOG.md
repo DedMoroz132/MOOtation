@@ -25,7 +25,7 @@ always listed under **Changed** or **Removed**.
   of more than 4 096 points anneals without its two n × n matrices
   (16 n² bytes): the distances a try needs are counted again from the
   levels and the maximin order is taken in one pass (`designs.hpp`, LHS-1).
-  Such designs differ from the earlier ones (DESIGN version +1 of round 5);
+  Such designs differ from the earlier ones (design version 3);
   up to 4 096 points they are bit for bit. The memory warning past 1 GiB is
   gone with the matrices.
 - Fixed (task 24, after task 27's findings): the run with the cache
@@ -76,6 +76,10 @@ always listed under **Changed** or **Removed**.
   D = K + 10) and `WFG6_5D_n47`, `WFG7_5D_n47` (n = 47, MOMBI-II's Table 1),
   in both engines. `wfg3` ... `wfg8` take `k` as `wfg1`, `wfg2` and `wfg9` do;
   without it every WFG row is as before.
+- Changed: design version 3 (`designs::kVersion`, `designs.DESIGN_VERSION`;
+  `meta.json`'s `design_version`), round 5's one version step for the
+  designs: `lhs` of more than 4 096 points (LHS-1) differs from version 2;
+  every other design is the same, bit for bit.
 - Changed (verification wave 2, the owner's decisions of 2026-11-14; new golden
   fingerprints): `isde_rd`'s `isde_directions` is `exact` by default, the
   number of subregions honoured as `moead_m2m` and `sms_m2m` do (ISDE-11;
