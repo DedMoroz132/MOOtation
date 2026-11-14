@@ -1140,8 +1140,10 @@ depends on its budget, so a `ladder` gives it a run of its own at each rung.
 `minimize(init=..., init_share=...)` does the same outside a campaign.
 The designs and the baselines below draw from the library's own generators
 (`designs.hpp`, `ablations.hpp`: `std::mt19937` and Joe & Kuo's directions),
-the same points on every platform — design version 2, `design_version` in
-`meta.json`; version 1 drew from NumPy and SciPy and stays in
+the same points on every platform — design version 3, `design_version` in
+`meta.json` (3 since round 5: `lhs` of more than 4 096 points anneals
+without its n × n matrices; every other design as in version 2); version 1
+drew from NumPy and SciPy and stays in
 `designs.design_numpy` and `ablations.*_numpy`, a check of the distributions.
 
 **Baselines.** `random_search`, `sobol_search` (scrambled Sobol),

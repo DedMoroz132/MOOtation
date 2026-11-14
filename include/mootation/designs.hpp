@@ -38,7 +38,7 @@
 //     n x n annealing sums its matrix; the maximin order is taken in one
 //     pass over the pairs. Its random choices are the same, its rounding
 //     not, so the designs past 4096 points differ from the earlier ones
-//     (DESIGN version +1 of round 5); up to 4096 they are bit for bit.
+//     (design version 3); up to 4096 they are bit for bit.
 // ============================================================================
 
 #include <algorithm>
@@ -58,7 +58,9 @@
 
 namespace mootation::designs {
 
-constexpr int kVersion = 2;                         // the library's generators (task 17, stage 5)
+// 2: the library's generators (task 17, stage 5); 3: lhs past 4096 points
+// without the n x n matrices (LHS-1, round 5), every other design as in 2
+constexpr int kVersion = 3;
 
 inline std::uint32_t seed32(std::int64_t seed) { return static_cast<std::uint32_t>(seed); }
 

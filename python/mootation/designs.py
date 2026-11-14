@@ -30,7 +30,9 @@ generators (include/mootation/designs.hpp through _core.design: std::mt19937,
 sobol.hpp's Joe-Kuo directions), the same on every platform; version 1 drew
 from NumPy's generator and SciPy's Sobol and stays as design_numpy, which
 checks the C++ designs by their distributions, not their bits. A result
-records the version as meta.json's design_version.
+records the version as meta.json's design_version. DESIGN_VERSION 3 (round
+5): lhs of more than 4096 points anneals without its n x n matrices (LHS-1),
+so those designs differ from version 2's; every other design is the same.
 
 minimize(init=...) evaluates a design and starts the algorithm from it; with
 init_share > 0 the design is a plan of experiments larger than the population,
@@ -136,8 +138,10 @@ KINDS = ("sobol", "lhs", "halton_rand", "sobol_owen")
 # 2 (task 17, stage 5): the points from the library's own generators
 # (include/mootation/designs.hpp, _core.design), the same on every platform;
 # 1 was the NumPy and SciPy code below, which stays as design_numpy, a check
-# of the distributions
-DESIGN_VERSION = 2
+# of the distributions; 3 (round 5, LHS-1 in designs.hpp): lhs of more than
+# 4096 points anneals without its n x n matrices, so such designs differ;
+# every other design is as in 2, bit for bit
+DESIGN_VERSION = 3
 P_VALUES = (1, 2, 5, 10, 20, 50, 100)      # Morris & Mitchell 1995, Section 5
 FAC_T = 0.95                               # Section 4: "0.90 and 0.95"
 ACCEPT = 0.99                              # Section 4: t0 accepts a step of one level so
