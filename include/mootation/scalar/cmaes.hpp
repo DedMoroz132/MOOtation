@@ -76,8 +76,20 @@
 //     (NoEffectAxis), for some i (NoEffectCoor).
 //   CMA-6. cma_stagnation: h09 (the default) is CMA-2's reading, both arrays;
 //     either holds when one of them stagnates; off never stops a run on it.
-//     H09's "respectively, in the two arrays" admits the first two; the
-//     archive's runs (cmaes.m 3.30) are not read here (task 18, the f23 probe).
+//     H09's "respectively, in the two arrays" admits the first two.
+//     cmaes_m is the stagnation of Hansen's production code, read from
+//     cmaes.m Version 3.61.beta (April 2012; the official source page, read
+//     14.11.2026; the BBOB 2009 archive's runs used V3.30, not on that page:
+//     3.61's change log lists no change to the stagnation test since V3.24,
+//     so very likely the same, not proven). Its lines 1072-1080 keep the best
+//     and the median f of every iteration in a history that grows by one an
+//     iteration up to 120 + ⌈30D/λ⌉ entries, then by one at every fifth
+//     iteration (below 2·10^4 entries), the oldest dropped otherwise, so it
+//     holds the last L iterations; lines 1497-1503 stop when the iteration
+//     count exceeds D (5 + 100/λ), L > 100, and in both arrays the median of
+//     the newest ⌊L/3⌋ values is not below that of the oldest ⌊L/3⌋ + 1
+//     (MATLAB's end-l:end). H09 §2.2's text instead names the 20 newest and
+//     20 oldest values (h09, CMA-2).
 //   CMA-5. The eigendecomposition of C at every iteration by default, where
 //     H09 makes it every (c_1 + c_μ)^-1/(10D) iterations (§4): that saves
 //     time and changes no update but the sampling's B and D between
@@ -88,6 +100,12 @@
 //     the last decomposition's (CMA-7).
 //   CMA-7. A lazy run decomposes at the tells t with t mod k = 0; C itself is
 //     updated at every tell.
+//   CMA-8. cma_tolfun: h09 (the default) is H09 §2.2's TolHistFun, the
+//     range of the best values of the last 10 + ⌈30D/λ⌉ iterations below
+//     1e-12; cmaes_m is cmaes.m 3.61's lines 1491-1496 (the same caveat as
+//     CMA-6): TolFun, from the third iteration on, the range of the current
+//     generation's values and the best values of that short history at most
+//     1e-12, and TolHistFun at most 1e-13 (its default, line 186).
 //
 // CMA-ES WITH MARGIN (task 25, 24.3.4): R. Hamano, S. Saito, M. Nomura, S.
 // Shirakawa, "CMA-ES with Margin: Lower-Bounding Marginal Probability for
@@ -139,7 +157,9 @@ namespace mootation::scalar {
 struct CMAESOptions {
     enum class Weights { active, positive } weights = Weights::active;
     enum class Cmu { tutorial2016, hansen2009 } cmu = Cmu::tutorial2016;
-    enum class Stagnation { h09, either, off } stagnation = Stagnation::h09;
+    enum class Stagnation { h09, either, off, cmaes_m } stagnation = Stagnation::h09;
+    // CMA-8: H09's TolHistFun (h09) or cmaes.m 3.61's TolFun and TolHistFun
+    enum class TolFun { h09, cmaes_m } tolfun = TolFun::h09;
     // CMA-5: decompose C every eigen_every tells; 1 every tell, 0 H09's interval
     int eigen_every = 1;
     // CMA-ES with margin (HM22): α (0: off) and each coordinate's discrete
@@ -153,7 +173,7 @@ public:
     // H09's termination criteria (§2.2), in the order stop() tests them
     enum class Stop {
         none, max_iter, tol_hist_fun, equal_fun_vals, tol_x, tol_up_sigma, stagnation,
-        condition_cov, no_effect_axis, no_effect_coor
+        condition_cov, no_effect_axis, no_effect_coor, tol_fun
     };
     static const char* stop_name(Stop s)
     {
@@ -168,6 +188,7 @@ public:
         case Stop::condition_cov: return "ConditionCov";
         case Stop::no_effect_axis: return "NoEffectAxis";
         case Stop::no_effect_coor: return "NoEffectCoor";
+        case Stop::tol_fun: return "TolFun";
         }
         return "none";
     }
@@ -175,7 +196,7 @@ public:
     CMAES(std::vector<double> mean, double sigma, std::mt19937& rng, int popsize = 0,
           const CMAESOptions& options = CMAESOptions())
         : m_(std::move(mean)), n_(m_.size()), sigma_(sigma), sigma0_(sigma), rng_(rng),
-          stagnation_(options.stagnation), margin_alpha_(options.margin_alpha),
+          stagnation_(options.stagnation), tolfun_(options.tolfun), margin_alpha_(options.margin_alpha),
           margin_values_(options.margin_values)
     {
         const double n = static_cast<double>(n_);
@@ -434,6 +455,12 @@ public:
         median_hist_.push_back(lam_ % 2 == 1 ? values[order[lam_ / 2]]
                                              : (values[order[lam_ / 2 - 1]] + values[order[lam_ / 2]]) / 2.0);
         equal_hist_.push_back(values[order[0]] == values[order[k - 1]]);
+        gen_lo_ = values[order[0]];                                              // CMA-8: this generation's range
+        gen_hi_ = values[order[lam_ - 1]];
+        if (stagnation_ == CMAESOptions::Stagnation::cmaes_m) {                  // CMA-6: cmaes.m's history length
+            const std::size_t grow = 120 + static_cast<std::size_t>(std::ceil(30.0 * n / static_cast<double>(lam_)));
+            if (hist_len_ < grow || (g_ % 5 == 0 && hist_len_ < 20000)) ++hist_len_;
+        }
     }
 
     // σ times the largest standard deviation: the scale of the next step.
@@ -451,7 +478,12 @@ public:
         const std::size_t len = best_hist_.size();
         if (t >= 100.0 + 50.0 * (n + 3.0) * (n + 3.0) / std::sqrt(lam)) return Stop::max_iter;
         const std::size_t hist_fun = 10 + static_cast<std::size_t>(std::ceil(30.0 * n / lam));
-        if (len >= hist_fun) {                                                    // CMA-3
+        if (tolfun_ == CMAESOptions::TolFun::cmaes_m) {                           // CMA-8
+            const auto first = best_hist_.end() - static_cast<std::ptrdiff_t>(std::min(len, hist_fun));
+            const auto [lo, hi] = std::minmax_element(first, best_hist_.end());
+            if (t > 2.0 && std::max(*hi, gen_hi_) - std::min(*lo, gen_lo_) <= 1e-12) return Stop::tol_fun;
+            if (len >= hist_fun && *hi - *lo <= 1e-13) return Stop::tol_hist_fun;
+        } else if (len >= hist_fun) {                                             // CMA-3
             const auto first = best_hist_.end() - static_cast<std::ptrdiff_t>(hist_fun);
             const auto [lo, hi] = std::minmax_element(first, best_hist_.end());
             if (*hi - *lo < 1e-12) return Stop::tol_hist_fun;
@@ -468,8 +500,25 @@ public:
         if (small) return Stop::tol_x;
         const double l_max = ev_.back(), l_min = ev_.front();
         if (scale > 1e20 * std::sqrt(l_max)) return Stop::tol_up_sigma;
+        if (stagnation_ == CMAESOptions::Stagnation::cmaes_m && t > n * (5.0 + 100.0 / lam) &&
+            hist_len_ > 100) {                                                    // CMA-6: cmaes.m 3.61
+            const std::size_t l = hist_len_ / 3;
+            auto median = [](std::vector<double> v) {
+                std::sort(v.begin(), v.end());
+                const std::size_t h = v.size() / 2;
+                return v.size() % 2 == 1 ? v[h] : (v[h - 1] + v[h]) / 2.0;
+            };
+            auto stagnant = [&](const std::vector<double>& h) {
+                const std::vector<double> newest(h.end() - static_cast<std::ptrdiff_t>(l), h.end());
+                const auto start = h.end() - static_cast<std::ptrdiff_t>(hist_len_);
+                const std::vector<double> oldest(start, start + static_cast<std::ptrdiff_t>(l + 1));
+                return median(newest) >= median(oldest);
+            };
+            if (stagnant(median_hist_) && stagnant(best_hist_)) return Stop::stagnation;
+        }
         const std::size_t window = static_cast<std::size_t>(std::ceil(0.2 * t + 120.0 + 30.0 * n / lam));
-        if (stagnation_ != CMAESOptions::Stagnation::off && len >= window && window >= 20) {   // CMA-2, CMA-6
+        if ((stagnation_ == CMAESOptions::Stagnation::h09 || stagnation_ == CMAESOptions::Stagnation::either) &&
+            len >= window && window >= 20) {                                      // CMA-2, CMA-6
             auto median20 = [](std::vector<double> v) {
                 std::sort(v.begin(), v.end());
                 return (v[9] + v[10]) / 2.0;
@@ -534,6 +583,9 @@ private:
     double sigma_, sigma0_;
     std::mt19937& rng_;
     CMAESOptions::Stagnation stagnation_;
+    CMAESOptions::TolFun tolfun_;
+    std::size_t hist_len_ = 0;                                                 // CMA-6: cmaes.m's history length
+    double gen_lo_ = 0.0, gen_hi_ = 0.0;                                       // CMA-8: this generation's range
     double margin_alpha_ = 0.0;                                                // HM22
     std::vector<std::vector<double>> margin_values_, thresholds_;
     bool margin_on_ = false;

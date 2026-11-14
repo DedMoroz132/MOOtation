@@ -26,7 +26,7 @@
 //   bipop_2009  bipop with H09's CMA-ES: cma_weights = positive, cma_cmu =
 //               hansen2009 (cmaes.hpp).
 //
-// Knobs: cma_weights, cma_cmu, cma_stagnation (cmaes.hpp, CMA-6; in the
+// Knobs: cma_weights, cma_cmu, cma_stagnation, cma_tolfun (cmaes.hpp, CMA-6, CMA-8; in the
 // settings only when given); cma_sigma0 (σ⁰ as a share of the
 // box's width: ipop 0.5, bipop 0.2); start_share (the share of the width left
 // out each side of the box for the start mean: ipop 0, bipop 0.1); cma_bounds
@@ -180,7 +180,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
     using restarts::Run;
     const bool bipop = name != "ipop";
     std::vector<std::string> own{"cma_weights", "cma_cmu", "cma_sigma0", "start_share", "cma_bounds", "min_dist",
-                                 "min_df", "keep_points", "cma_stagnation", "warm_start"};
+                                 "min_df", "keep_points", "cma_stagnation", "cma_tolfun", "warm_start"};
     if (bipop) own.push_back("bipop_large");
     StrategyKnobs k(name, knobs, own);
     CMAESOptions o;
@@ -191,9 +191,12 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
         o.cmu = CMAESOptions::Cmu::hansen2009;
     // CMA-6; in the settings only when given, so that a default run's settings stay as they were
     const std::string stag =
-        k.find("cma_stagnation") ? k.word("cma_stagnation", "h09", {"h09", "either", "off"}) : "h09";
+        k.find("cma_stagnation") ? k.word("cma_stagnation", "h09", {"h09", "either", "off", "cmaes_m"}) : "h09";
     if (stag == "either") o.stagnation = CMAESOptions::Stagnation::either;
     if (stag == "off") o.stagnation = CMAESOptions::Stagnation::off;
+    if (stag == "cmaes_m") o.stagnation = CMAESOptions::Stagnation::cmaes_m;
+    if ((k.find("cma_tolfun") ? k.word("cma_tolfun", "h09", {"h09", "cmaes_m"}) : "h09") == "cmaes_m")   // CMA-8
+        o.tolfun = CMAESOptions::TolFun::cmaes_m;
     const double sigma_share = k.number("cma_sigma0", bipop ? 0.2 : 0.5);
     const double share = k.number("start_share", bipop ? 0.1 : 0.0);
     const bool clip = k.word("cma_bounds", "penalty", {"penalty", "none"}) == "penalty";

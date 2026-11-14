@@ -16,6 +16,9 @@
 //     some (its runs differ from h09's, so not a count to compare); named
 //     h09 is the default run; given, it is in the settings, by default not
 //     (a default run's settings as before); a word it does not know refused;
+//   - cma_stagnation = cmaes_m (CMA-6, cmaes.m 3.61's test): no run stops on
+//     Stagnation before D (5 + 100/λ) iterations; cma_tolfun = cmaes_m
+//     (CMA-8): on a constant f the first run stops on TolFun at iteration 3;
 //   - refusals: a bound that is not finite, constraints.
 // ============================================================================
 
@@ -272,7 +275,38 @@ void stagnation_knob()
     } catch (const std::invalid_argument& e) {
         why = e.what();
     }
-    check(why == "cma_stagnation = 'never': h09, either, off", "cma_stagnation = never: " + why);
+    check(why == "cma_stagnation = 'never': h09, either, off, cmaes_m", "cma_stagnation = never: " + why);
+    // CMA-6, cmaes_m: no run stops on Stagnation before iteration D (5 + 100 / lambda) (cmaes.m 3.61, line 1499)
+    const sc::Result cm = go("cmaes_m");
+    bool late = true;
+    for (const auto& run : mootation::json::parse(setting(cm, "restarts")).items) {
+        const double lam = static_cast<double>(run.items[1].i), iters = static_cast<double>(run.items[3].i) / lam;
+        if (run.items[4].s == "Stagnation") late = late && iters > 5.0 * (5.0 + 100.0 / lam);
+    }
+    check(late && setting(cm, "cma_stagnation") == "cmaes_m",
+          "cmaes_m on bbob f23, D = 5: Stagnation stops " + std::to_string(stops(cm, "Stagnation")) +
+              " runs, none before D (5 + 100/lambda) iterations");
+}
+
+// CMA-8 on a constant f: cma_tolfun = cmaes_m stops a run on TolFun at its third iteration (the range of the
+// generation and the short history is 0); h09 has no TolFun
+void tolfun_knob()
+{
+    sc::Problem P;
+    P.lo = {-1.0, -1.0, -1.0};
+    P.hi = {1.0, 1.0, 1.0};
+    P.m = 1;
+    P.evaluate = [](const Vec&, Vec& f, Vec&) { f = {1.0}; };
+    const sc::Result a = sc::run("bipop_2009", P, 1e-6, false, 0.0, 10, 5000, 1, {{"cma_tolfun", word("cmaes_m")}},
+                                 {}, 0, {});
+    const sc::Result b = sc::run("bipop_2009", P, 1e-6, false, 0.0, 10, 5000, 1, {}, {}, 0, {});
+    const auto ra = mootation::json::parse(setting(a, "restarts")).items;
+    const auto rb = mootation::json::parse(setting(b, "restarts")).items;
+    const double lam0 = static_cast<double>(ra[0].items[1].i);
+    check(ra[0].items[4].s == "TolFun" && static_cast<double>(ra[0].items[3].i) == 3.0 * lam0 &&
+              rb[0].items[4].s != "TolFun" && setting(a, "cma_tolfun") == "cmaes_m" && setting(b, "cma_tolfun").empty(),
+          "bipop_2009 on a constant f: cma_tolfun = cmaes_m stops the first run on TolFun after 3 iterations (" +
+              ra[0].items[4].s + "); by default " + rb[0].items[4].s);
 }
 
 void refusals()
@@ -309,6 +343,7 @@ int main()
     target_in_regime_2();
     lean();
     stagnation_knob();
+    tolfun_knob();
     refusals();
     std::printf("%s (%d failed)\n", g_failed == 0 ? "PASS" : "FAIL", g_failed);
     return g_failed == 0 ? 0 : 1;

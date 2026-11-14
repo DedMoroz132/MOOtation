@@ -57,6 +57,20 @@ always listed under **Changed** or **Removed**.
   scalar/replica.hpp); `reformulation`, reformulation descent over the new
   fields n_formulations, formulation, to_formulation, from_formulation
   (scalar/reformulation.hpp). C++ only for now.
+- Added (`scalar/cmaes.hpp`; task 18): `cma_stagnation = cmaes_m` and the
+  knob `cma_tolfun = h09 | cmaes_m` for `cmaes` (with `cma_stop = h09`),
+  `ipop`, `bipop` and `bipop_2009`, read from Hansen's cmaes.m Version
+  3.61.beta (the official source page; the BBOB 2009 archive used V3.30,
+  not on that page, so very likely the same code, not proven). cmaes_m's
+  Stagnation compares the medians of the newest and the oldest third of a
+  history of the last iterations (grown as cmaes.m grows it), in both arrays,
+  after D (5 + 100/λ) iterations and with more than 100 entries (CMA-6);
+  H09's text names the 20 newest and oldest values. cmaes_m's TolFun stops
+  on the range of the current generation and the short history at most
+  1e-12, its TolHistFun at 1e-13 (CMA-8); a run's stopping criterion may now
+  read `TolFun`. Both in the settings only when given: default runs are
+  unchanged, byte for byte.
+
 - Added (task 26, item 24.5.1, A1): objectives that depend on the
   population for the multi-objective cores. `DataVault::set_aux(k, fn)`
   gives every slot k objectives after the problem's own, computed from the

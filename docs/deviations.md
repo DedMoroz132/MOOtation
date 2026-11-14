@@ -421,7 +421,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-485 items: 409 yes, 73 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+486 items: 409 yes, 74 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -496,6 +496,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `cmaes` | CMA-6 | cma_stagnation: h09 (the default) is CMA-2's reading, both arrays; either holds when one of them stagnates; off never stops a run on it. | no: option | `cmaes.hpp` |
 | `cmaes` | CMA-5 | The eigendecomposition of C at every iteration by default, where H09 makes it every (c_1 + c_μ)^-1/(10D) iterations (§4): that saves time and changes no update but the sampling's B and D between decompositions. | yes | `cmaes.hpp` |
 | `cmaes` | CMA-7 | A lazy run decomposes at the tells t with t mod k = 0; | yes | `cmaes.hpp` |
+| `cmaes` | CMA-8 | cma_tolfun: h09 (the default) is H09 §2.2's TolHistFun, the range of the best values of the last 10 + ⌈30D/λ⌉ iterations below 1e-12; cmaes_m is cmaes.m 3.61's lines 1491-1496 (the same caveat as CMA-6): TolFun, from... | no: option | `cmaes.hpp` |
 | `cmaes` | CMM-1 | The distribution functions are normal_cdf.hpp's (Φ, and χ²_ppf with one degree of freedom, χ²_ppf(1 - 2p) = Φ^-1(1 - p)²). | yes | `cmaes.hpp` |
 | `cmaes` | CMM-2 | The integer correction (15)-(24) is made only when p_low or p_up is below α/2: otherwise (20)-(23) leave p_low and p_up as they are and (24) returns the same m and A_j, up to rounding (Algorithm 1 makes it every itera... | yes | `cmaes.hpp` |
 | `cmaes` | CMM-3 | Where 1 - 2p'' is not positive (p'' >= 1/2: the variance so large that no value is fixed, HM22 after (24)) the coordinate is left as it is. | yes | `cmaes.hpp` |

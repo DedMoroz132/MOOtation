@@ -100,8 +100,13 @@ campaign at more objectives refuses them) are the local solvers of
 `hansen2009`, `cma_stop` = `spread` | `h09`: the tutorial's weights and c_μ, the
 defaults, or those of BIPOP-CMA-ES (Hansen, GECCO 2009), and the run stopped by
 its spread at `local_tol` or by that paper's termination criteria;
-`cma_stagnation` = `h09` | `either` | `off`: that paper's Stagnation in both
-arrays of best and median values, the default, in either, or never, CMA-6). A run is the
+`cma_stagnation` = `h09` | `either` | `off` | `cmaes_m`: that paper's
+Stagnation in both arrays of best and median values, the default, in either,
+never, or as Hansen's cmaes.m 3.61 tests it (the newest and oldest thirds of a
+history of the last iterations, after D (5 + 100/λ) iterations), CMA-6;
+`cma_tolfun` = `h09` | `cmaes_m`: that paper's TolHistFun at 1e-12, the
+default, or cmaes.m 3.61's TolFun (the range of the generation and the short
+history at most 1e-12) and TolHistFun at 1e-13, CMA-8). A run is the
 initial plan (`pop_size` uniform points, the design of `init` or the seed
 population) and the solver once from its best point, until the solver's own
 tolerance or the budget; a run that stops early leaves the rest of the budget

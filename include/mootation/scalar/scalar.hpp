@@ -990,7 +990,8 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
     std::vector<std::string> own{"local_tol", "grad_cost"};
     if (local == "sqp") own.insert(own.end(), {"fd_step", "sqp_line_search"});
     if (local == "nm") own.push_back("nm_coefficients");
-    if (local == "cmaes") own.insert(own.end(), {"cma_sigma0", "cma_weights", "cma_cmu", "cma_stop", "cma_stagnation"});
+    if (local == "cmaes")
+        own.insert(own.end(), {"cma_sigma0", "cma_weights", "cma_cmu", "cma_stop", "cma_stagnation", "cma_tolfun"});
     Knobs taken, cma_more;                           // cma_more: SINGLE-6's knobs, in the caller's order
     std::vector<std::string> ignored, none;
     double grad_cost = 1.0;
@@ -1013,12 +1014,13 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
     std::sort(ignored.begin(), ignored.end());
     const ScalarSettings s = scalar_settings("scalar", taken, none);   // the words and numbers checked
     std::map<std::string, std::string> cma{{"cma_weights", "active"}, {"cma_cmu", "tutorial2016"},
-                                           {"cma_stop", "spread"}, {"cma_stagnation", "h09"}};
+                                           {"cma_stop", "spread"}, {"cma_stagnation", "h09"}, {"cma_tolfun", "h09"}};
     for (const auto& [k, v] : taken)
         if (cma.count(k)) {
             static const std::map<std::string, std::vector<std::string>> words{
                 {"cma_weights", {"active", "positive"}}, {"cma_cmu", {"tutorial2016", "hansen2009"}},
-                {"cma_stop", {"spread", "h09"}}, {"cma_stagnation", {"h09", "either", "off"}}};
+                {"cma_stop", {"spread", "h09"}}, {"cma_stagnation", {"h09", "either", "off", "cmaes_m"}},
+                {"cma_tolfun", {"h09", "cmaes_m"}}};
             const std::string w = detail::shown(v);
             if (!v.is_word || !detail::listed(words.at(k), w))
                 throw std::invalid_argument(k + " = '" + w + "': " + detail::joined(words.at(k)));
@@ -1066,6 +1068,8 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
         }
         cma_options.margin_alpha = margin_alpha;
     }
+    if (cma["cma_stagnation"] == "cmaes_m") cma_options.stagnation = CMAESOptions::Stagnation::cmaes_m;
+    if (cma["cma_tolfun"] == "cmaes_m") cma_options.tolfun = CMAESOptions::TolFun::cmaes_m;          // CMA-8
     if (start.has_x0 && start.x0.size() != P.lo.size())
         throw std::invalid_argument(name + ": x0 has " + std::to_string(start.x0.size()) + " values for " +
                                     std::to_string(P.lo.size()) + " variables");
@@ -1152,6 +1156,7 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
     if (margin == "on" && std::none_of(cma_more.begin(), cma_more.end(),
                                        [](const auto& kv) { return kv.first == "cma_margin_alpha"; }))
         r.settings.push_back({"cma_margin_alpha", g_format(margin_alpha)});
+    if (local == "cmaes" && cma["cma_tolfun"] != "h09") r.settings.push_back({"cma_tolfun", cma["cma_tolfun"]});
     if (P.has_gradient()) r.settings.push_back({"grad_cost", g_format(grad_cost)});
     r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
     return r;
