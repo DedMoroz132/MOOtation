@@ -102,7 +102,7 @@ inline std::vector<double> embed(const std::vector<double>& x_frozen, const std:
 
 inline Problem restricted(const Problem& P, const std::vector<double>& x_frozen, const std::vector<std::size_t>& idx)
 {
-    using Vec = std::vector<double>;
+    using Values = std::vector<double>;   // not Vec: it would shadow subproblems.hpp's (-Wshadow)
     if (P.restrict_to) return P.restrict_to(x_frozen, idx);
     const std::size_t n = P.lo.size();
     if (x_frozen.size() != n)
@@ -114,13 +114,13 @@ inline Problem restricted(const Problem& P, const std::vector<double>& x_frozen,
     for (std::size_t k = 0; k < idx.size() && all; ++k) all = idx[k] == k;
     if (all) return P;                                                               // RES-1
     auto whole = std::make_shared<const Problem>(P);
-    auto full = [x_frozen, idx](const Vec& z) {
-        Vec x = x_frozen;
+    auto full = [x_frozen, idx](const Values& z) {
+        Values x = x_frozen;
         for (std::size_t k = 0; k < idx.size(); ++k) x[idx[k]] = z[k];
         return x;
     };
     auto columns = [idx](const Rows& J) {
-        Rows out(J.size(), Vec(idx.size()));
+        Rows out(J.size(), Values(idx.size()));
         for (std::size_t a = 0; a < J.size(); ++a)
             for (std::size_t k = 0; k < idx.size(); ++k) out[a][k] = J[a][idx[k]];
         return out;
@@ -153,10 +153,11 @@ inline Problem restricted(const Problem& P, const std::vector<double>& x_frozen,
     }
     Q.post_at = P.post_at;
     Q.success_cost = P.success_cost;
-    if (P.evaluate) Q.evaluate = [whole, full](const Vec& z, Vec& f, Vec& g) { whole->evaluate(full(z), f, g); };
+    if (P.evaluate)
+        Q.evaluate = [whole, full](const Values& z, Values& f, Values& g) { whole->evaluate(full(z), f, g); };
     if (P.gradient)
-        Q.gradient = [whole, full, idx, columns](const Vec& z, Vec& gf, Rows& JG) {
-            Vec g;
+        Q.gradient = [whole, full, idx, columns](const Values& z, Values& gf, Rows& JG) {
+            Values g;
             Rows J;
             whole->gradient(full(z), g, J);
             gf.assign(idx.size(), 0.0);
@@ -164,29 +165,29 @@ inline Problem restricted(const Problem& P, const std::vector<double>& x_frozen,
             JG = columns(J);
         };
     if (P.value_grad)
-        Q.value_grad = [whole, full, idx, columns](const Vec& z, Vec& f, Vec& g, Vec& gf, Rows& JG) {
-            Vec gg;
+        Q.value_grad = [whole, full, idx, columns](const Values& z, Values& f, Values& g, Values& gf, Rows& JG) {
+            Values gg;
             Rows J;
             whole->value_grad(full(z), f, g, gg, J);
             gf.assign(idx.size(), 0.0);
             for (std::size_t k = 0; k < idx.size(); ++k) gf[k] = gg[idx[k]];
             JG = columns(J);
         };
-    if (P.residuals) Q.residuals = [whole, full](const Vec& z, Vec& r) { whole->residuals(full(z), r); };
+    if (P.residuals) Q.residuals = [whole, full](const Values& z, Values& r) { whole->residuals(full(z), r); };
     if (P.jacobian)
-        Q.jacobian = [whole, full, columns](const Vec& z, Rows& J) {
+        Q.jacobian = [whole, full, columns](const Values& z, Rows& J) {
             Rows Jf;
             whole->jacobian(full(z), Jf);
             J = columns(Jf);
         };
     if (P.residuals_jac)
-        Q.residuals_jac = [whole, full, columns](const Vec& z, Vec& r, Rows& J) {
+        Q.residuals_jac = [whole, full, columns](const Values& z, Values& r, Rows& J) {
             Rows Jf;
             whole->residuals_jac(full(z), r, Jf);
             J = columns(Jf);
         };
     if (P.accept_success)
-        Q.accept_success = [whole, full](const Vec& z) { return whole->accept_success(full(z)); };
+        Q.accept_success = [whole, full](const Values& z) { return whole->accept_success(full(z)); };
     return Q;
 }
 
