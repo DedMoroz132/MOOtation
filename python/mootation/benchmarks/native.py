@@ -53,6 +53,11 @@ import numpy as np
 _STEMS = re.compile(r"(DTLZ[1-7]|wideDTLZ3|shiftDTLZ[1-467]|IDTLZ[12]|minusDTLZ2|SDTLZ[12]|"
                     r"C1-DTLZ[13]|C2-DTLZ2|C2-ConvexDTLZ2|C3-DTLZ[14]|MaF([1-9]|1[0-5])|"
                     r"ZCAT([1-9]|1[0-9]|20)|WFG[1-9]|shiftMaF[1-7])_(\d+)D")
+# WFG at PlatEMO's sizes (registry._register_wfg; verification wave 2,
+# 2026-11-14): k = M - 1 at two objectives (WFG<i>_2D_k1) and n = 47 at five
+# (WFG6_5D_n47, WFG7_5D_n47). Only these names: WFG<i>_<M>D_n<level> are the
+# noisy copies (noisy.py), which are not the suite's
+_WFG_PLATEMO = re.compile(r"WFG[1-9]_2D_k1|WFG[67]_5D_n47")
 # MaF10-12: WFG1, WFG2 and WFG9 with M - 1 positions (Cheng et al. 2017, 2.10-2.12)
 _MAF_WFG = {"MaF10": "WFG1", "MaF11": "WFG2", "MaF12": "WFG9"}
 _ZDT = re.compile(r"(shift)?ZDT[12346]")
@@ -184,6 +189,9 @@ def spec(name: str, p, rotated=None) -> dict | None:
         if not name.startswith("shift"):
             return _base(base, n, 2)
         return _base(base, n, 2, map="shift" if base == "ZDT4" else "fold", first=1)   # the centres: C++'s
+    if _WFG_PLATEMO.fullmatch(name):
+        stem, M = name.split("_")[0], int(name.split("_")[1][:-1])
+        return _base(stem, n, M, k=M - 1) if name.endswith("_k1") else _base(stem, n, M)
     m = _STEMS.fullmatch(name)
     if m is None:
         return None
