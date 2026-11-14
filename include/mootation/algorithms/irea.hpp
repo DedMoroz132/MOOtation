@@ -34,15 +34,17 @@
 //     resolution: F(x) = Sum −e^{−I(x,y)/kappa} with minimum selection, so a
 //     dominating solution gets a strongly negative F and is preferred. That
 //     preserves the Pareto compliance of the indicator (IBEA semantics).
-//   IREA-1 (READING; knob fitness_reading, swap by default). The other
+//     It was the default until 2026-11-14 and is fitness_reading = swap.
+//   IREA-1 (READING; knob fitness_reading, ibea by default). The other
 //     consistent resolution is IBEA's own: Eq.7 as printed, F(x1) = Sum
 //     −e^{−I(x2,x1)/kappa}, with the LARGEST F kept — what "as done in [31]"
 //     (Li et al. 2016, after IBEA) does. The two agree on convergence (a
 //     dominating solution wins either way) and differ on spread: IBEA's form
 //     charges x for being nearly dominated by a close neighbour, the swapped
 //     form above credits x for nearly dominating one, so within a cluster
-//     (Alg. 4 takes layers by F) it keeps the crowded members. fitness_reading
-//     = ibea selects IBEA's form; swap (the default) keeps the code's.
+//     (Alg. 4 takes layers by F) it keeps the crowded members. IBEA's form,
+//     the letter of Eq.7, is the default since 2026-11-14 (the owner's
+//     decision); fitness_reading = swap keeps the earlier one.
 //   * Eq. 6 as printed is a distance to a point, not a perpendicular. The text
 //     of §3.5 ("perpendicular distance... similar with the association operator
 //     of NSGA-III") and Fig. 3 are unambiguous, so the code implements the
@@ -107,7 +109,7 @@ private:
     double       eta_m_ = 20.0;   // §4.3(2): η_m = 20
     double       pc_    = 1.0;    // §4.3(2): p_c = 1.0
     double       pm_    = -1.0;   // §4.3(2): p_m = 1/n (<0 → 1/n)
-    bool         ibea_reading_ = false;   // IREA-1: knob fitness_reading = ibea
+    bool         ibea_reading_ = true;    // IREA-1: knob fitness_reading, ibea by default (swap: the earlier form)
     std::mt19937 rng_{std::random_device{}()};
 
     std::vector<std::vector<double>> W_;   // reference lines (Das-Dennis)

@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Changed (verification wave 2, the owner's decisions of 2026-11-14; new golden
+  fingerprints): `isde_rd`'s `isde_directions` is `exact` by default, the
+  number of subregions honoured as `moead_m2m` and `sms_m2m` do (ISDE-11;
+  `lattice`, the round-up of ISDE-2, the default before). `irea`'s
+  `fitness_reading` is `ibea` by default, Eq.7 as printed (IREA-1; `swap`
+  before). `lis_lcs` clips a DE mutant that leaves the box by default, the
+  paper naming no repair (LIS-3; `bound_repair = random` before).
+  `moead_de` and `moead_dra` clip by default too: Step 2.3's (3.3's) random
+  reset is the letter and stays `bound_repair = random`, but the papers'
+  own tables are reproduced by clipping, and where the letter disagrees
+  with the tables the default follows the tables (MDE-6, DRA-13).
 - Added (task 26, item 24.5.1, A1): objectives that depend on the
   population for the multi-objective cores. `DataVault::set_aux(k, fn)`
   gives every slot k objectives after the problem's own, computed from the

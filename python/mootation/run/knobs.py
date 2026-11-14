@@ -107,7 +107,7 @@ _FALLBACK_TEXT = {
     "pm_literal": ("on", "off"),
     "flag1": ("off", "on"),
     "flag2": ("off", "on"),
-    "fitness_reading": ("swap", "ibea"),
+    "fitness_reading": ("ibea", "swap"),
     "extreme_weights": ("nsga3", "literal"),
     "slot_exclusive": ("off", "on"),
     "nm_coefficients": ("adaptive", "standard"),
@@ -140,7 +140,7 @@ _FALLBACK_TEXT = {
     "if_range": ("pool", "alg1"),
     "nrv_archive": ("letter", "platemo"),
     "nrv_pool": ("letter", "platemo"),
-    "isde_directions": ("lattice", "exact"),
+    "isde_directions": ("exact", "lattice"),
 }
 _FALLBACK_SOLVER = ("inner", "local_solver")
 _FALLBACK_JSON = ("dc_stages", "pap_members")

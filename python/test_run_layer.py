@@ -7591,7 +7591,7 @@ def readings_knobs_of_2026_11_02():
     if minimize(d2.evaluate, algorithm="aprd", slot_exclusive="on", **k).ignored:
         print("  skip  readings_knobs_of_2026_11_02: stale _core"); return
     cases = [("edv", "pm_literal", "on", "off"), ("naemo", "flag1", "off", "on"),
-             ("naemo", "flag2", "off", "on"), ("irea", "fitness_reading", "swap", "ibea"),
+             ("naemo", "flag2", "off", "on"), ("irea", "fitness_reading", "ibea", "swap"),
              ("moead_ds", "extreme_weights", "nsga3", "literal"),
              ("maoea_iamd", "noise_frac", 0.01, 0.316), ("aprd", "slot_exclusive", "off", "on"),
              ("maoea_iamd", "kpcm_pm", "off", "on"),      # 2026-11-05 (IAMD-1)
@@ -7611,7 +7611,7 @@ def readings_knobs_of_2026_11_02():
              ("if_maoea", "if_range", "pool", "alg1"),          # 2026-11-13 (IF-MaOEA-12)
              ("nrv_moea", "nrv_archive", "letter", "platemo"),   # 2026-11-13 (NRV-3)
              ("nrv_moea", "nrv_pool", "letter", "platemo"),      # 2026-11-13 (NRV-4)
-             ("isde_rd", "isde_directions", "lattice", "exact")]  # 2026-11-13 (ISDE-11)
+             ("isde_rd", "isde_directions", "exact", "lattice")]  # 2026-11-13 (ISDE-11; exact by default 2026-11-14)
     for alg, knob, dflt, other in cases:
         d = minimize(d2.evaluate, algorithm=alg, **k)
         n = minimize(d2.evaluate, algorithm=alg, **{knob: dflt}, **k)

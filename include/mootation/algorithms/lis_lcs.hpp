@@ -14,7 +14,7 @@
 //   1. M_DP <- (N−K) random individuals of DP; OffspringPool_1 <- DE/bin + PM
 //      on each member i of M_DP: x_i + F·(x_r2 − x_r3), r2 and r3 from the
 //      T-neighbourhood of i's weight with probability δ, otherwise from all
-//      of DP (LIS-1); repair RandomReset.
+//      of DP (LIS-1); repair by clipping to the box (LIS-3).
 //   2. [K, M_PP] <- LIS(PP ∪ OffspringPool_1, K) (Algorithm 2): NDS filtering
 //      -> convergence fitness Fitness(x)=Σ −e^{I_{ε+}(x',x)/0.05} (Eq.2–3,
 //      smaller is better) -> k-means into K clusters -> best member of each
@@ -123,6 +123,10 @@
 //     2023, Eq.8) prints K = [FI'_PP·N]. The default follows the text and HCCA:
 //     K = [EI_PP'·N]; k_share = dp is the letter of Eq.9 (the code before
 //     2026-11-01). PlatEMO 4.16 has no CSMOEA to settle it.
+//   LIS-3 (READING; knob bound_repair, clip by default). The paper does not
+//     say how a DE mutant that leaves the box is repaired. The default clips
+//     it to the box since 2026-11-14 (the owner's decision); bound_repair =
+//     random is the random reset of MOEA/D-DE's Step 2.3, the code before.
 //
 // EXTENSIONS BEYOND THE PAPER (off by default / neutral):
 //   - constraint_mode FEASIBILITY: CV dominance inside NDS (LIS/LCS/CCD); the
@@ -181,8 +185,9 @@ private:
     int          K_ = 0;                       // adaptive K (Eq.4–9)
     ops::DEBase  base_     = ops::DEBase::Current1;   // LIS-1 (knob de_base)
     bool         k_by_dp_  = false;                   // LIS-2 (knob k_share = dp)
-    // DE mutant repair (bound_repair, 2026-09-23): random reset by default.
-    ops::BoundRepair repair_ = ops::BoundRepair::Random;
+    // DE mutant repair (bound_repair, 2026-09-23): clip by default since
+    // 2026-11-14 (LIS-3); random reset before.
+    ops::BoundRepair repair_ = ops::BoundRepair::Clip;
     std::mt19937 rng_{std::random_device{}()};
 
     // Internal co-evolution individual (DP / PP / offspring). The vault holds

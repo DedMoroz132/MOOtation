@@ -342,8 +342,8 @@ inline bool is_core_param(const std::string& name)
 //                 (letter, the default) or as PlatEMO's code (platemo; NRV-3)
 //   nrv_pool      nrv_moea: the selection pool P u Q (letter, the default) or
 //                 with the archive, as PlatEMO's code (platemo; NRV-4)
-//   isde_directions  isde_rd: K rounded up to the Das-Dennis lattice (lattice,
-//                 the default; ISDE-2) or honoured exactly (exact; ISDE-11)
+//   isde_directions  isde_rd: K honoured exactly (exact, the default; ISDE-11)
+//                 or rounded up to the Das-Dennis lattice (lattice; ISDE-2)
 // Numeric knobs of one algorithm each: step_share and F_spread (emyo_c: the
 // clamp of the difference vector as a share of the range, and the spread of
 // its factor F), the knobs that test its mechanism (emyo_c.hpp).
@@ -410,7 +410,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"pm_literal",   {"on", "off"}},
         {"flag1",        {"off", "on"}},
         {"flag2",        {"off", "on"}},
-        {"fitness_reading", {"swap", "ibea"}},
+        {"fitness_reading", {"ibea", "swap"}},
         {"extreme_weights", {"nsga3", "literal"}},
         {"slot_exclusive", {"off", "on"}},
         {"nm_coefficients", {"adaptive", "standard"}},
@@ -443,7 +443,7 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"if_range",     {"pool", "alg1"}},
         {"nrv_archive",  {"letter", "platemo"}},
         {"nrv_pool",     {"letter", "platemo"}},
-        {"isde_directions", {"lattice", "exact"}},
+        {"isde_directions", {"exact", "lattice"}},
     };
     return v;
 }

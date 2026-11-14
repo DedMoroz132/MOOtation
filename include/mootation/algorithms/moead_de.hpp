@@ -18,7 +18,7 @@
 //      the literal, position-independent σ_k, which may leave the box.
 //   3. Step 2.3 (repair): a component of the FINAL y outside the bounds Ω is
 //      reset to a RANDOM value inside the domain (ops::repair_out_of_box,
-//      DERepair::RandomReset).
+//      DERepair::RandomReset) — the letter; the default clips (MDE-6).
 //   4. Step 2.4: update z with the component-wise minimum of f(y).
 //   5. Step 2.5: up to n_r replacements — random j from P without replacement;
 //      if g(y|λ^j,z) ≤ g(x^j|λ^j,z): x^j ← y, FV^j ← F(y) by COPYING
@@ -40,8 +40,14 @@
 //   Step 2.3 then resets it to a uniform draw — the bounded PM never left the
 //   box (MDE-6).
 // Deviations:
-//   - MDE-6. Step 2.3's RANDOM RESET is the paper's and stays the default,
-//     but it is expensive: with CR = 1 every out-of-box gene of the final y
+//   - MDE-6 (DEVIATION; knob bound_repair, clip by default). Step 2.3's RANDOM
+//     RESET is the paper's letter, but the paper's own tables (LZ09 F2 and F9,
+//     UF3) are reproduced only by clipping to the bound. The owner's rule
+//     (2026-11-14): where the letter disagrees with the paper's own tables, the
+//     default is what reproduces the tables and the letter stays a knob. So
+//     the default clips since 2026-11-14, and bound_repair = random is Step
+//     2.3's letter, the default before. The random reset is expensive: with
+//     CR = 1 every out-of-box gene of the final y
 //     is replaced by a fresh uniform draw, and early in a run that is a large
 //     fraction of the genes — on a Pareto set at a bound it keeps throwing
 //     converged genes away. set_de_repair(ops::DERepair::Clip) selects
@@ -55,8 +61,8 @@
 //     current_to_pbest1, its x_pbest one of the ⌈de_p·|P|⌉ best of the
 //     mating range P by subproblem i's Tchebycheff value, de_p 0.1),
 //     de_index (wr, the default: two independent draws as Step 2.2 says; wor;
-//     wpr, the authors' C++ code), and bound_repair (random, the default,
-//     Step 2.3; clip, reflect, r_reflect; resample — ȳ drawn again, indices
+//     wpr, the authors' C++ code), and bound_repair (clip, the default, MDE-6;
+//     random, Step 2.3's letter; reflect, r_reflect; resample — ȳ drawn again, indices
 //     and all, while it leaves the box, at most resample_tries() times, then
 //     Step 2.3 clips). The paper of Tanabe & Ishibuchi repairs the mutant
 //     before the crossover; here Step 2.3 repairs the final y after the
@@ -102,12 +108,12 @@ private:
     double pm_          = -1.0;  // §IV-A-1: p_m = 1/n; <0 → auto 1/n
     double feas_penalty_= 1e6;   // extension beyond the paper (FEASIBILITY)
     bool   use_ep_      = false; // EP archive — beyond the paper, off by default
-    // Step 2.3 repair of the out-of-box genes of the final y: the paper's
-    // RANDOM RESET is the default; DERepair::Clip is PlatEMO/jMetal's clamping
-    // variant, exposed for experiments (see MDE-6 in the header).
+    // Step 2.3 repair of the out-of-box genes of the final y: clipping to the
+    // bound is the default since 2026-11-14 (MDE-6: the paper's tables); the
+    // paper's RANDOM RESET, its letter, is bound_repair = random.
     // bound_repair (2026-09-23): any of ops::BoundRepair but resample and
     // native; midpoint moves towards x^i.
-    ops::BoundRepair repair_ = ops::BoundRepair::Random;
+    ops::BoundRepair repair_ = ops::BoundRepair::Clip;
     // MDE-7: the DE mutation's strategy and index selection (de_mutation.hpp)
     ops::DEBase  base_  = ops::DEBase::Current1;
     ops::DEIndex index_ = ops::DEIndex::WR;

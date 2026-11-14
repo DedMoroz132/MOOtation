@@ -1206,8 +1206,9 @@ parent's value and the bound), `resample` (the operator draws that variable
 again, at most ten times, then clips), `wrap` (the box as a torus) or `native`
 (the rule the operator's own paper gives). Nine algorithms have an operator
 that can leave the box, and each keeps its own default: `moead_de`,
-`moead_dra` and `lis_lcs` (DE) `random`, the rule MOEA/D-DE's paper gives;
-`dcea`, `hlmea` and `naemo` `clip`, as their code always did; `liu_gu2011`,
+`moead_dra` and `lis_lcs` (DE) `clip` since 2026-11-14 (`random`, the rule
+MOEA/D-DE's paper gives, before: MDE-6, DRA-13, LIS-3); `dcea`, `hlmea` and
+`naemo` `clip`, as their code always did; `liu_gu2011`,
 `moead_m2m` and `moead_am2m` `native`, Liu & Li's own formula. DE refuses
 `resample` and `native`, Liu & Li's crossover `resample` (one scalar per
 offspring cannot redraw one variable). Every other core reports the knob as
@@ -1242,7 +1243,7 @@ params = { mutation = "gaussian", mutation_scale = 0.1, bound_repair = "reflect"
 | `pm_literal` | EDV: the polynomial mutation's probability per variable, `on` (the default): 1/pop_size, the letter of the paper's §4.2.4; `off`: 1/n_vars, the convention of the other cores (EDV-1, `edv.hpp`) |
 | `flag1`, `flag2` | NAEMO: polynomial mutation after the SBX branch (`flag1`) or after the DE branch (`flag2`), `off` by default; the paper turns `flag1` on for DTLZ3 and `flag2` on for DTLZ1 (§5.2; NAEMO-9, `naemo.hpp`) |
 | `noise_frac` | MaOEA-IAMD: the KPCM noise, a normal perturbation with σ = `noise_frac`·(ub − lb) on every variable of every offspring; 0.01 by default, the paper's variance 0.1 is 0.316 (MaOEA-IAMD-N, `maoea_iamd.hpp`) |
-| `fitness_reading` | IREA: Eq.7 with its arguments swapped and the smallest F kept (`swap`, the default), or IBEA's form, Eq.7 as printed with the largest F kept (`ibea`; IREA-1, `irea.hpp`) |
+| `fitness_reading` | IREA: IBEA's form, Eq.7 as printed with the largest F kept (`ibea`, the default since 2026-11-14; IREA-1, `irea.hpp`), or Eq.7 with its arguments swapped and the smallest F kept (`swap`, the default before) |
 | `extreme_weights` | MOEA/D-DS: the ASF weights of Eq.9's extreme points, which the DDS keeps in every generation — as in NSGA-III, 1 on the own axis (`nsga3`, the default; DDS-6), or the letter, 1e-6 on the own axis (`literal`; DDS-8, `moead_ds.hpp`) |
 | `nadir_source` | MOEA/D-DS: z_nad of Eq.10 from the intercepts of the hyperplane through the extreme points (`intercepts`, the default; DDS-2, DDS-6), or the maximum over an archive of every non-dominated objective vector of the run (`archive`; DDS-9, `moead_ds.hpp`), a guard against the points with one enormous objective that the intercepts put on the hyperplane |
 | `drs_guard` | MOEA/D-DS: the extreme points chosen from the whole set (`off`, the default), or among the points no other alpha-dominates (Ikeda et al. 2001, alpha = 0.01), for the hyperplane of the normalization (`normalize`) or for the extremes Q keeps (`extreme`; DDS-10, `moead_ds.hpp`) |
@@ -1261,7 +1262,7 @@ params = { mutation = "gaussian", mutation_scale = 0.1, bound_repair = "reflect"
 | `if_range` | IF-MaOEA: the range of its normalization (Eq.5), the minimum and maximum over the pool at hand (`pool`, the default; §2.3-A, IF-MaOEA-7) or Alg.1's persistent range, the nadir of the initial population and the ideal lowered by the offspring (`alg1`; IF-MaOEA-12, `if_maoea.hpp`) |
 | `nrv_archive` | NRV-MOEA: the archive's epsilon management as the port assumes it (`letter`, the default) or as PlatEMO's NRV-MOEA does it, on objectives normalized over the archive and with far members removed (`platemo`; NRV-3, `nrv_moea.hpp`) |
 | `nrv_pool` | NRV-MOEA: the selection pool P ∪ Q (`letter`, the default) or with the archive joined to it, as PlatEMO's NRV-MOEA (`platemo`; NRV-4) |
-| `isde_directions` | ISDE+RD: the number of subregions K rounded up to the nearest Das-Dennis lattice size (`lattice`, the default; ISDE-2) or honoured exactly by the deterministic sphere directions, as moead_m2m and sms_m2m build theirs (`exact`; ISDE-11, `isde_rd.hpp`) |
+| `isde_directions` | ISDE+RD: the number of subregions K honoured exactly by the deterministic sphere directions, as moead_m2m and sms_m2m build theirs (`exact`, the default since 2026-11-14; ISDE-11, `isde_rd.hpp`), or rounded up to the nearest Das-Dennis lattice size (`lattice`, the default before; ISDE-2) |
 | `step_share`, `F_spread` | EMyO/C only, the knobs that test its mechanism: the clamp of the difference vector, ±`step_share`·(ub − lb) (0.5, the paper's), and F drawn from U[F − `F_spread`, F + `F_spread`] per offspring (0; `F` is 1, no factor, as in the paper). With `bound_repair` (`clip`, the paper's Eq. 5) they take the exact hits of 0.5 and of the bounds apart (`emyo_c.hpp`) |
 | `sbx_var_prob` | SBX's share of crossed variables, 0.5 (the canonical realcross) or anything in [0, 1], for this run only; any core using SBX |
 | `sbx_bounds` | SBX's bound handling, for this run only; any core using SBX. `bounded` (the default): Deb's bounded SBX (nsga2.c realcross), a child always inside the box and never on its bound. `clip`: PlatEMO 4.16's form (`OperatorGA.m`, `OperatorGAhalf.m`) — the unbounded β of Deb & Agrawal 1995, then every variable clipped to the box after the crossover and before the mutation, so that a child outside lands on its bound (the optimum of ZDT and DTLZ6 lies on a bound). The polynomial mutation is the same in both (`operators/sbx.hpp`) |
