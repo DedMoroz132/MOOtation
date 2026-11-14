@@ -231,12 +231,15 @@ static void through_memetic()
                 off.objectives[0][0], on.hook_calls);
 }
 
-// the fit inside evaluate: a compass search of the parameters, deterministic
+// the fit inside evaluate: a compass search of the parameters, deterministic,
+// at most 200 trials (a short fit, as Kommenda et al.'s ten LM iterations;
+// without a cap it walked on and the test took minutes)
 static double fitted_error(const Grammar& g, Tree t)
 {
     std::vector<double> p = params_of(t);
     double best = error(g, t), step = 0.5;
-    while (step > 1e-4) {
+    int trials = 0;
+    while (step > 1e-4 && trials < 200) {
         bool moved = false;
         for (std::size_t k = 0; k < p.size(); ++k)
             for (double s : {step, -step}) {
@@ -244,6 +247,7 @@ static double fitted_error(const Grammar& g, Tree t)
                 q[k] += s;
                 set_params(t, q);
                 const double e = error(g, t);
+                ++trials;
                 if (e < best) {
                     best = e;
                     p = q;
