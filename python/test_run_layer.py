@@ -12493,6 +12493,262 @@ def a_campaign_of_the_task19_strategies_writes_the_same_files_from_both_engines(
 
 
 @test
+def lm_profiles_go_to_the_result_and_spend_none_of_the_budget():
+    """Task 28, §28.4 (scalar.hpp LOCAL-10): minimize(algorithm="lm",
+    profiles="all") profiles every parameter of the answer of a line fit:
+    the intervals x_hat +- sqrt(3.84 C_jj), the Jacobian's rank 2, the
+    profiles' evaluations apart; the answer and the counts as without
+    profiles; profiles = "list" with profile_params = [1] profiles x1 only."""
+    if _core_with("scalar") is None:
+        print("    (skipped: no extension)"); return
+    import math
+    import mootation
+    t = [0.1 * i for i in range(10)]
+    y = [1.0 + 2.0 * v + 0.01 * ((i * 7) % 5 - 2) for i, v in enumerate(t)]
+
+    def rr(x):
+        return [x[0] + x[1] * v - w for v, w in zip(t, y)]
+
+    def run(**k):
+        return mootation.minimize(None, [(-10.0, 10.0)] * 2, 1, algorithm="lm", residuals=rr, x0=[0.0, 0.0],
+                                  max_evaluations=2000, seed=1, **k)
+    a, b = run(), run(profiles="all")
+    sa, sb = dict(a.settings), dict(b.settings)
+    assert list(map(list, a.variables)) == list(map(list, b.variables)) and a.evaluations == b.evaluations, (a, b)
+    assert "profiles_json" not in sa and sb["profiles"] == "all" and sb["jacobian_rank"] == "2", sb
+    assert int(sb["profile_evaluations"]) > 0, sb
+    n, st, stt = len(t), sum(t), sum(v * v for v in t)       # C = (A^T A)^-1 of the design [1, t]
+    det = n * stt - st * st
+    C = [stt / det, n / det]
+    for e, c in zip(json.loads(sb["profiles_json"]), C):
+        half = math.sqrt(3.841458820694124 * c)
+        assert e["kind"] == "identifiable", e
+        assert abs(e["lower"] - (e["x"] - half)) < 1e-6 * half and abs(e["upper"] - (e["x"] + half)) < 1e-6 * half, e
+    one = dict(run(profiles="list", profile_params=[1]).settings)
+    assert [e["j"] for e in json.loads(one["profiles_json"])] == [1] and json.loads(one["profile_params"]) == [1], one
+
+
+@test
+def lm_on_a_subsample_of_the_residual_blocks():
+    """Task 28, §28.1 (scalar.hpp LOCAL-11, BS): minimize(algorithm="lm",
+    residual_blocks=..., lm_block_sample=...): frac with q = 1 is plain lm
+    bit for bit; count k = 2 of 4 on an exact model reaches it, its draws in
+    the settings and no saving; with residuals_blocks each call charged
+    half an evaluation, the answer the model's; a problem of one block
+    refused."""
+    if _core_with("scalar") is None:
+        print("    (skipped: no extension)"); return
+    import mootation
+    import math
+    t = [0.25 * i for i in range(20)]
+
+    def rr(x):
+        return [x[0] * math.exp(-x[1] * v) + x[2] - (2.0 * math.exp(-0.3 * v) + 0.5) for v in t]
+
+    def run(**k):
+        return mootation.minimize(None, [(-10.0, 10.0), (0.0, 5.0), (-10.0, 10.0)], 1, algorithm="lm",
+                                  residuals=rr, x0=[1.0, 1.0, 0.0], max_evaluations=3000, seed=1, **k)
+    blocks = dict(residual_blocks=[5, 5, 5, 5], block_weights=[1.0] * 4)
+    a = run(**blocks)
+    b = run(**blocks, lm_block_sample="frac", lm_block_size=1.0)
+    assert list(map(list, a.variables)) == list(map(list, b.variables)) and a.evaluations == b.evaluations, (a, b)
+    c = run(**blocks, lm_block_sample="count", lm_block_size=2)
+    sc = dict(c.settings)
+    assert c.objectives[0][0] < 1e-20 and sc["lm_block_k"] == "2" and int(sc["lm_resamples"]) > 0, sc
+    assert sc["lm_block_saving"] == "none", sc
+
+    def part(x, mask):                              # the drawn blocks alone (BS-6)
+        r = rr(x)
+        return [v if mask[i // 5] else 0.0 for i, v in enumerate(r)]
+    d = run(**blocks, residuals_blocks=part, lm_block_sample="count", lm_block_size=2)
+    sd = dict(d.settings)
+    assert sd["lm_block_saving"] == "hook" and float(sd["lm_block_spent"]) == 0.5 * int(sd["lm_block_calls"]), sd
+    assert d.objectives[0][0] < 1e-20, d.objectives
+    try:
+        run(lm_block_sample="count", lm_block_size=1)
+    except ValueError as e:
+        assert "BS-5" in str(e), str(e)
+    else:
+        raise AssertionError("lm_block_sample on one block not refused")
+
+
+@test
+def the_bootstrap_by_blocks_and_stacking():
+    """Task 28, §28.2, §28.3 (scalar/bootstrap.hpp, stacking.hpp) from
+    Python: 20 members of lm on a line of 100 one-row blocks — out of bag
+    near 1/e, the probes held out with a spread, one seed one ensemble;
+    every count 1 gives minimize's runs of seeds seed + 1 + k; stacking the
+    members' probe responses gives weights >= 0, and with sum_to_one their
+    sum 1; a member with no error takes the whole weight."""
+    if _core_with("scalar") is None:
+        print("    (skipped: no extension)"); return
+    import mootation
+    from mootation import scalar
+    t = [0.01 * i for i in range(100)]
+    y = [1.0 + 2.0 * v + 0.05 * (((i * 37) % 11) / 10.0 - 0.5) for i, v in enumerate(t)]
+
+    def rr(x):
+        return [x[0] + x[1] * v - w for v, w in zip(t, y)]
+    box = [(-10.0, 10.0)] * 2
+    kw = dict(members=20, seed=4, max_evaluations=2000, x0=[0.0, 0.0], probe=[0, 99])
+    a = scalar.bootstrap_fit("lm", rr, box, [1] * 100, **kw)
+    b = scalar.bootstrap_fit("lm", rr, box, [1] * 100, **kw)
+    assert a == b, "one seed one ensemble"
+    assert abs(a["oob_share"] - (1 - 1 / 98) ** 98) < 0.03 and a["extra_evaluations"] == 20, a["oob_share"]
+    assert all(m["counts"][0] == 0 and m["counts"][99] == 0 for m in a["members"])
+    assert len(a["probe_sd"]) == 2 and min(a["probe_sd"]) > 0.0, a["probe_sd"]
+    u = scalar.bootstrap_fit("lm", rr, box, [1] * 100, members=2, seed=4, max_evaluations=2000, x0=[0.0, 0.0],
+                             unit_counts=True)
+    for k, m in enumerate(u["members"]):
+        r = mootation.minimize(None, box, 1, algorithm="lm", residuals=rr, x0=[0.0, 0.0], max_evaluations=2000,
+                               seed=5 + k, residual_blocks=[1] * 100, block_weights=[1.0] * 100)
+        assert m["x"] == list(r.variables[0]) and m["evaluations"] == r.evaluations, (m, r)
+    Yhat = [[m["probe_r"][i] + y[j] for m in a["members"]] for i, j in enumerate((0, 99))]
+    st = scalar.stack(Yhat, [y[0], y[99]])
+    assert min(st["alpha"]) >= 0.0 and st["method"] == "nnls", st
+    one = scalar.stack(Yhat, [y[0], y[99]], sum_to_one=True)
+    assert abs(sum(one["alpha"]) - 1.0) < 1e-5 and one["method"] == "nnls_penalty", one   # 2 rows < 20 members (STK-2)
+    exact = scalar.stack([[v + 1.0, v, v * v] for v in y], y)   # the second alone fits
+    assert abs(exact["alpha"][1] - 1.0) < 1e-12 and exact["alpha"][0] < 1e-12 and exact["alpha"][2] < 1e-12, exact
+
+
+@test
+def continuous_symmetries_align_and_check_the_gauge():
+    """Task 28, §28.5 (continuous_symmetry.hpp) from Python: the scaling
+    gauge (p, q, r) -> (p e^g, q e^-g, r) — x and its image at distance 0,
+    g found; three points permuted and turned (sym_blocks and a rotation)
+    at distance 0; the tangent at g = 0 in the gauge basis' span."""
+    if _core_with("scalar") is None:
+        print("    (skipped: no extension)"); return
+    import math
+    from mootation import scalar
+
+    def scale(x, g):
+        return [x[0] * math.exp(g[0]), x[1] * math.exp(-g[0]), x[2]]
+    x = [2.0, 0.5, 1.5]
+    a = scalar.align_continuous(x, scale(x, [0.7]), 1, scale,
+                                gauge_basis=lambda v: [[v[0]], [-v[1]], [0.0]])
+    assert a["distance"] < 1e-7 and abs(a["g"][0] - 0.7) < 1e-7 and a["max_sine"] < 1e-8, a
+
+    def turn(x, g):
+        c, s = math.cos(g[0]), math.sin(g[0])
+        return [v for i in range(0, len(x), 2) for v in (c * x[i] - s * x[i + 1], s * x[i] + c * x[i + 1])]
+    p = [1.0, 0.0, 0.0, 2.0, -1.5, -0.5]
+    y = turn(p[4:] + p[:4], [0.3])
+    b = scalar.align_continuous(p, y, 1, turn, sym_blocks=[(0, 2, 3)])
+    assert b["distance"] < 1e-7, b
+
+
+_TASK28_BLOCKS_TOML = """[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 3
+problems = ["sumexp_K3_r4_snr1e3_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 600
+storage = "store"
+[[algorithms]]
+name = "lm"
+pop = 0
+gens = 0
+params = { lm_block_sample = "frac", lm_block_size = 0.5 }
+"""
+
+
+@test
+def a_campaign_of_lm_on_block_subsamples_is_the_same_on_one_and_two_workers():
+    """Task 28, §28.1: lm with lm_block_sample in a campaign of three seeds:
+    the C++ engine on one worker and on two, and the Python engine, write the
+    same files (the draws come from each run's own generator)."""
+    import contextlib
+    import io
+    from mootation.run import campaign as C
+    if C.engine_path() is None or not _have_numpy() or _core_with("so_metrics") is None:
+        print("  skip  a_campaign_of_lm_on_block_subsamples...: no C++ engine or _core.so_metrics"); return
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine, workers in (("p", "python", 1), ("c1", "cxx", 1), ("c2", "cxx", 2)):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_TASK28_BLOCKS_TOML.replace("NAME", name), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            said = io.StringIO()
+            with contextlib.redirect_stderr(said):
+                made[name] = (root, jobs, C.run_campaign(cfg, workers=workers, engine=engine))
+        (rp, jobs, cp), (r1, _, c1), (r2, _, c2) = made["p"], made["c1"], made["c2"]
+        assert len(jobs) == 3 and cp["done"] == c1["done"] == c2["done"] == 3, (cp, c1, c2)
+        for job in jobs:
+            _same_run(C.run_dir_of(rp, job), C.run_dir_of(r1, job))
+            _same_run(C.run_dir_of(r1, job), C.run_dir_of(r2, job))
+            m = json.loads((C.run_dir_of(r1, job) / "meta.json").read_text(encoding="utf-8"))
+            assert m["fe"] <= 600 and m["params"]["lm_block_sample"] == "frac", m
+
+
+_TASK28_PROFILES_TOML = """[run]
+name = "NAME"
+[problem]
+kind = "builtin"
+[benchmarks]
+runs = 1
+problems = ["sumexp_K3_r4_snr1e3_1D"]
+[campaign]
+out = "res/{name}"
+budget_fe = 500
+storage = "store"
+[[algorithms]]
+name = "lm"
+pop = 0
+gens = 0
+params = { profiles = "list", profile_params = [0, 1] }
+"""
+
+
+@test
+def a_campaign_of_lm_with_profiles_writes_the_same_files_from_both_engines():
+    """Task 28, §28.4: lm with profiles = "list" in a campaign of both
+    engines: the same files; meta.json's so.profiles holds the Jacobian's
+    rank, the two parameters' profiles and their evaluations, counted apart
+    from fe; report_so's identifiability table reads it."""
+    import contextlib
+    import io
+    from mootation.run import campaign as C
+    from mootation.run import report_so
+    if C.engine_path() is None or not _have_numpy() or _core_with("so_metrics") is None:
+        print("  skip  a_campaign_of_lm_with_profiles...: no C++ engine or _core.so_metrics"); return
+    from mootation.run.config import load
+    with tempfile.TemporaryDirectory() as td:
+        made = {}
+        for name, engine in (("p", "python"), ("c", "cxx")):
+            path = Path(td) / f"{name}.toml"
+            path.write_text(_TASK28_PROFILES_TOML.replace("NAME", name), encoding="utf-8")
+            cfg = load(path)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            root, jobs = C.out_root(cfg, spec), C.expand_jobs(cfg, spec)
+            said = io.StringIO()
+            with contextlib.redirect_stderr(said):
+                made[name] = (root, jobs, C.run_campaign(cfg, workers=1, engine=engine))
+            if engine == "cxx":
+                assert "left to the Python engine" not in said.getvalue(), said.getvalue()
+        (rp, jobs, cp), (rc, _, cc) = made["p"], made["c"]
+        assert len(jobs) == 1 and cp["done"] == cc["done"] == 1, (cp, cc)
+        a, b = C.run_dir_of(rp, jobs[0]), C.run_dir_of(rc, jobs[0])
+        _same_run(a, b)
+        m = json.loads((a / "meta.json").read_text(encoding="utf-8"))
+        pr = m["so"]["profiles"]
+        assert m["fe"] <= 500 and pr["evaluations"] > 0 and [e["j"] for e in pr["params"]] == [0, 1], m
+        assert isinstance(pr["rank"], int) and m["params"]["profile_params"] == [0, 1], m
+        table = report_so.identifiability(report_so.runs(rp))
+        assert list(table.values())[0]["params"] == 2, table
+
+
+@test
 def a_campaign_of_a_strategy_writes_the_same_files_from_both_engines():
     """Task 18, stage 3, §3.4: a strategy in a campaign, its inner solver a
     TOML table; both engines write the same files (meta.json with the

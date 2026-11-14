@@ -39,7 +39,12 @@ stage 1; scalar.hpp, run_local; LOCAL-1 to LOCAL-4):
                problem's residuals; Moré 1978; lm_gauge = on: the step off the
                problem's gauge_basis, task 19); lm_max_iter, lm_failed,
                lm_geodesic, lm_geodesic_alpha, lm_geodesic_h (task 25, LOCAL-8),
-               lm_varpro (with minimize's linear; LOCAL-9)
+               lm_varpro (with minimize's linear; LOCAL-9);
+               profiles, profile_params,
+               lm_rank (the profiles and the Jacobian's rank at the answer,
+               task 28, §28.4); lm_block_sample, lm_block_size,
+               lm_resample_every, lm_block_reweight (a subsample of the
+               residual blocks, task 28, §28.1)
   lbfgsb       lbfgsb_m, lbfgsb_pgtol, lbfgsb_ftol (Byrd, Lu, Nocedal, Zhu 1995)
   eki          eki_ensemble, eki_init, eki_sigma0, eki_gamma, eki_perturb,
                eki_noise, eki_tau (the residuals; ensemble Kalman inversion,
@@ -197,12 +202,51 @@ class ScalarResult:
                                     max_steps=int(max_steps))
 
 
+def stack(Yhat, y, w=None, *, sum_to_one: bool = False) -> dict:
+    """Stacking (task 28, §28.3; scalar/stacking.hpp): the weights alpha >= 0
+    of K members' out-of-sample responses Yhat (m rows of K) that fit the data
+    y best (NNLS; LeBlanc & Tibshirani 1996, Breiman 1996), with sum_to_one
+    their sum 1 as well. Returns {"alpha", "rss", "method"}."""
+    return _module().stack([list(map(float, r)) for r in Yhat], [float(v) for v in y],
+                           None if w is None else [float(v) for v in w], bool(sum_to_one))
+
+
+def bootstrap_fit(method: str, residuals, bounds, residual_blocks, *, members: int = 20, seed: int = 0,
+                  max_evaluations: int, block_weights=None, jac=None, x0=None, probe=None,
+                  mode: str = "whole_pipeline", unit_counts: bool = False, **knobs) -> dict:
+    """The bootstrap by residual blocks (task 28, §28.2; scalar/bootstrap.hpp):
+    `members` runs of `method` with the blocks resampled with replacement (a
+    block's weight times its draws), each with its out-of-bag error and its
+    residuals on the `probe` blocks (held out of every member), and their
+    mean and spread. mode = "whole_pipeline" reruns the whole method;
+    "refit" starts every member from a plain fit's answer."""
+    from ..run.knobs import canonical
+    return _module().bootstrap(
+        method, residuals, jac, [(float(a), float(b)) for a, b in bounds], [int(b) for b in residual_blocks],
+        None if block_weights is None else [float(w) for w in block_weights], int(max_evaluations),
+        {k: (canonical(v) if isinstance(v, (dict, list)) else v) for k, v in knobs.items()}, int(members),
+        int(seed), None if probe is None else [int(b) for b in probe], mode,
+        None if x0 is None else [float(v) for v in x0], bool(unit_counts))
+
+
+def align_continuous(x, y, group_dim: int, group_act, *, sym_blocks=None, gauge_basis=None) -> dict:
+    """Continuous symmetries (task 28, §28.5; scalar/continuous_symmetry.hpp):
+    x moved along the group group_act(x, g) (g of group_dim values, g = 0 the
+    identity), after the permutations of sym_blocks, as close to y as it goes;
+    {"x", "g", "distance", "passes"} and, with gauge_basis(x) (n rows of k),
+    the tangent check {"tangent_rank", "gauge_rank", "max_sine"}."""
+    return _module().align_continuous(
+        [float(v) for v in x], [float(v) for v in y], int(group_dim), group_act,
+        None if sym_blocks is None else [tuple(int(v) for v in b) for b in sym_blocks], gauge_basis)
+
+
 def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, eq_tol: float,
         eq_tol0, pop_size: int, budget: int, seed: int, knobs: dict, on_generation=None,
         record_every: int = 0, init: str = "uniform", init_share: float = 0.0,
         seed_points=None, unique_count=None, guard=None, grad=None, residuals=None, jac=None,
         x0=None, gauge_basis=None, f_stop=None, sym_blocks=None, canon=None, align=None, res_blocks=None,
-        res_weights=None, discrete=None, linear=None, cat_levels=None):
+        res_weights=None, discrete=None, linear=None, cat_levels=None, residuals_blocks=None, group_dim=0,
+        group_act=None):
     from ..run.knobs import canonical
     core = _module()
     design = None
@@ -229,7 +273,10 @@ def run(name, fn, constraints, *, bounds, n_objs: int, n_cons: int, n_eq: int, e
                  res_weights=None if res_weights is None else [float(w) for w in res_weights],
                  discrete=None if discrete is None else [[float(v) for v in d] for d in discrete],
                  linear=None if linear is None else [int(i) for i in linear],
-                 cat_levels=None if cat_levels is None else [int(k) for k in cat_levels])
+                 cat_levels=None if cat_levels is None else [int(k) for k in cat_levels],
+                 **({} if residuals_blocks is None else {"residuals_blocks": residuals_blocks}),
+                 **({} if group_act is None and not group_dim else {"group_dim": int(group_dim),
+                                                                    "group_act": group_act}))
     n_failed = guard.n_failed if guard is not None else d["n_failed"]
     unique = unique_count() if unique_count is not None else d["evaluations"]
     return ScalarResult(d, d["ignored"], n_failed, eq_tol if n_eq else 0.0, unique)

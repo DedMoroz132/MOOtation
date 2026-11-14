@@ -106,7 +106,7 @@ inline const std::vector<std::string>& knob_names() {
         // task 15, §2 and §6
         "n_offspring", "n_ref_points", "ada",
         // task 18, stage 1: the single-objective algorithms (scalar/scalar.hpp)
-        "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
+        "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lm_block_size", "lm_resample_every", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
         // task 18, stage 4: the population methods (scalar/scalar.hpp, run_population)
         "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
         // VERIFY2 of 2026-11-02: MaOEA-IAMD's KPCM noise (MaOEA-IAMD-N)
@@ -211,7 +211,7 @@ inline bool is_core_param(const std::string& name)
                           "mosqp_tau", "mosqp_mu", "mosqp_beta", "mosqp_spread",
                           "n_samples", "hv_exact_max_m", "race_eps", "race_delta",
                           "race_max_samples", "race_abs_tol", "hv_incremental",
-                          "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
+                          "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lm_block_size", "lm_resample_every", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
                           "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
                           "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau",
                           "lm_max_iter", "lm_geodesic_alpha", "lm_geodesic_h", "cma_eigen_every", "cma_margin_alpha",
@@ -304,6 +304,14 @@ inline bool is_core_param(const std::string& name)
 //                 the single-objective solvers of task 19 (scalar/scalar.hpp):
 //                 Nelder-Mead's coefficients, lm's step off a gauge basis,
 //                 eki's initial ensemble and perturbed data; no core has them
+//   profiles      lm: the profiles of its answer (off, the default; all; list,
+//                 the parameters of the JSON knob profile_params; task 28,
+//                 §28.4, scalar.hpp LOCAL-10); lm_rank (off, the default; on:
+//                 the Jacobian's rank at its answer, PRF-6)
+//   lm_block_sample, lm_block_reweight
+//                 lm: its residuals on a random subsample of the residual
+//                 blocks (off, the default; frac; count) and their weight
+//                 (on, the default; off; task 28, §28.1, scalar.hpp LOCAL-11)
 //   edv_tournament
 //                 edv: the binary tournament over EA by the Eq.4 fitness
 //                 (fitness, the default) or at random, as jMetal's among
@@ -424,6 +432,10 @@ inline const std::vector<std::pair<std::string, std::vector<std::string>>>& text
         {"lm_geodesic",  {"off", "on"}},
         {"cma_margin",   {"off", "on"}},
         {"lm_varpro",    {"off", "on", "kaufman"}},
+        {"profiles",     {"off", "all", "list"}},
+        {"lm_block_sample", {"off", "frac", "count"}},
+        {"lm_block_reweight", {"on", "off"}},
+        {"lm_rank",      {"off", "on"}},
         {"eki_init",     {"around", "sobol", "lhs"}},
         {"eki_perturb",  {"yes", "no"}},
         {"kpcm_pm",      {"off", "on"}},
@@ -481,7 +493,7 @@ inline const std::vector<std::string>& solver_knobs()
 // array's canonical JSON text (keys sorted, no spaces), as a solver table.
 inline const std::vector<std::string>& json_knobs()
 {
-    static const std::vector<std::string> v{"dc_stages", "pap_members"};
+    static const std::vector<std::string> v{"dc_stages", "pap_members", "profile_params"};
     return v;
 }
 
@@ -501,6 +513,7 @@ inline bool is_core_word(const std::string& name)
                           "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
                           "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
                           "lm_failed", "lm_geodesic", "cma_margin", "lm_varpro",
+                          "profiles", "lm_block_sample", "lm_block_reweight", "lm_rank",
                           "cma_weights", "cma_cmu", "cma_stop", "cma_stagnation", "start_points", "cma_bounds",
                           "ils_accept",
                           "memetic_pick", "keep_points", "sym",

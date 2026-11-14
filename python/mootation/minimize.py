@@ -36,7 +36,7 @@ PARAM_KNOBS = ("ref_delta", "de_p", "de_memory", "p_de", "sa_chains", "sa_reseed
                "sub_budget", "fd_step",
                "local_tol", "cma_sigma0", "eps_objective", "n_samples", "hv_exact_max_m",
                "race_eps", "race_delta", "race_max_samples", "race_abs_tol", "hv_incremental",
-               "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
+               "n_offspring", "n_ref_points", "ada", "grad_cost", "lm_ftol", "lm_xtol", "lm_gtol", "lm_f_scale", "lm_block_size", "lm_resample_every", "lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol",
                "np", "jade_p", "jade_c", "shade_h", "shade_p_max", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "ga_tournament", "g3_mu", "g3_lambda", "g3_sigma", "chc_divergence", "chc_bits", "pso_phi", "spso_k",
                "noise_frac", "eki_ensemble", "eki_sigma0", "eki_gamma", "eki_noise", "eki_tau", "n_starts",
                "lm_max_iter", "lm_geodesic_alpha", "lm_geodesic_h", "cma_eigen_every", "cma_margin_alpha",
@@ -59,6 +59,7 @@ WORD_KNOBS = ("de_adapt", "de_adapt_weight", "de_archive", "de_base", "de_index"
               "pm_literal", "flag1", "flag2", "fitness_reading", "extreme_weights", "slot_exclusive",
               "nm_coefficients", "lm_gauge", "eki_init", "eki_perturb", "kpcm_pm", "edv_tournament",
               "lm_failed", "lm_geodesic", "cma_margin", "lm_varpro",
+              "profiles", "lm_block_sample", "lm_block_reweight", "lm_rank",
               "cma_weights", "cma_cmu", "cma_stop", "cma_stagnation", "start_points", "cma_bounds", "ils_accept", "memetic_pick", "keep_points", "sym",
               "cv_rule", "cv_norm",
               "nadir_source",
@@ -73,7 +74,7 @@ POLISH_KNOBS = ("polish", "polish_share", "polish_points")
 SOLVER_KNOBS = ("inner", "local_solver")
 # Knobs whose value is a JSON array (task 19, §19.6): data_continuation's
 # stages, pap's members; handed over as its canonical JSON text.
-JSON_KNOBS = ("dc_stages", "pap_members")          # settings.hpp, json_knobs()
+JSON_KNOBS = ("dc_stages", "pap_members", "profile_params")   # settings.hpp, json_knobs()
 
 
 def direct_path(fn, *, native: str = "auto", algorithm: str = "nsga2", constraints=None,
@@ -224,6 +225,9 @@ def minimize(
     residual_blocks=None,
     block_weights=None,
     linear=None,
+    residuals_blocks=None,
+    group_dim: int = 0,
+    group_act=None,
     **knobs,
 ):
     """Minimize `fn` over `bounds` and return the final population.
@@ -453,6 +457,17 @@ def minimize(
                 blocks and their weights (task 18's contract 1a: the objective
                 1/2 sum_b w_b ||r_b||^2), for the single-objective algorithms;
                 data_continuation's stages (dc_stages) weigh the same blocks.
+    residuals_blocks
+                residuals_blocks(x, mask): the residuals of the blocks whose
+                mask entry is True alone (the others' entries 0), for lm's
+                lm_block_sample (task 28, §28.1; scalar.hpp BS-6): a call is
+                charged its blocks' share of the residuals in the budget.
+    group_dim, group_act
+                a continuous group acting on x (task 28, §28.5;
+                continuous_symmetry.hpp): group_act(x, g), g of group_dim
+                values, g = 0 the identity, f(group_act(x, g)) = f(x); the
+                strategies' distance between minima is then taken after
+                aligning along it (hooks.hpp distance_of).
     **knobs     any of KNOBS. A knob the chosen algorithm does not have is
                 reported in `result.ignored` rather than dropped.
 
@@ -464,10 +479,14 @@ def minimize(
         return _blocks_as_objectives(dict(locals()))
     if (residual_blocks is not None or block_weights is not None) and residuals is None:
         raise ValueError("residual_blocks and block_weights go with residuals")
+    if residuals_blocks is not None and residual_blocks is None:
+        raise ValueError("residuals_blocks goes with residuals and residual_blocks")
     if block_weights is not None and residual_blocks is None:
         raise ValueError("block_weights go with residual_blocks")
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
     if wrap is not None:
+        if residuals_blocks is not None or group_act is not None:
+            raise ValueError("wrap: not with residuals_blocks or group_act (task 28)")
         if sym_blocks is not None or canon is not None or align is not None:
             raise ValueError("wrap: not with sym_blocks, canon or align (a wrapper does not carry "
                              "symmetries; suite/wrap.hpp WRAP-7)")
@@ -494,7 +513,8 @@ def minimize(
     derivatives = [k for k, v in (("grad", grad), ("residuals", residuals), ("jac", jac),
                                   ("x0", x0), ("gauge_basis", gauge_basis), ("sym_blocks", sym_blocks),
                                   ("canon", canon), ("align", align), ("residual_blocks", residual_blocks),
-                                  ("linear", linear))
+                                  ("linear", linear),
+                                  ("residuals_blocks", residuals_blocks), ("group_act", group_act))
                    if v is not None]
     lsq = (residuals, jac, bounds) if residuals is not None else None   # result.profile's
     if derivatives and algorithm not in SINGLE:
@@ -846,7 +866,8 @@ def minimize(
                 unique_count=lambda: points.count, guard=guard, grad=grad,
                 residuals=residuals, jac=jac, x0=x0, gauge_basis=gauge_basis, f_stop=f_stop,
                 sym_blocks=sym_blocks, canon=canon, align=align, res_blocks=residual_blocks,
-                res_weights=block_weights, discrete=so_discrete, linear=linear, cat_levels=cat_levels)
+                res_weights=block_weights, discrete=so_discrete, linear=linear, cat_levels=cat_levels,
+                residuals_blocks=residuals_blocks, group_dim=group_dim, group_act=group_act)
             result._lsq = lsq
             result = _polished(result)
             if so_discrete is not None and int_repair == "lamarck":   # SO-VT: the answer decoded

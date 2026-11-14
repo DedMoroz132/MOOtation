@@ -104,7 +104,11 @@ set(MOOTATION_TESTS
     test_cluster_ga
     test_param
     test_discriminate
-    test_catcma_run)
+    test_catcma_run
+    test_lm_profiles_run
+    test_lm_block_sample
+    test_ensembles
+    test_continuous_symmetry)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

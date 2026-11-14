@@ -219,6 +219,10 @@ struct Problem {
     std::function<void(const Vec& x, Vec& r, Rows& J)> residuals_jac;
     std::vector<int> blocks;          // the residual blocks' sizes (sum n_res); empty: one block
     std::vector<double> weights;      // a weight per block; empty: 1
+    // the residuals of the blocks marked in mask (one char a block) alone, the
+    // others' entries 0 (task 28, §28.1; scalar.hpp BS-6): lm_block_sample
+    // then evaluates a subsample by it, charged its share of n_res
+    std::function<void(const Vec& x, const std::vector<char>& mask, Vec& r)> residuals_blocks;
     // the directions along which the residuals do not change to first order,
     // n rows of k (task 19, §19.3.1; lm with lm_gauge = on)
     std::function<void(const Vec& x, Rows& N)> gauge_basis;
@@ -312,6 +316,11 @@ struct Problem {
     // the levels K of each of the last cat_levels.size() variables, whose
     // values are the category's index 0 ... K - 1 (empty: every variable real)
     std::vector<int> cat_levels;
+    // CONTINUOUS SYMMETRIES (task 28, §28.5; continuous_symmetry.hpp; off by
+    // default): a group acting on x, g in R^group_dim, g = 0 the identity,
+    // f(group_act(x, g)) = f(x); distance_of then aligns along it
+    int group_dim = 0;
+    std::function<void(const Vec& x, const Vec& g, Vec& out)> group_act;
 
     bool has_residuals() const { return residuals || residuals_jac; }
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }
@@ -382,6 +391,8 @@ public:
     bool cache_capped = false;         // ... or by CACHE-6
     long long delta_calls = 0;         // THE DELTA: the hook's calls,
     double delta_spent = 0.0;          // ... their declared cost in the budget
+    long long block_calls = 0;         // residuals_blocks' calls (scalar.hpp BS-6),
+    double block_spent = 0.0;          // ... their shares of n_res in the budget
 
     Evaluator(const Problem& p, double eq_tol, bool has_eq_tol0, double eq_tol0_, long long budget_,
               int pop_size_, Observer obs, int record_every)
@@ -495,11 +506,20 @@ public:
         return F[index(y)][0] - fx;
     }
 
+    // a call of residuals_blocks (task 28, §28.1; scalar.hpp BS-6): share of
+    // an evaluation charged (BudgetSpent where it does not fit) and counted
+    void spend_blocks(double share)
+    {
+        charge(share);
+        ++block_calls;
+        block_spent += share;
+    }
+
     // What the budget is spent by: evaluations + grad_cost * grad_calls.
     double used() const
     {
         return static_cast<double>(spent) + grad_cost * static_cast<double>(grad_calls) + success_spent + hook_spent +
-               delta_spent;
+               delta_spent + block_spent;
     }
 
     // ── gradients (SO-2) ────────────────────────────────────────────────────

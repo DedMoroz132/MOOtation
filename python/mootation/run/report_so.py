@@ -420,6 +420,32 @@ def profiles_table(rs: list) -> dict:
     algs = sorted({a for row in costs.values() for a in row})
     costs = {p: {a: row.get(a, math.inf) for a in algs} for p, row in costs.items()}
     return profiles.summary(costs) if costs else {"problems": 0, "ratios": {}, "solvers": {}}
+def identifiability(rs: list) -> dict:
+    """lm's profiles of the best points (task 28, §28.4; meta.json so.profiles):
+    by (problem, algorithm) the runs with profiles, the Jacobian's rank's
+    distribution {rank: runs}, and over their profiled parameters the share
+    not identifiable (practical or structural) and the share structural
+    (a flat profile). Runs without profiles are left out; {} when none has."""
+    out = {}
+    for r in rs:
+        pr = r["so"].get("profiles")
+        if not pr:
+            continue
+        cell = out.setdefault((r["problem"], r["algorithm"]),
+                              {"runs": 0, "rank": {}, "params": 0, "non_identifiable": 0, "structural": 0})
+        cell["runs"] += 1
+        if "rank" in pr:
+            cell["rank"][pr["rank"]] = cell["rank"].get(pr["rank"], 0) + 1
+        for e in pr.get("params", []):
+            cell["params"] += 1
+            cell["non_identifiable"] += e["kind"] != "identifiable"
+            cell["structural"] += e["kind"] == "structural"
+    for cell in out.values():
+        n = cell["params"]
+        cell["non_identifiable"] = cell["non_identifiable"] / n if n else None
+        cell["structural"] = cell["structural"] / n if n else None
+        cell["rank"] = dict(sorted(cell["rank"].items()))
+    return dict(sorted(out.items()))
 
 
 def _g(v) -> str:
@@ -461,6 +487,14 @@ def report(root: Path, *, alpha: float = 0.05, problems=None, simulated: int = 0
                      f"cost {_g(cell['cost'])}")
     for a, row in conf["algorithms"].items():
         lines.append(f"- {a}: typ M_95 = {row['typ']:g}, spread M_95 = {row['spread']:g} ({row['problems']} problems)")
+    ident = identifiability(rs)
+    if ident:                                   # task 28, §28.4: only where some run has lm's profiles
+        lines += ["", "## Identifiability at the best points (lm's profiles): rank (runs); share of the "
+                      "parameters not identifiable / structural", ""]
+        for (p, a), cell in ident.items():
+            ranks = ", ".join(f"{k}: {v}" for k, v in cell["rank"].items())
+            lines.append(f"- {p} | {a}: rank {ranks} of {cell['runs']} runs; {cell['params']} parameters, "
+                         f"{_g(cell['non_identifiable'])} / {_g(cell['structural'])}")
     if simulated > 0:
         lines += ["", f"## Simulated restarts, {simulated} samples: runtime p10 / p50 / p90 (mean)", ""]
         for (p, a), cell in simulated_table(rs, n=simulated).items():

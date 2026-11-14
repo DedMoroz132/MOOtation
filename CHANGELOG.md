@@ -86,6 +86,24 @@ always listed under **Changed** or **Removed**.
   a model off an error-against-parameters front (eps-economy, the knee by
   Branke et al.'s utility measure, BIC with k the rank). Reports only: no
   run changes.
+- Added (task 28, everything off by default, runs as before bit for bit):
+  - §28.4: lm's `profiles = all | list` (+ `profile_params`) and `lm_rank`:
+    lm.hpp's profiles and the Jacobian's rank at the answer, outside the
+    budget, counted apart; campaigns' meta.json `so.profiles` in both
+    engines; report_so's identifiability table (scalar.hpp LOCAL-10, PRF);
+  - §28.1: lm on a random subsample of the residual blocks
+    (`lm_block_sample = frac | count`, `lm_block_size`,
+    `lm_resample_every`, `lm_block_reweight`), lm.hpp's `Options::resample`
+    (LMS-1), the problem's optional `residuals_blocks(x, mask)` charged its
+    share (LOCAL-11, BS);
+  - §28.2, §28.3: `scalar/bootstrap.hpp` (the bootstrap by residual blocks,
+    out-of-bag errors, probe blocks; BT) and `scalar/stacking.hpp`
+    (nonnegative stacking weights by NNLS, sum to one by LSEI; STK), from
+    Python `mootation.scalar.bootstrap_fit` and `stack`;
+  - §28.5: continuous symmetries, `Problem::group_dim`, `group_act`;
+    `scalar/continuous_symmetry.hpp` (`align_continuous`, `tangent_check`;
+    CS); `distance_of` aligns along the group where it is given; from
+    Python `minimize(group_dim=, group_act=)`, `mootation.scalar.align_continuous`.
 - Added (task 24, §24.1.3, §24.1.4, §24.1.6): the problem's hooks for the
   strategies over minima, in C++: `scalar::Problem::perturb`, `distance`,
   `contributions`, `canon_key`, `cache = off | exact | canon` (a structure

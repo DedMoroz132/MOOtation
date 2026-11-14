@@ -120,6 +120,18 @@ def _peaks(p, res, so) -> dict:
                       "n_global": int(info["n_global"])}}
 
 
+def _profiles(res) -> dict:
+    """lm's profiles of its answer (task 28, §28.4; scalar.hpp LOCAL-10):
+    {rank, params, evaluations, jacobians} as job_so.hpp's profiles_of."""
+    s, out = dict(res.settings), {}
+    for key, name, conv in (("jacobian_rank", "rank", int), ("profiles_json", "params", json.loads),
+                            ("profile_evaluations", "evaluations", int), ("rank_evaluations", "evaluations", int),
+                            ("profile_jacobians", "jacobians", int), ("rank_jacobians", "jacobians", int)):
+        if key in s:
+            out[name] = conv(s[key])
+    return {"profiles": out} if out else {}
+
+
 def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, *, quiet: bool) -> str:
     import numpy as np
     from .. import __version__, _core, minimize
@@ -201,12 +213,18 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
     # round's end where a strategy's start runs in a thread (strategy.hpp,
     # THE DEFERRED COUNT; job_so.hpp the same)
     defer = getattr(_core.scalar, "defer", None)
+    in_profiles = getattr(_core.scalar, "in_profiles", None)   # lm's profiles: not the run's (PRF-1)
 
     def account(X, F):
+        if in_profiles is not None and in_profiles():
+            return
         if defer is None or not defer(lambda: account_now(X, F)):
             account_now(X, F)
 
     def count_grad():
+        if in_profiles is not None and in_profiles():
+            return
+
         def one():
             nonlocal grad_calls
             grad_calls += 1
@@ -324,7 +342,8 @@ def run_job_so(job, spec, d: Path, meta_path: Path, traj_path: Path, put_table, 
             **({"stop_at": spec.stop_at} if spec.stop_at > 0 else {}),
             **({"restarts": json.loads(dict(res.settings)["restarts"])}
                if spec.keep_restarts and "restarts" in dict(res.settings) else {}),
-            **({"wrap": wrap} if wrap is not None else {})},
+            **({"wrap": wrap} if wrap is not None else {}),
+            **_profiles(res)},
         final=({} if best is None else {"f": best[2], "delta_f": delta(best[2]), "cv": best[3],
                                          "fe_best": best[0], "grad_calls_best": best[1]}),
         finished=time.strftime("%Y-%m-%dT%H:%M:%S"), seconds=round(time.perf_counter() - t0, 3))

@@ -112,6 +112,7 @@ public:
             if (spec_.keep_restarts)                     // [campaign] keep_restarts: ipop, bipop, bipop_2009's runs
                 for (const auto& [k, v] : res.settings)
                     if (k == "restarts") restarts_ = json::parse(v);
+            profiles_ = profiles_of(res);                // task 28, §28.4 (lm's profiles = all | list)
             repairs_ = res.repairs;
             success_calls_ = res.success_calls;                  // task 24, §24.1.5
             success_spent_ = res.success_spent;
@@ -209,6 +210,7 @@ public:
         if (spec_.stop_at > 0.0) s.set("stop_at", V::number(spec_.stop_at));
         if (restarts_.kind == V::Kind::Array) s.set("restarts", restarts_);
         if (wrapped_) s.set("wrap", wrap_meta());
+        if (profiles_.kind == V::Kind::Object) s.set("profiles", profiles_);
         if (spec_.success == "user") {                   // task 24, §24.1.5: the problem's own measure
             V u = V::object();
             u.set("calls", V::integer(success_calls_));
@@ -365,6 +367,7 @@ private:
     // THE DEFERRED COUNT)
     void account(const std::vector<double>& x, double f)
     {
+        if (scalar::in_profiles()) return;           // lm's profiles: not the run's (scalar.hpp PRF-1)
         if (scalar::strategy::deferred_here()) {
             scalar::strategy::defer_or_run([this, x, f] { account_now(x, f); });
             return;
@@ -374,6 +377,7 @@ private:
 
     void count_grad()
     {
+        if (scalar::in_profiles()) return;           // PRF-1
         if (scalar::strategy::deferred_here()) {
             scalar::strategy::defer_or_run([this] { ++grad_calls_; });
             return;
@@ -626,6 +630,24 @@ private:
     int cec_ = 0;                                       // a CEC 2013 problem's number
     json::Value peaks_;
     json::Value restarts_;                            // keep_restarts: the strategy's "restarts" setting
+    json::Value profiles_;                            // task 28, §28.4: lm's profiles of its answer
+
+    // lm's profiles (scalar.hpp LOCAL-10): {rank, params, evaluations,
+    // jacobians}, or null where the run has none
+    static json::Value profiles_of(const scalar::Result& res)
+    {
+        using V = json::Value;
+        V o = V::object();
+        for (const auto& [k, v] : res.settings) {
+            if (k == "jacobian_rank") o.set("rank", V::integer(std::stoll(v)));
+            else if (k == "profiles_json") o.set("params", json::parse(v));
+            else if (k == "profile_evaluations" || k == "rank_evaluations")
+                o.set("evaluations", V::integer(std::stoll(v)));
+            else if (k == "profile_jacobians" || k == "rank_jacobians")
+                o.set("jacobians", V::integer(std::stoll(v)));
+        }
+        return o.keys.empty() ? V::null() : o;
+    }
     json::Value meta_;
 };
 

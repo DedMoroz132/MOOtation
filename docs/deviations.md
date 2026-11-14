@@ -421,7 +421,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-451 items: 395 yes, 53 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+481 items: 409 yes, 69 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -437,6 +437,11 @@ Their readings, from every comment of each file (the first column the file's nam
 | `boostdms` | BD-3 | "80 % ... in B(x_k; 3Δ_k)": the nearest points of the ball, then the nearest outside it, up to their shares of (n + 1)(n + 2); fewer when the cache holds fewer. | yes | `boostdms.hpp` |
 | `boostdms` | BD-4 | A candidate equal to a point of the cache is not evaluated again. | yes | `boostdms.hpp` |
 | `boostdms` | BD-5 | Constraints: the extreme barrier, as dms (an infeasible point never enters the list; a start without a feasible point keeps the least violating). | yes | `boostdms.hpp` |
+| `bootstrap` | BT-1 | The members' seeds: Options::seed + 1 + k (k = 0 .. | yes | `bootstrap.hpp` |
+| `bootstrap` | BT-2 | The out-of-bag error and the probes' residuals are computed by the problem's residuals at the member's answer, outside its budget: one call a member, counted in Result::extra_evaluations. | yes | `bootstrap.hpp` |
+| `bootstrap` | BT-3 | A member whose answer is empty (a failed run) or whose out-of-bag set is empty has oob = NaN; the mean and deviation skip no member (a failed member makes the probe statistics NaN). | yes | `bootstrap.hpp` |
+| `bootstrap` | BT-4 | Mode::refit: the plain fit is scalar::run with seed Options::seed, the caller's start and the probes at weight 0; its result is Result::base, its evaluations not the members'. | yes | `bootstrap.hpp` |
+| `bootstrap` | BT-5 | Refused: a problem without residuals or without two residual blocks or more, K < 1, a probe block out of range or named twice, no block left to draw. | yes | `bootstrap.hpp` |
 | `catcma` | CC-1 | c_1 = 2 / ((N_co + 1.3)^2 + mu_w): Table 1 prints N_ca, but every other rate of the continuous part has N_co and Table 1 follows [9, Table 2] (Hansen's tutorial), whose n is the Gaussian's. | yes | `catcma.hpp` |
 | `catcma` | CC-2 (not a deviation) | q_n^min = (1 - 0.73^(1/N_ca)) / (K_n - 1), as Table 1, (31) and §4.1 print it. | no: fixed | `catcma.hpp` |
 | `catcma` | CC-3 (not a deviation) | (18)-(19) carry sqrt(c (2 - c) mu_w), as printed. | no: fixed | `catcma.hpp` |
@@ -500,6 +505,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `continuation` | DC-3 | The budget: the stages before the last share dc_share of it evenly (the first ones one more, as STRAT-3); the last stage has what is left. | yes | `continuation.hpp` |
 | `continuation` | DC-4 | A stage evaluates through its own view (Stage below): a point an earlier stage, or this one, met is answered from the problem's raw residuals kept then (every point of the run comes through a stage), a new one calls t... | yes | `continuation.hpp` |
 | `continuation` | DC-5 | A window [a, b) becomes three blocks (a, b - a, n_res - b; empty ones dropped) at weights 0, 1, 0; a weight vector needs the problem's blocks, one weight each, finite and >= 0, and at least one > 0. | yes | `continuation.hpp` |
+| `continuous_symmetry` | CS-1 | The continuous step: lm.hpp's solve on the residuals group_act(x', g) - y (a periodic coordinate's the shorter way, SYM-11), g from 0, forward differences, no bounds, lm's tolerances and its own limit on evaluations;... | yes | `continuous_symmetry.hpp` |
+| `continuous_symmetry` | CS-2 | Permutations and the group alternate: after the continuous step the permutations are aligned again, and while they change the point the continuous step is redone, at most max_passes (5) times; the first pass is the ta... | yes | `continuous_symmetry.hpp` |
+| `continuous_symmetry` | CS-3 | tangent_check's tangents: central differences at g = 0 with step h (1e-6 by default); both sets of columns orthonormalized by modified Gram-Schmidt (twice), a column whose remaining norm is below 1e-8 of its own norm... | yes | `continuous_symmetry.hpp` |
+| `continuous_symmetry` | CS-4 | Refused: group_dim < 0, group_dim > 0 without group_act or the reverse, group_act giving other than n values, tangent_check without gauge_basis. | yes | `continuous_symmetry.hpp` |
 | `de` | DE-1 | The trial (4) is built coordinate by coordinate: rnbr(i) is drawn first, then one U(0, 1) for every j (j = rnbr(i) included), and v_j is taken where U < CR or j = rnbr(i). | yes | `de.hpp` |
 | `de` | DE-2 | Bounds. The paper's box is the initial parameter range (IPR) only; its f9 and f28 have their minima outside it, and DE finds them. | yes | `de.hpp` |
 | `de` | DE-3 | Selection: the trial replaces the target when it is not worse — Figure 3's "score <= cost[i]"; | yes | `de.hpp` |
@@ -605,6 +614,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `lm` | LMN-2 | The diagnostics on the complement (diagnose_gauge) take the plain inner product: the covariance of J Q2's parameters, carried back. | yes | `lm.hpp` |
 | `lm` | LMN-3 | A gauge basis takes no finite bound and no lm_geodesic. | yes | `lm.hpp` |
 | `lm` | LMN-4 | Result::gauge_k is N's pseudorank at the solution, gauge_ratio \|\|J Q_N\|\| / \|\|J\|\| (Frobenius, Q_N an orthonormal basis of N's columns), with a Jacobian at the solution (one more, counted). | yes | `lm.hpp` |
+| `lm` | LMS-1 (only when asked: Options::resample) | An iteration is an accepted step (Moré's outer loop): the residual function is fixed within one, its trial steps included. | no: option | `lm.hpp` |
 | `lm` | LMC-1 | The multipliers' sign: the task's form r~ = [r; sqrt(mu) (c + lambda/mu)] is N&W's with lambda = -lambda_N&W; at a solution J^T r + A^T lambda = 0, A the Jacobian of c. | yes | `lm.hpp` |
 | `lm` | LMC-2 | The subproblem is solved by lm to its own tests (ftol, xtol); where the projected gradient is still above omega_k s, lm again from there with ftol and xtol a hundredth (not below eps), three times at most. | yes | `lm.hpp` |
 | `lm` | LMC-3 | omega_k and omega_* are relative, times s = max(1, \|\|J^T r\|\|) at x_0, so that the method does not hang on the residuals' scale; eta_* = 1e-8 (on \|\|c\|\|, the equalities' own scale) and omega_* = 1e-6 by default; 50 oute... | yes | `lm.hpp` |
@@ -756,6 +766,21 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | LOCAL-6 | lm_gauge = on needs the problem's gauge_basis; its k and \|\|J N\|\| / \|\|J\|\| at lm's solution (lm.hpp LMN-4) go to the settings (lm_gauge_k, lm_gauge_ratio). | yes | `scalar.hpp` |
 | `scalar` | LOCAL-8 | lm's knobs of task 25 (§24.3.5), each off by default and in the settings only where given (then with lm_iterations, lm's accepted steps): lm_max_iter (0: no limit; lm.hpp LM-10, the short polish of Kommenda et al. 202... | no: option | `scalar.hpp` |
 | `scalar` | LOCAL-9 | lm_varpro = off \| on \| kaufman (task 25, §24.3.5; off by default): lm.hpp's varpro (Golub & Pereyra 2003, VP; kaufman: Kaufman's Jacobian) on the problem's residuals, its linear variables a = x[Problem::linear] elimin... | no: option | `scalar.hpp` |
+| `scalar` | LOCAL-11 | lm_block_sample = frac \| count (task 28, §28.1; off by default, and then nothing below happens and the settings are as before): lm's residuals and Jacobian on a random subsample of the problem's residual blocks, drawn... | no: option | `scalar.hpp` |
+| `scalar` | BS-1 (only when asked: lm_block_sample on) | k, the blocks drawn: count its lm_block_size, a whole number 1 <= k <= B; frac max(1, round(q B)), q = lm_block_size in (0, 1]. | no: option | `scalar.hpp` |
+| `scalar` | BS-2 (only when asked: lm_block_sample on) | k = B with its weight 1 is lm itself: no draw is made, the run is plain lm's, bit for bit. | no: option | `scalar.hpp` |
+| `scalar` | BS-3 (only when asked: lm_block_sample on) | Without the problem's residuals_blocks every block is evaluated: the subsample saves no evaluation, the settings say so (lm_block_saving = none); the run's counts are full evaluations, as without the subsample. | no: option | `scalar.hpp` |
+| `scalar` | BS-6 (only when asked: lm_block_sample on) | With residuals_blocks (lm_block_saving = hook) lm's residuals are the drawn blocks' alone, by the hook, not through the archive: each call charged the drawn rows' share of n_res in the budget and counted apart (lm_blo... | no: option | `scalar.hpp` |
+| `scalar` | BS-7 (only when asked: lm_block_sample on) | With residuals_blocks every point lm accepts is evaluated in full too, at the next iteration's start (lm.hpp LMS-1) and at lm's end: the answer and the records are full costs (BS-4), the partial calls only steer. | no: option | `scalar.hpp` |
+| `scalar` | BS-4 (only when asked: lm_block_sample on) | The answer is the evaluator's, every point by its full cost (as every method's): the subsample steers lm's steps only. | no: option | `scalar.hpp` |
+| `scalar` | BS-5 (only when asked: lm_block_sample on) | Refused: a problem of one block (nothing to draw), lm_loss other than linear, lm_varpro other than off, lm_block_size outside its range; the settings: lm_block_sample, lm_block_size, lm_block_k, lm_resample_every, lm_... | no: option | `scalar.hpp` |
+| `scalar` | LOCAL-10 | profiles = all \| list (task 28, §28.4; off by default, and then nothing below happens and the settings are as before): after the run, lm.hpp's profile (LMP) of each parameter asked for (all, or profile_params, a JSON... | no: option | `scalar.hpp` |
+| `scalar` | PRF-1 (only when asked: profiles on) | The profiles call the problem directly, not through the run's evaluator: their evaluations are counted apart (profile_evaluations, profile_jacobians) and spend none of the run's budget; the run's counts and answer are... | no: option | `scalar.hpp` |
+| `scalar` | PRF-2 (only when asked: profiles on) | The cost profiled is 1/2 \|\|r~\|\|^2 with the blocks' weights, as the run's; the residuals are taken as divided by their sigma already (LMP-1, a relative profile): the threshold is chi2_1(0.95) / 2 = 1.92 on the cost abo... | no: option | `scalar.hpp` |
+| `scalar` | PRF-3 (only when asked: profiles on) | Each fit of a profile is lm with the run's lm_ftol, lm_xtol, lm_gtol and the solver's own limit on evaluations (lm.hpp's max_nfev default), from the neighbouring node (LMP). | no: option | `scalar.hpp` |
+| `scalar` | PRF-4 (only when asked: profiles on) | Refused: profiles with lm_loss other than linear (a profile is of the least-squares cost), with periodic variables, and with profile_params given while profiles is not list. | no: option | `scalar.hpp` |
+| `scalar` | PRF-6 (only when asked: lm_rank on) | lm_rank = on (task 24, §24.3.5; off by default) gives the Jacobian's rank at the answer without profiles: jacobian_rank, its calls rank_evaluations and rank_jacobians, outside the budget as PRF-1 (in_profiles() true w... | no: option | `scalar.hpp` |
+| `scalar` | PRF-5 (only when asked: profiles on) | The result: profiles_json, one object a parameter in the order asked, {j, x, lower, upper, kind, nodes} (lower, upper null where the profile does not pass the threshold on that side; kind identifiable, practical (prac... | no: option | `scalar.hpp` |
 | `scalar` | ULS-1 | Off by default. The hook's calls of the problem are counted against the budget as every solver's (and a solver it runs within, on ctx.problem, is that solver's run, bit for bit); past the budget the call throws and th... | no: option | `scalar.hpp` |
 | `scalar` | ULS-2 | Off by default. x' with f known (has_f) is planted, not evaluated: free, as a seed point; with constraints or residuals it is evaluated all the same (its constraint values, its residuals are not known). | no: option | `scalar.hpp` |
 | `scalar` | ULS-3 | Off by default. The declared cost is charged to the budget after the call (as THE SUCCESS's, SUCC-2); a hook that neither calls the problem nor declares a cost spends nothing (the owner's decision of 13.11), counted a... | no: option | `scalar.hpp` |
@@ -763,6 +788,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | ULS-5 | Off by default. In a strategy's start the counts (calls, cost, time) are the start's and go to the run's when the round merges the start, in the order of the starts. | no: option | `scalar.hpp` |
 | `scalar` | ULS-6 | Off by default. The run's answer is the evaluator's best, as every method's; the hook's state comes back in Result::ls_state. | no: option | `scalar.hpp` |
 | `scalar` | ULS-7 | Off by default (a problem with decode). ctx.mask is the start's decode(x0).active (hooks.hpp active_of): empty, all variables may move; a start that does not decode, none. | no: option | `scalar.hpp` |
+| `scalar` | PRF-1 | true on this thread while lm's profiles (LOCAL-10) call the problem | yes | `scalar.hpp` |
 | `scalar` | POP-5 | Every bound must be finite: the methods draw their first population uniformly in the box (sep_cmaes its mean), and the papers' boxes are where they search. | yes | `scalar.hpp` |
 | `scalar` | POP-6 | The population is the method's own (np), not pop_size: the papers' sizes are part of the methods (lshade's N_init = 18 D, pso's 20). pop_size still sets the observer's stride (evaluator.hpp). | yes | `scalar.hpp` |
 | `scalar` | POP-7 | The first population is the method's draw. | yes | `scalar.hpp` |
@@ -820,6 +846,10 @@ Their readings, from every comment of each file (the first column the file's nam
 | `spso2011` | SPSO-7 | Draws, particle by particle: U1 for every d, U2 for every d, the direction's D normals, the radius's U; the initial velocity's U after all positions; links: informer by informer, K draws each. | yes | `spso2011.hpp` |
 | `spso2011` | SPSO-8 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) for "f(X_i) < f(P_i)", L_i and SPSO-4; not in the paper. | yes | `spso2011.hpp` |
 | `spso2011` | SPSO-9 | sym (task 19, symmetry.hpp SYM-9; off by default): align only — P_i and L_i aligned to X_i before the particle moves, the velocity left in the particle's representation; canon refused. | no: option | `spso2011.hpp` |
+| `stacking` | STK-1 | One member: alpha = 1 and no fit (the stack of one is the member). | yes | `stacking.hpp` |
+| `stacking` | STK-2 | sum_to_one with Yhat not of full column rank (two members alike; a diagonal of its QR within max(m, K) eps \|R_00\|, lsq.hpp's LSQ-6, or lsei refusing it: LSI needs E of full column rank): then NNLS on Yhat with the row... | yes | `stacking.hpp` |
+| `stacking` | STK-3 | A member whose column is all zero has weight 0 (NNLS leaves it out). | yes | `stacking.hpp` |
+| `stacking` | STK-4 | Refused: K = 0, m = 0, rows of unequal length, y not m long, a weight < 0 or not finite, a value not finite. | yes | `stacking.hpp` |
 | `strategy` | STRAT-1 | A start's generator: the run's seed for start 0, else a 32-bit word of std::seed_seq{seed, k} (the standard defines its words), so one start is the inner solver's own run, bit for bit (§3.1's test). | yes | `strategy.hpp` |
 | `strategy` | STRAT-2 | The inner solver counts what it asks for against its allowance, the points it gets free from the archive included; the strategy's budget counts only what is new. | yes | `strategy.hpp` |
 | `strategy` | STRAT-3 | The budget shared evenly: start k's allowance is budget / n, the first budget mod n starts one more. | yes | `strategy.hpp` |

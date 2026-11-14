@@ -26,6 +26,9 @@
 #include <mootation/suite/nist.hpp>
 #include <mootation/scalar/polish.hpp>
 #include <mootation/scalar/scalar.hpp>
+#include <mootation/scalar/bootstrap.hpp>
+#include <mootation/scalar/hooks.hpp>
+#include <mootation/scalar/stacking.hpp>
 #include <mootation/suite/native.hpp>
 
 namespace py = pybind11;
@@ -240,6 +243,127 @@ void bind_scalar(py::module_& m)
         "threads > 1), hold what(), to be called at the round's end in the order of the starts,\n"
         "and return True; elsewhere return False (the caller does it at once).");
 
+    s.def(
+        "stack",
+        [](const py::object& Yhat, const py::object& y, const py::object& w, bool sum_to_one) {
+            std::vector<Vec> Y;
+            for (py::handle row : Yhat) Y.push_back(floats(row));
+            sc::stacking::Options o;
+            o.sum_to_one = sum_to_one;
+            const sc::stacking::Result r = sc::stacking::stack(Y, floats(y), w.is_none() ? Vec{} : floats(w), o);
+            py::dict d;
+            d["alpha"] = to_list(r.alpha);
+            d["rss"] = r.rss;
+            d["method"] = r.method;
+            return d;
+        },
+        py::arg("Yhat"), py::arg("y"), py::arg("w") = py::none(), py::arg("sum_to_one") = false,
+        "Stacking (task 28, §28.3; stacking.hpp): the weights alpha >= 0 of the members' responses\n"
+        "Yhat (m rows of K) that fit y best, NNLS; sum_to_one: and sum alpha = 1. A dict: alpha,\n"
+        "rss, method.");
+
+    s.def(
+        "bootstrap",
+        [](const std::string& name, const py::object& residuals, const py::object& jac, const py::object& bounds,
+           const py::object& res_blocks, const py::object& res_weights, long long budget, const py::dict& knobs,
+           int members, unsigned seed, const py::object& probe, const std::string& mode, const py::object& x0,
+           bool unit_counts) {
+            sc::Problem P = problem_of(py::none(), py::none(), bounds, 1, 0, 0, nullptr);
+            derivatives_of(P, py::none(), residuals, jac);
+            P.blocks = res_blocks.cast<std::vector<int>>();
+            P.weights = res_weights.is_none() ? Vec(P.blocks.size(), 1.0) : floats(res_weights);
+            P.n_res = 0;
+            for (int b : P.blocks) P.n_res += b;
+            sc::bootstrap::Options o;
+            o.members = members;
+            o.seed = seed;
+            o.unit_counts = unit_counts;
+            if (!probe.is_none()) o.probe = probe.cast<std::vector<std::size_t>>();
+            if (mode == "refit") o.mode = sc::bootstrap::Options::Mode::refit;
+            else if (mode != "whole_pipeline")
+                throw std::invalid_argument("bootstrap: mode = 'whole_pipeline' | 'refit'");
+            sc::Start st;
+            if (!x0.is_none()) {
+                st.has_x0 = true;
+                st.x0 = floats(x0);
+            }
+            const sc::bootstrap::Result r = sc::bootstrap::fit(name, P, budget, knobs_of(knobs), o, st);
+            py::list ms;
+            for (const sc::bootstrap::Member& m : r.members) {
+                py::dict e;
+                e["counts"] = py::cast(m.counts);
+                e["seed"] = m.seed;
+                e["x"] = to_list(m.x);
+                e["f"] = m.run.objectives.empty() ? py::object(py::none()) : py::object(py::float_(m.run.objectives[0][0]));
+                e["evaluations"] = m.run.evaluations;
+                e["oob"] = m.oob;
+                e["oob_blocks"] = m.oob_blocks;
+                e["probe_r"] = to_list(m.probe_r);
+                ms.append(e);
+            }
+            py::dict d;
+            d["members"] = ms;
+            d["probe_mean"] = to_list(r.probe_mean);
+            d["probe_sd"] = to_list(r.probe_sd);
+            d["oob_share"] = r.oob_share;
+            d["extra_evaluations"] = r.extra_evaluations;
+            d["base_x"] = r.base.variables.empty() ? py::list() : to_list(r.base.variables[0]);
+            return d;
+        },
+        py::arg("name"), py::arg("residuals"), py::arg("jac"), py::arg("bounds"), py::arg("res_blocks"),
+        py::arg("res_weights"), py::arg("budget"), py::arg("knobs"), py::arg("members"), py::arg("seed"),
+        py::arg("probe") = py::none(), py::arg("mode") = "whole_pipeline", py::arg("x0") = py::none(),
+        py::arg("unit_counts") = false,
+        "The bootstrap by residual blocks (task 28, §28.2; bootstrap.hpp): members runs of name with\n"
+        "the blocks resampled; a dict: members (counts, seed, x, f, evaluations, oob, oob_blocks,\n"
+        "probe_r), probe_mean, probe_sd, oob_share, extra_evaluations, base_x (refit).");
+
+    s.def(
+        "align_continuous",
+        [](const py::object& x, const py::object& y, int group_dim, const py::object& group_act,
+           const py::object& sym_blocks, const py::object& gauge_basis) {
+            sc::Problem P;
+            P.lo.assign(py::len(x), -INFINITY);
+            P.hi.assign(py::len(x), INFINITY);
+            P.group_dim = group_dim;
+            P.group_act = [f = held(group_act)](const Vec& a, const Vec& g, Vec& out) {
+                py::gil_scoped_acquire gil;
+                out = floats((*f)(to_list(a), to_list(g)));
+            };
+            if (!sym_blocks.is_none())
+                for (py::handle b : sym_blocks) {
+                    py::sequence t = py::reinterpret_borrow<py::sequence>(b);
+                    P.sym_blocks.push_back({py::cast<std::size_t>(t[0]), py::cast<std::size_t>(t[1]),
+                                            py::cast<std::size_t>(t[2])});
+                }
+            const sc::ContinuousAlignment a = sc::align_continuous(P, floats(x), floats(y));
+            py::dict d;
+            d["x"] = to_list(a.x);
+            d["g"] = to_list(a.g);
+            d["distance"] = a.distance;
+            d["passes"] = a.passes;
+            if (!gauge_basis.is_none()) {
+                P.gauge_basis = [f = held(gauge_basis)](const Vec& v, sc::Rows& N) {
+                    py::gil_scoped_acquire gil;
+                    N = rows_of_seq((*f)(to_list(v)));
+                };
+                const sc::TangentCheck t = sc::tangent_check(P, floats(x));
+                d["tangent_rank"] = t.tangent_rank;
+                d["gauge_rank"] = t.gauge_rank;
+                d["max_sine"] = t.max_sine;
+            }
+            return d;
+        },
+        py::arg("x"), py::arg("y"), py::arg("group_dim"), py::arg("group_act"), py::arg("sym_blocks") = py::none(),
+        py::arg("gauge_basis") = py::none(),
+        "Continuous symmetries (task 28, §28.5; continuous_symmetry.hpp): x moved along the group\n"
+        "(after the permutations of sym_blocks) as close to y as it goes; a dict: x, g, distance,\n"
+        "passes and, with gauge_basis, tangent_check at x (tangent_rank, gauge_rank, max_sine).");
+
+    s.def("in_profiles", &sc::in_profiles,
+          "True while lm's profiles (profiles = all | list; scalar.hpp PRF-1) call the problem on\n"
+          "this thread: a caller counting the problem's calls leaves those out.");
+
     s.def("run",
           [](const std::string& name, const py::object& fn, const py::object& constraints,
              const py::object& bounds, int n_objs, int n_cons, int n_eq, double eq_tol,
@@ -251,7 +375,8 @@ void bind_scalar(py::module_& m)
              const py::object& gauge_basis, const py::object& f_stop, const py::object& sym_blocks,
              const py::object& canon, const py::object& align, const py::object& res_blocks,
              const py::object& res_weights, const py::object& discrete, const py::object& linear,
-             const py::object& cat_levels) {
+             const py::object& cat_levels, const py::object& residuals_blocks, int group_dim,
+             const py::object& group_act) {
               if (fn.is_none() == residuals.is_none() && !native)
                   throw std::invalid_argument("give fn or residuals, one of them");
               sc::Problem P = problem_of(fn, constraints, bounds, n_objs, n_cons, n_eq, native);
@@ -291,6 +416,24 @@ void bind_scalar(py::module_& m)
                   for (int b : P.blocks) P.n_res += b;
               } else if (!res_weights.is_none()) {
                   throw std::invalid_argument("res_weights go with res_blocks");
+              }
+              if (group_dim != 0 || !group_act.is_none()) {   // task 28, §28.5 (continuous_symmetry.hpp)
+                  P.group_dim = group_dim;
+                  if (!group_act.is_none())
+                      P.group_act = [f = held(group_act)](const Vec& x, const Vec& g, Vec& out) {
+                          py::gil_scoped_acquire gil;
+                          out = floats((*f)(to_list(x), to_list(g)));
+                      };
+              }
+              if (!residuals_blocks.is_none()) {     // task 28, §28.1 (scalar.hpp BS-6)
+                  if (res_blocks.is_none()) throw std::invalid_argument("residuals_blocks goes with res_blocks");
+                  P.residuals_blocks = [f = held(residuals_blocks)](const Vec& x, const std::vector<char>& mask,
+                                                                    Vec& r) {
+                      py::gil_scoped_acquire gil;
+                      py::list m;
+                      for (char c : mask) m.append(py::bool_(c != 0));
+                      r = floats((*f)(to_list(x), m));
+                  };
               }
               if (!canon.is_none())
                   P.canon = [canon = held(canon)](Vec& x) {
@@ -358,6 +501,7 @@ void bind_scalar(py::module_& m)
           py::arg("res_blocks") = py::none(), py::arg("res_weights") = py::none(),
           py::arg("discrete") = py::none(), py::arg("linear") = py::none(),
           py::arg("cat_levels") = py::none(),
+          py::arg("residuals_blocks") = py::none(), py::arg("group_dim") = 0, py::arg("group_act") = py::none(),
           "Run one of NAMES; a dict of the answer (objectives, variables, cv), evaluations,\n"
           "grad_calls, n_failed (failed evaluations in the archive), settings, ignored knobs and,\n"
           "for the scalar presets, solutions; at one objective improvements, the best point's\n"

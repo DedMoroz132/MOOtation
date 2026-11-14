@@ -8,7 +8,10 @@
 //                         after the problem's align (where it gives one) or
 //                         symmetry::distance on its blocks and canon (SYM-1
 //                         ... SYM-11): invariant to the problem's symmetries;
-//                         a periodic coordinate the shorter way (SYM-11)
+//                         a periodic coordinate the shorter way (SYM-11);
+//                         with a continuous group (group_dim, group_act; task
+//                         28, §28.5) the distance after align_continuous
+//                         (continuous_symmetry.hpp, CS-1, CS-2)
 //   restricted(P, xf, idx) the problem's restrict_to, else the default: the
 //                         variables idx free, the others frozen at xf — the
 //                         subproblem's variable k is x[idx[k]], in idx's
@@ -42,6 +45,7 @@
 #include <string>
 #include <vector>
 
+#include "continuous_symmetry.hpp"
 #include "evaluator.hpp"
 #include "symmetry.hpp"
 
@@ -51,6 +55,7 @@ inline double distance_of(const Problem& P, const std::vector<double>& x, const 
 {
     if (P.distance) return P.distance(x, y);
     if (x.size() != y.size()) throw std::invalid_argument("distance_of: x and y differ in length");
+    if (P.group_dim > 0 || P.group_act) return align_continuous(P, x, y).distance;   // task 28, §28.5
     const std::vector<double> period = symmetry::periods(P.periodic, P.lo, P.hi);
     if (!P.align) return symmetry::distance(x, y, P.sym_blocks, P.canon, period);
     std::vector<double> a;

@@ -166,6 +166,7 @@
 
 #include "../detmath.hpp"
 #include "../fp_contract.hpp"
+#include "../json.hpp"
 #include "../operators/bound_repair.hpp"
 #include "../random.hpp"
 #include "boostdms.hpp"
@@ -1227,6 +1228,79 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
 //     lm. x0's linear values are not used. Not with lm_gauge or a periodic
 //     variable; failed points as lm_failed says. Settings: lm_varpro_rank,
 //     Phi's pseudorank at the end (0 where the run ended first).
+//   LOCAL-11. lm_block_sample = frac | count (task 28, §28.1; off by default,
+//     and then nothing below happens and the settings are as before): lm's
+//     residuals and Jacobian on a random subsample of the problem's residual
+//     blocks, drawn again every lm_resample_every iterations (lm.hpp LMS-1:
+//     an iteration an accepted step; 1 by default), the others' rows zero;
+//     with lm_block_reweight = on (the default) the drawn blocks' rows times
+//     sqrt(B / k), their weight B / k: the cost's and the gradient's
+//     unbiased estimates; off: the plain subsample. Its readings BS-1 ...
+//     BS-5:
+//   BS-1 (only when asked: lm_block_sample on). k, the blocks drawn: count
+//     its lm_block_size, a whole number 1 <= k <= B; frac max(1, round(q B)),
+//     q = lm_block_size in (0, 1]. Drawn without replacement, by rnd::
+//     shuffle of 0 .. B - 1 with the run's generator, the first k.
+//   BS-2 (only when asked: lm_block_sample on). k = B with its weight 1 is
+//     lm itself: no draw is made, the run is plain lm's, bit for bit.
+//   BS-3 (only when asked: lm_block_sample on). Without the problem's
+//     residuals_blocks every block is evaluated: the subsample saves no
+//     evaluation, the settings say so (lm_block_saving = none); the run's
+//     counts are full evaluations, as without the subsample.
+//   BS-6 (only when asked: lm_block_sample on). With residuals_blocks
+//     (lm_block_saving = hook) lm's residuals are the drawn blocks' alone,
+//     by the hook, not through the archive: each call charged the drawn
+//     rows' share of n_res in the budget and counted apart (lm_block_calls,
+//     lm_block_spent); lm's Jacobian is the problem's (a full evaluation,
+//     its rows masked) where it gives one, else lm's forward differences of
+//     the drawn blocks. Refused with periodic variables.
+//   BS-7 (only when asked: lm_block_sample on). With residuals_blocks every
+//     point lm accepts is evaluated in full too, at the next iteration's
+//     start (lm.hpp LMS-1) and at lm's end: the answer and the records are
+//     full costs (BS-4), the partial calls only steer.
+//   BS-4 (only when asked: lm_block_sample on). The answer is the
+//     evaluator's, every point by its full cost (as every method's): the
+//     subsample steers lm's steps only.
+//   BS-5 (only when asked: lm_block_sample on). Refused: a problem of one
+//     block (nothing to draw), lm_loss other than linear, lm_varpro other
+//     than off, lm_block_size outside its range; the settings: lm_block_sample, lm_block_size,
+//     lm_block_k, lm_resample_every, lm_block_reweight, lm_block_saving,
+//     lm_resamples (the draws made after the first) and, with the hook,
+//     lm_block_calls, lm_block_spent.
+//   LOCAL-10. profiles = all | list (task 28, §28.4; off by default, and then
+//     nothing below happens and the settings are as before): after the run,
+//     lm.hpp's profile (LMP) of each parameter asked for (all, or
+//     profile_params, a JSON array of 0-based indices) at the answer's best
+//     point, and the Jacobian's rank there (n minus lm.hpp diagnose's small
+//     singular values); its readings PRF-1 ... PRF-5:
+//   PRF-1 (only when asked: profiles on). The profiles call the problem directly, not through the run's
+//     evaluator: their evaluations are counted apart (profile_evaluations,
+//     profile_jacobians) and spend none of the run's budget; the run's
+//     counts and answer are those of the run without profiles, bit for bit.
+//     While they call it, in_profiles() is true on their thread: a caller
+//     that counts the problem's calls itself (a campaign's ledger,
+//     job_so.hpp, campaign_so.py) leaves those calls out by it.
+//   PRF-2 (only when asked: profiles on). The cost profiled is 1/2 ||r~||^2 with the blocks' weights, as
+//     the run's; the residuals are taken as divided by their sigma already
+//     (LMP-1, a relative profile): the threshold is chi2_1(0.95) / 2 =
+//     1.92 on the cost above the best.
+//   PRF-3 (only when asked: profiles on). Each fit of a profile is lm with the run's lm_ftol, lm_xtol,
+//     lm_gtol and the solver's own limit on evaluations (lm.hpp's max_nfev
+//     default), from the neighbouring node (LMP).
+//   PRF-4 (only when asked: profiles on). Refused: profiles with lm_loss other than linear (a profile is
+//     of the least-squares cost), with periodic variables, and with
+//     profile_params given while profiles is not list.
+//   PRF-6 (only when asked: lm_rank on). lm_rank = on (task 24, §24.3.5;
+//     off by default) gives the Jacobian's rank at the answer without
+//     profiles: jacobian_rank, its calls rank_evaluations and
+//     rank_jacobians, outside the budget as PRF-1 (in_profiles() true while
+//     it calls the problem). With profiles on, jacobian_rank is there
+//     anyway and its calls are among profile_evaluations.
+//   PRF-5 (only when asked: profiles on). The result: profiles_json, one object a parameter in the order
+//     asked, {j, x, lower, upper, kind, nodes} (lower, upper null where the
+//     profile does not pass the threshold on that side; kind identifiable,
+//     practical (practically non-identifiable) or structural (flat, LMP-3)),
+//     beside jacobian_rank and the two counts.
 // ── THE USER'S LOCAL SEARCH (task 24, §24.1.1) ──────────────────────────────
 // The solver "local_search": the problem's local_search hook (evaluator.hpp),
 // called once from the start — x0, else the best of the initial plan (as
@@ -1387,6 +1461,125 @@ inline Result run_user_local(const Problem& P, double eq_tol, bool has_tol0, dou
     return r;
 }
 
+namespace detail {
+
+inline bool& profiling_flag()
+{
+    thread_local bool on = false;
+    return on;
+}
+
+// LOCAL-11, BS-1: a row's factor for k of the residual blocks (their sizes)
+// drawn without replacement: sqrt(B / k) with reweight, else 1; 0 for the
+// rows of the blocks not drawn
+inline Vec block_rows(const std::vector<int>& blocks, std::size_t k, bool reweight, std::mt19937& rng)
+{
+    const std::size_t B = blocks.size();
+    std::vector<std::size_t> order(B);
+    for (std::size_t b = 0; b < B; ++b) order[b] = b;
+    rnd::shuffle(order.begin(), order.end(), rng);
+    std::vector<char> in(B, 0);
+    for (std::size_t c = 0; c < k && c < B; ++c) in[order[c]] = 1;
+    const double s = reweight ? std::sqrt(static_cast<double>(B) / static_cast<double>(k)) : 1.0;
+    Vec rows;
+    for (std::size_t b = 0; b < B; ++b) rows.insert(rows.end(), static_cast<std::size_t>(blocks[b]), in[b] ? s : 0.0);
+    return rows;
+}
+
+// the profiles of lm's answer and the Jacobian's rank there (LOCAL-10 and its PRF readings)
+inline std::vector<std::pair<std::string, std::string>> lm_profiles(const Problem& P, std::size_t m, const Vec& x_hat,
+                                                                    const std::vector<std::size_t>& which,
+                                                                    const lm::Options& run)
+{
+    const std::size_t n = x_hat.size();
+    long long calls = 0, jcalls = 0;
+    struct Flag {                                     // PRF-1: in_profiles() while the profiles run
+        Flag() { profiling_flag() = true; }
+        ~Flag() { profiling_flag() = false; }
+        Flag(const Flag&) = delete;
+        Flag& operator=(const Flag&) = delete;
+    } flag;
+    auto by_block = [&](auto op) {                    // block b's rows times sqrt(w_b) (evaluator.hpp SO-1)
+        std::size_t at = 0;
+        for (std::size_t b = 0; b < P.weights.size(); ++b) {
+            const std::size_t size = P.blocks.empty() ? m : static_cast<std::size_t>(P.blocks[b]);
+            const double sq = std::sqrt(P.weights[b]);
+            for (std::size_t k = 0; k < size; ++k) op(at + k, sq);
+            at += size;
+        }
+    };
+    lm::Problem p;
+    p.n = n;
+    p.m = m;
+    p.lo = P.lo;
+    p.hi = P.hi;
+    p.residuals = [&](const Vec& x, Vec& r) {         // PRF-1
+        ++calls;
+        if (P.residuals) {
+            P.residuals(x, r);
+        } else {
+            Rows J;
+            ++jcalls;
+            P.residuals_jac(x, r, J);
+        }
+        if (r.size() != m) throw std::invalid_argument("profiles: the residuals' count changed");
+        by_block([&](std::size_t i, double sq) { r[i] *= sq; });
+    };
+    if (P.jacobian || P.residuals_jac)
+        p.jacobian = [&](const Vec& x, lm::Matrix& J) {
+            ++jcalls;
+            Rows Jr;
+            if (P.jacobian) {
+                P.jacobian(x, Jr);
+            } else {
+                Vec r;
+                ++calls;
+                P.residuals_jac(x, r, Jr);
+            }
+            if (Jr.size() != m) throw std::invalid_argument("profiles: the Jacobian needs n_res rows");
+            by_block([&](std::size_t i, double sq) {
+                for (double& v : Jr[i]) v *= sq;
+            });
+            for (std::size_t a = 0; a < m; ++a)
+                for (std::size_t b = 0; b < n; ++b) J(a, b) = Jr[a][b];
+        };
+    lm::Options o;                                    // PRF-3
+    o.ftol = run.ftol;
+    o.xtol = run.xtol;
+    o.gtol = run.gtol;
+    Vec r(m);
+    p.residuals(x_hat, r);
+    lm::Matrix J;
+    lm::Result counts;
+    lm::detail::jacobian_at(p, x_hat, r, o.fd_eps, J, counts);
+    double c = 0.0;
+    for (double v : r) c += v * v;
+    const lm::Diagnostics d = lm::diagnose(J, 0.5 * c, 1.0, !p.jacobian, o.fd_eps);
+    const std::size_t rank = d.sv.size() - d.small;
+    json::Value all = json::Value::array();
+    for (std::size_t j : which) {
+        const lm::Profile pr = lm::profile(p, x_hat, j, o);
+        json::Value e = json::Value::object();
+        e.set("j", json::Value::integer(static_cast<std::int64_t>(j)));
+        e.set("x", json::Value::number(x_hat[j]));
+        e.set("lower", std::isfinite(pr.lower) ? json::Value::number(pr.lower) : json::Value::null());
+        e.set("upper", std::isfinite(pr.upper) ? json::Value::number(pr.upper) : json::Value::null());
+        e.set("kind", json::Value::string(pr.kind == lm::Profile::Kind::identifiable ? "identifiable"
+                                          : pr.kind == lm::Profile::Kind::structurally_non_identifiable
+                                              ? "structural"
+                                              : "practical"));
+        e.set("nodes", json::Value::integer(static_cast<std::int64_t>(pr.points.size())));
+        all.items.push_back(std::move(e));
+    }
+    return {{"jacobian_rank", std::to_string(rank)}, {"profiles_json", json::dump(all)},
+            {"profile_evaluations", std::to_string(calls)}, {"profile_jacobians", std::to_string(jcalls)}};
+}
+
+}   // namespace detail
+
+// PRF-1: true on this thread while lm's profiles (LOCAL-10) call the problem
+inline bool in_profiles() { return detail::profiling_flag(); }
+
 inline const std::vector<std::string>& local_names()
 {
     static const std::vector<std::string> v{"lm", "lbfgsb", "eki"};
@@ -1416,7 +1609,9 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
     const std::vector<std::string> own =
         name == "lm"    ? std::vector<std::string>{"lm_ftol", "lm_xtol", "lm_gtol", "lm_loss", "lm_f_scale", "lm_gauge",
                                                    "grad_cost", "lm_max_iter", "lm_failed", "lm_geodesic",
-                                                   "lm_geodesic_alpha", "lm_geodesic_h", "lm_varpro"}
+                                                   "lm_geodesic_alpha", "lm_geodesic_h", "lm_varpro", "profiles", "profile_params", "lm_block_sample",
+                                                   "lm_block_size", "lm_resample_every", "lm_block_reweight",
+                                                   "lm_rank"}
         : name == "eki" ? std::vector<std::string>{"eki_ensemble", "eki_init", "eki_sigma0", "eki_gamma", "eki_perturb",
                                                    "eki_noise", "eki_tau"}
                         : std::vector<std::string>{"lbfgsb_m", "lbfgsb_pgtol", "lbfgsb_ftol", "grad_cost"};
@@ -1424,17 +1619,25 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
         {"lm_loss", {"linear", "huber", "cauchy"}}, {"lm_gauge", {"off", "on"}},
         {"eki_init", {"around", "sobol", "lhs"}}, {"eki_perturb", {"yes", "no"}},
         {"lm_failed", {"stop", "refuse"}}, {"lm_geodesic", {"off", "on"}},
-        {"lm_varpro", {"off", "on", "kaufman"}}};
+        {"lm_varpro", {"off", "on", "kaufman"}},
+        {"profiles", {"off", "all", "list"}}, {"lm_block_sample", {"off", "frac", "count"}},
+        {"lm_block_reweight", {"on", "off"}}, {"lm_rank", {"off", "on"}}};
     lm::Options lo;
     std::vector<std::string> lm_given;                 // LOCAL-8: the task-25 knobs given, for the settings
     lbfgsb::Options bo;
     eki::Options eo;
     std::map<std::string, std::string> word{{"lm_loss", "linear"}, {"lm_gauge", "off"},
                                             {"eki_init", "around"}, {"eki_perturb", "yes"},
-                                            {"lm_failed", "stop"}, {"lm_geodesic", "off"}, {"lm_varpro", "off"}};
+                                            {"lm_failed", "stop"}, {"lm_geodesic", "off"}, {"lm_varpro", "off"},
+                                            {"profiles", "off"},
+                                            {"lm_block_sample", "off"}, {"lm_block_reweight", "on"},
+                                            {"lm_rank", "off"}};
     double grad_cost = 1.0;
     std::vector<std::string> ignored;
     bool lean = false;
+    std::string profile_text;                                                        // LOCAL-10
+    std::vector<std::size_t> profile_which;
+    double block_size = -1.0, resample_every = 1.0;                                  // LOCAL-11
     for (const auto& [k, v] : knobs) {
         if (k == "keep_points") {                                                    // LOCAL-7
             lean = detail::lean_word(v);
@@ -1447,6 +1650,18 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
         if (k == "lm_max_iter" || k == "lm_failed" || k == "lm_geodesic" || k == "lm_geodesic_alpha" ||
             k == "lm_geodesic_h" || k == "lm_varpro")
             lm_given.push_back(k);
+        if (k == "profile_params") {                                                 // LOCAL-10, PRF-5
+            const json::Value a = v.is_word ? json::parse(v.word) : json::Value::null();
+            if (a.kind != json::Value::Kind::Array || a.items.empty())
+                throw std::invalid_argument("profile_params must be a JSON array of parameter indices");
+            for (const json::Value& e : a.items) {
+                if (e.kind != json::Value::Kind::Int || e.i < 0 || static_cast<std::size_t>(e.i) >= n)
+                    throw std::invalid_argument("profile_params: every index a whole number in [0, n)");
+                profile_which.push_back(static_cast<std::size_t>(e.i));
+            }
+            profile_text = json::dump(a);
+            continue;
+        }
         if (words.count(k)) {
             const std::string w = detail::shown(v);
             if (!v.is_word || !detail::listed(words.at(k), w))
@@ -1456,7 +1671,9 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
         }
         const double x = detail::number_of(k, v);
         if (!std::isfinite(x) || x < 0.0) throw std::invalid_argument(k + " must be a number >= 0");
-        if (k == "lm_max_iter") {                                                    // LM-10
+        if (k == "lm_block_size") block_size = x;                                    // LOCAL-11
+        else if (k == "lm_resample_every") resample_every = x;
+        else if (k == "lm_max_iter") {                                                    // LM-10
             if (x != std::floor(x) || x > 1e15) throw std::invalid_argument("lm_max_iter must be a whole number >= 0");
             lo.max_iter = static_cast<long long>(x);
         } else if (k == "lm_geodesic_alpha") {
@@ -1491,6 +1708,51 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
         throw std::invalid_argument("eki_sigma0, eki_gamma and eki_tau must be > 0");
     const std::string loss = word["lm_loss"];
     const bool gauge = word["lm_gauge"] == "on";
+    const std::string profiles = word["profiles"];                                  // LOCAL-10, PRF-4
+    if (!profile_text.empty() && profiles != "list")
+        throw std::invalid_argument("profile_params is for profiles = 'list' (PRF-4)");
+    if (profiles == "list" && profile_text.empty())
+        throw std::invalid_argument("profiles = 'list' needs profile_params, a JSON array of indices (PRF-4)");
+    if (profiles != "off" && loss != "linear")
+        throw std::invalid_argument("profiles need lm_loss = 'linear': a profile is of the least-squares cost (PRF-4)");
+    if (profiles != "off" && !P.periodic.empty())
+        for (std::size_t j = 0; j < n; ++j)
+            if (periodic::is(P.periodic, j))
+                throw std::invalid_argument("profiles take no periodic variables (PRF-4)");
+    if (profiles == "all")
+        for (std::size_t j = 0; j < n; ++j) profile_which.push_back(j);
+    const std::string block_sample = word["lm_block_sample"];                       // LOCAL-11, BS-1, BS-5
+    const bool reweight = word["lm_block_reweight"] == "on";
+    const std::size_t n_blocks = P.blocks.empty() ? 1 : P.blocks.size();
+    std::size_t block_k = n_blocks;
+    if (block_sample == "off") {
+        if (block_size >= 0.0) throw std::invalid_argument("lm_block_size is for lm_block_sample = frac | count (BS-5)");
+    } else {
+        if (n_blocks < 2)
+            throw std::invalid_argument("lm_block_sample needs a problem of two residual blocks or more (BS-5)");
+        if (loss != "linear") throw std::invalid_argument("lm_block_sample needs lm_loss = 'linear' (BS-5)");
+        if (block_sample == "count") {
+            if (!(block_size >= 1.0 && block_size <= static_cast<double>(n_blocks)) ||
+                block_size != std::floor(block_size))
+                throw std::invalid_argument("lm_block_sample = 'count': lm_block_size a whole number of blocks in [1, " +
+                                            std::to_string(n_blocks) + "] (BS-1)");
+            block_k = static_cast<std::size_t>(block_size);
+        } else {
+            if (!(block_size > 0.0 && block_size <= 1.0))
+                throw std::invalid_argument("lm_block_sample = 'frac': lm_block_size a share in (0, 1] (BS-1)");
+            block_k = std::max<std::size_t>(
+                1, static_cast<std::size_t>(std::floor(block_size * static_cast<double>(n_blocks) + 0.5)));
+        }
+    }
+    if (!(resample_every >= 1.0) || resample_every != std::floor(resample_every))
+        throw std::invalid_argument("lm_resample_every must be a whole number >= 1");
+    const bool sampling = block_sample != "off" && block_k < n_blocks;              // BS-2
+    const bool by_hook = sampling && static_cast<bool>(P.residuals_blocks);           // BS-6
+    if (by_hook && !P.periodic.empty())
+        for (std::size_t j = 0; j < n; ++j)
+            if (periodic::is(P.periodic, j))
+                throw std::invalid_argument("residuals_blocks takes no periodic variables (BS-6)");
+    long long resamples = 0;
     if (gauge && !P.gauge_basis)
         throw std::invalid_argument("lm_gauge = 'on' needs the problem's gauge_basis (LOCAL-6)");
     eo.init = word["eki_init"] == "sobol" ? eki::Options::Init::sobol
@@ -1507,6 +1769,9 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
                                             "bounds -inf, +inf and a start x0");
     if (lo.geodesic && gauge) throw std::invalid_argument("lm_geodesic and lm_gauge: one or the other (lm.hpp LMN-3)");
     const std::string varpro = word["lm_varpro"];                                   // LOCAL-9
+    if (block_sample != "off" && varpro != "off")                                   // BS-5
+        throw std::invalid_argument("lm_block_sample takes lm_varpro = 'off': variable projection has residuals of "
+                                    "its own (BS-5)");
     std::vector<std::size_t> lin, non;                                               // a's places, alpha's
     if (varpro != "off") {
         std::vector<char> is_lin(n, 0);
@@ -1583,21 +1848,66 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
                 p.m = static_cast<std::size_t>(ev.n_res);
                 p.lo = slo;
                 p.hi = shi;
-                if (!refuse_failed)
-                    p.residuals = [&](const Vec& x, Vec& r) { r = ev.R[value(x)]; };
-                else                                  // LOCAL-8: lm refuses the step there (LM-9)
-                    p.residuals = [&](const Vec& x, Vec& r) {
+                Vec row_scale;                                    // LOCAL-11: a row's factor, 0 off the subsample
+                std::vector<char> mask;                           // BS-6: the drawn blocks
+                double share = 0.0;                               // ... their rows' share of n_res
+                std::vector<Vec> accepted;                        // BS-7: lm's accepted points
+                auto draw = [&]() {                               // BS-1
+                    row_scale = detail::block_rows(P.blocks, block_k, reweight, rng);
+                    if (!by_hook) return;
+                    mask.assign(n_blocks, 0);
+                    double rows = 0.0;
+                    for (std::size_t b = 0, at = 0; b < n_blocks; at += static_cast<std::size_t>(P.blocks[b]), ++b)
+                        if (row_scale[at] != 0.0) {
+                            mask[b] = 1;
+                            rows += P.blocks[b];
+                        }
+                    share = rows / static_cast<double>(ev.n_res);
+                };
+                if (sampling) {
+                    draw();
+                    if (by_hook) lo.iterates = &accepted;
+                    lo.resample = [&](long long iteration) {
+                        if (by_hook && !accepted.empty()) value(accepted.back());   // BS-7: in full
+                        if ((iteration - 1) % static_cast<long long>(resample_every) != 0) return false;
+                        draw();
+                        ++resamples;
+                        return true;
+                    };
+                }
+                p.residuals = [&](const Vec& x, Vec& r) {
+                    if (by_hook) {                                // BS-6
+                        ev.spend_blocks(share);
+                        r.assign(static_cast<std::size_t>(ev.n_res), 0.0);
+                        P.residuals_blocks(x, mask, r);
+                        if (r.size() != static_cast<std::size_t>(ev.n_res))
+                            throw std::invalid_argument("residuals_blocks: n_res values are needed");
+                        for (std::size_t a = 0, b = 0, end = 0; a < r.size(); ++a) {
+                            while (a >= end) end += static_cast<std::size_t>(P.blocks[b++]);
+                            const double w = P.weights.empty() ? 1.0 : std::sqrt(P.weights[b - 1]);
+                            r[a] = row_scale[a] == 0.0 ? 0.0 : r[a] * w * row_scale[a];
+                            if (!std::isfinite(r[a])) throw FailedPoint{};                // LOCAL-3
+                        }
+                        return;
+                    }
+                    if (!refuse_failed) {
+                        r = ev.R[value(x)];
+                    } else {                                      // LOCAL-8: lm refuses the step there (LM-9)
                         const std::size_t i = at(x);
                         r = ev.R[i];
                         if (r.size() != p.m) r.assign(p.m, std::numeric_limits<double>::quiet_NaN());
-                    };
+                    }
+                    if (sampling)
+                        for (std::size_t a = 0; a < r.size(); ++a) r[a] *= row_scale[a];
+                };
                 if (P.has_gradient())
                     p.jacobian = [&](const Vec& x, lm::Matrix& J) {
                         const std::size_t i = at_grad(x);
                         if (ev.failed[i]) throw FailedPoint{};
                         const Rows& Jr = ev.jac(i);
                         for (std::size_t a = 0; a < J.rows; ++a)
-                            for (std::size_t b = 0; b < J.cols; ++b) J(a, b) = Jr[a][b];
+                            for (std::size_t b = 0; b < J.cols; ++b)
+                                J(a, b) = sampling ? Jr[a][b] * row_scale[a] : Jr[a][b];
                     };
                 if (gauge)
                     p.gauge = [&](const Vec& x, lm::Matrix& N) {
@@ -1613,6 +1923,7 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
                     };
                 if (varpro == "off") {
                     lr = lm::solve_robust(p, x0, lo);
+                    if (by_hook) value(lr.x);                     // BS-7: lm's last point in full
                 } else {                                  // LOCAL-9: GP's variable projection on the residuals
                     const std::size_t mr = p.m;
                     auto full = [&](const Vec& al, const Vec& a) {
@@ -1711,6 +2022,35 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
         if (varpro != "off") r.settings.push_back({"lm_varpro_rank", std::to_string(varpro_rank)});   // LOCAL-9
         if (!lm_given.empty())                        // LM-10: lm's accepted steps (0 where the run ended first)
             r.settings.push_back({"lm_iterations", std::to_string(lr.iterations)});
+        if (block_sample != "off")                    // LOCAL-11, BS-5
+            r.settings.insert(r.settings.end(),
+                              {{"lm_block_sample", block_sample}, {"lm_block_size", g_format(block_size)},
+                               {"lm_block_k", std::to_string(block_k)},
+                               {"lm_resample_every", g_format(resample_every)},
+                               {"lm_block_reweight", word["lm_block_reweight"]},
+                               {"lm_block_saving", by_hook ? "hook" : "none"},
+                               {"lm_resamples", std::to_string(resamples)}});
+        if (by_hook)                                  // BS-6
+            r.settings.insert(r.settings.end(), {{"lm_block_calls", std::to_string(ev.block_calls)},
+                                                 {"lm_block_spent", g_format(ev.block_spent)}});
+        if (word["lm_rank"] == "on" && profiles == "off") {   // PRF-6 (none where the run has no answer)
+            r.settings.push_back({"lm_rank", "on"});
+            if (!r.variables.empty())
+                for (const auto& kv : detail::lm_profiles(P, static_cast<std::size_t>(ev.n_res), r.variables[0], {}, lo)) {
+                    if (kv.first == "jacobian_rank") r.settings.push_back(kv);
+                    else if (kv.first == "profile_evaluations") r.settings.push_back({"rank_evaluations", kv.second});
+                    else if (kv.first == "profile_jacobians") r.settings.push_back({"rank_jacobians", kv.second});
+                }
+        }
+        if (profiles != "off") {                      // LOCAL-10 (none where the run has no answer)
+            r.settings.push_back({"profiles", profiles});
+            if (profiles == "list") r.settings.push_back({"profile_params", profile_text});
+            if (!r.variables.empty()) {
+                const auto more = detail::lm_profiles(P, static_cast<std::size_t>(ev.n_res), r.variables[0],
+                                                      profile_which, lo);
+                r.settings.insert(r.settings.end(), more.begin(), more.end());
+            }
+        }
     } else if (name == "eki") {
         r.settings = {{"eki_ensemble", std::to_string(eo.ensemble > 0 ? eo.ensemble
                                                                       : std::max<int>(10, 2 * static_cast<int>(n)))},

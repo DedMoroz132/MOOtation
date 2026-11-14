@@ -200,6 +200,15 @@
 //   LMN-4. Result::gauge_k is N's pseudorank at the solution, gauge_ratio
 //     ||J Q_N|| / ||J|| (Frobenius, Q_N an orthonormal basis of N's columns),
 //     with a Jacobian at the solution (one more, counted).
+//
+// A residual function that changes between iterations (task 28, §28.1; the
+// caller's subsample of residual blocks, scalar.hpp LOCAL-11): Options::
+// resample, empty by default (and then nothing here changes), is asked at
+// the start of every iteration after the first whether the residuals
+// changed; where they did, r(x) is evaluated again (one more, counted), so
+// that the iteration's tests compare values of one function.
+//   LMS-1 (only when asked: Options::resample). An iteration is an accepted step (Moré's outer loop): the
+//     residual function is fixed within one, its trial steps included.
 // ============================================================================
 
 #include <algorithm>
@@ -253,6 +262,9 @@ struct Options {
     int irls_max = 50;
     std::vector<Vec>* iterates = nullptr;   // where given, every accepted x is appended
     long long max_iter = 0;                 // lm_max_iter: accepted steps at most (LM-10); 0: no limit
+    // task 28, §28.1 (LMS): asked before every iteration after the first,
+    // with its number; true where the residual function changed
+    std::function<bool(long long iteration)> resample;
 };
 
 enum class Status { ftol, xtol, ftol_xtol, gtol, max_nfev, ftol_eps, xtol_eps, gtol_eps,
@@ -694,6 +706,15 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
     Vec zf;                                           // the step in the factored matrix's columns
     bool done = false;
     for (long long iter = 1; !done; ) {
+        if (iter > 1 && o.resample && o.resample(iter)) {   // LMS-1: the new function's r(x)
+            p.residuals(x, r);
+            ++res.nfev;
+            rnorm = norm(r);
+            if (!std::isfinite(rnorm)) {
+                res.status = Status::nonfinite;       // LM-9
+                break;
+            }
+        }
         if (p.jacobian) {
             J = Matrix(m, n);
             p.jacobian(x, J);
