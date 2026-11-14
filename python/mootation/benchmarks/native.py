@@ -53,6 +53,9 @@ import numpy as np
 _STEMS = re.compile(r"(DTLZ[1-7]|wideDTLZ3|shiftDTLZ[1-467]|IDTLZ[12]|minusDTLZ2|SDTLZ[12]|"
                     r"C1-DTLZ[13]|C2-DTLZ2|C2-ConvexDTLZ2|C3-DTLZ[14]|MaF([1-9]|1[0-5])|"
                     r"ZCAT([1-9]|1[0-9]|20)|WFG[1-9]|shiftMaF[1-7])_(\d+)D")
+# WFG at PlatEMO's sizes (registry._register_wfg; verification wave 2,
+# 2026-11-14): k = M - 1 (WFG<i>_<M>D_k<k>) or n = 47 (WFG<i>_<M>D_n<n>)
+_WFG_PLATEMO = re.compile(r"(WFG[1-9])_(\d+)D_(k|n)(\d+)")
 # MaF10-12: WFG1, WFG2 and WFG9 with M - 1 positions (Cheng et al. 2017, 2.10-2.12)
 _MAF_WFG = {"MaF10": "WFG1", "MaF11": "WFG2", "MaF12": "WFG9"}
 _ZDT = re.compile(r"(shift)?ZDT[12346]")
@@ -181,6 +184,10 @@ def spec(name: str, p, rotated=None) -> dict | None:
         if not name.startswith("shift"):
             return _base(base, n, 2)
         return _base(base, n, 2, map="shift" if base == "ZDT4" else "fold", first=1)   # the centres: C++'s
+    m = _WFG_PLATEMO.fullmatch(name)
+    if m is not None:
+        stem, M = m.group(1), int(m.group(2))
+        return _base(stem, n, M, k=int(m.group(4))) if m.group(3) == "k" else _base(stem, n, M)
     m = _STEMS.fullmatch(name)
     if m is None:
         return None

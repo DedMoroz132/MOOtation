@@ -1685,6 +1685,26 @@ def _register_wfg():
                 ideal=ideal, nadir=nadir,
                 pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
                 pareto_front=_pf)
+    # PlatEMO's versions (verification wave 2, the owner's decision of
+    # 2026-11-14): k = M - 1 at two objectives, D = K + 10 (WFG<i>_2D_k1, as
+    # PlatEMO's WFG defaults), and n = 47 at five for WFG6 and WFG7 (k = 8,
+    # l = 39, MOMBI-II's Table 1). The front is WFG's at the same M.
+    for M, k, l, names, tag in ((2, 1, 10, list(WFG_FUNCS), "k1"), (5, 8, 39, ["WFG6", "WFG7"], "n47")):
+        bounds = wfg_bounds(M, k=k, l=l)
+        nadir  = wfg_nadir(M)
+        pop, ng = _budget(M)
+        for name in names:
+            def _eval(x, _f=WFG_FUNCS[name], _M=M, _k=k): return _f(list(x), _M, _k)
+            def _pf(n, _g=_WFG_PF[name], _M=M): return _g(_M, n)
+            prob_name = f"{name}_{M}D_{tag}"
+            PROBLEMS[prob_name] = BenchProblem(
+                name=prob_name, n_vars=k + l, bounds=bounds, n_obj=M,
+                evaluate=_eval, constraints=_no_cons,
+                hv_ref_raw=tuple(v*1.1 for v in nadir),
+                hv_ref_norm=_ref_norm(M), hv_norm_divisor=_divisor(M),
+                ideal=tuple([0.0]*M), nadir=nadir,
+                pop_size=pop, n_gen=ng, K_runs=21, has_cons=False,
+                pareto_front=_pf)
 
 
 # =============================================================
@@ -3247,7 +3267,7 @@ def _in_suite(name: str) -> bool:
                 or _native._STEMS.fullmatch(name) or _native._DAS.fullmatch(name)
                 or _native._OTHER.fullmatch(name) or _native._MMO.fullmatch(name)
                 or _native._RE.fullmatch(name) or _native._BT_MOP.fullmatch(name)
-                or _native._BITS.fullmatch(name))
+                or _native._BITS.fullmatch(name) or _native._WFG_PLATEMO.fullmatch(name))
 
 
 for _name in list(PROBLEMS):

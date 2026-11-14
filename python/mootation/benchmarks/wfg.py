@@ -252,9 +252,11 @@ def wfg2(z: List[float], M: int, k: int | None = None) -> List[float]:
     x1 = x[0]; h[-1] = 1.0 - x1*(math.cos(5*math.pi*x1)**2)
     return _nb_final(x, h, M).tolist()
 
-def wfg3(z: List[float], M: int) -> List[float]:
+def wfg3(z: List[float], M: int, k: int | None = None) -> List[float]:
     z = np.asarray(z, dtype=float)
-    n, k = len(z), 2*(M-1); l = n-k
+    n = len(z)
+    if k is None: k = 2*(M-1)
+    l = n-k
     y  = _nb_normalize(z)
     t1 = y.copy(); t1[k:] = _nb_s_linear(y[k:], 0.35)
     t2 = np.empty(k + l//2); t2[:k] = t1[:k]
@@ -265,9 +267,9 @@ def wfg3(z: List[float], M: int) -> List[float]:
     h  = _nb_shape_linear(x[:-1])
     return _nb_final(x, h, M).tolist()
 
-def wfg4(z: List[float], M: int) -> List[float]:
+def wfg4(z: List[float], M: int, k: int | None = None) -> List[float]:
     z = np.asarray(z, dtype=float)
-    k = 2*(M-1)
+    if k is None: k = 2*(M-1)
     y  = _nb_normalize(z)
     t1 = _nb_s_multi(y, 30, 10.0, 0.35)
     t2 = _nb_r_sum_chunks(t1, k, M, _UNIF)
@@ -275,9 +277,9 @@ def wfg4(z: List[float], M: int) -> List[float]:
     h  = _nb_shape_concave(x[:-1])
     return _nb_final(x, h, M).tolist()
 
-def wfg5(z: List[float], M: int) -> List[float]:
+def wfg5(z: List[float], M: int, k: int | None = None) -> List[float]:
     z = np.asarray(z, dtype=float)
-    k = 2*(M-1)
+    if k is None: k = 2*(M-1)
     y  = _nb_normalize(z)
     t1 = _nb_s_decept(y, 0.35, 0.001, 0.05)
     t2 = _nb_r_sum_chunks(t1, k, M, _UNIF)
@@ -285,9 +287,11 @@ def wfg5(z: List[float], M: int) -> List[float]:
     h  = _nb_shape_concave(x[:-1])
     return _nb_final(x, h, M).tolist()
 
-def wfg6(z: List[float], M: int) -> List[float]:
+def wfg6(z: List[float], M: int, k: int | None = None) -> List[float]:
     z = np.asarray(z, dtype=float)
-    n, k = len(z), 2*(M-1); l = n-k
+    n = len(z)
+    if k is None: k = 2*(M-1)
+    l = n-k
     y  = _nb_normalize(z)
     t1 = y.copy(); t1[k:] = _nb_s_linear(y[k:], 0.35)
     t2 = _nb_r_nonsep_chunks(t1, k//(M-1), k, M, l)
@@ -295,9 +299,10 @@ def wfg6(z: List[float], M: int) -> List[float]:
     h  = _nb_shape_concave(x[:-1])
     return _nb_final(x, h, M).tolist()
 
-def wfg7(z: List[float], M: int) -> List[float]:
+def wfg7(z: List[float], M: int, k: int | None = None) -> List[float]:
     z = np.asarray(z, dtype=float)
-    n, k = len(z), 2*(M-1)
+    n = len(z)
+    if k is None: k = 2*(M-1)
     y  = _nb_normalize(z)
     cs = np.cumsum(y[::-1])[::-1]
     tail_mean = cs[1:k+1] / np.arange(n-1, n-k-1, -1, dtype=float)   # mean of y_{i+1..n}
@@ -309,9 +314,10 @@ def wfg7(z: List[float], M: int) -> List[float]:
     h  = _nb_shape_concave(x[:-1])
     return _nb_final(x, h, M).tolist()
 
-def wfg8(z: List[float], M: int) -> List[float]:
+def wfg8(z: List[float], M: int, k: int | None = None) -> List[float]:
     z = np.asarray(z, dtype=float)
-    n, k = len(z), 2*(M-1)
+    n = len(z)
+    if k is None: k = 2*(M-1)
     y  = _nb_normalize(z)
     cs = np.cumsum(y)
     head_mean = cs[k-1:n-1] / np.arange(k, n, dtype=float)            # mean of y_{1..i-1}

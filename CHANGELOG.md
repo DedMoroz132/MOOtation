@@ -10,6 +10,11 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Added (verification wave 2, the owner's decision of 2026-11-14): WFG at
+  PlatEMO's sizes as registry rows: `WFG1_2D_k1` ... `WFG9_2D_k1` (k = M - 1,
+  D = K + 10) and `WFG6_5D_n47`, `WFG7_5D_n47` (n = 47, MOMBI-II's Table 1),
+  in both engines. `wfg3` ... `wfg8` take `k` as `wfg1`, `wfg2` and `wfg9` do;
+  without it every WFG row is as before.
 - Changed (verification wave 2, the owner's decisions of 2026-11-14; new golden
   fingerprints): `isde_rd`'s `isde_directions` is `exact` by default, the
   number of subregions honoured as `moead_m2m` and `sms_m2m` do (ISDE-11;
