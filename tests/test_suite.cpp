@@ -448,6 +448,99 @@ bool refused(const S::Spec& s)
 
 }   // namespace
 
+// bbob-largescale (task 20, §24.6.5; bbob_largescale.hpp)
+void bbob_largescale()
+{
+    namespace L = S::bbob_ls;
+    // at n = 20 and 40 each function is bbob's (one block, gamma 1, one axis):
+    // bbob.hpp's instance handed over, the same values but for the order of
+    // the products (bbob's BLAS order, here a plain row) and f14 (LS-3);
+    // f19's cos of s ~ 1e5 turns the products' last bits into ~1e-11 of its
+    // value, so f19 to 1e-10, the rest to 1e-12
+    double worst = 0.0, worst19 = 0.0;
+    std::string where;
+    for (int n : {20, 40})
+        for (int fid = 1; fid <= 24; ++fid) {
+            const S::bbob::Function f = S::bbob::instance(fid, 1, n);
+            const S::bbob::Objective b(f, n);
+            const L::Objective ls(L::of_bbob(f, n), n);
+            std::mt19937 g(static_cast<std::uint32_t>(100 * n + fid));
+            for (int t = 0; t < 5; ++t) {
+                std::vector<double> x(static_cast<std::size_t>(n));
+                for (double& v : x) v = -5.0 + 10.0 * mootation::rnd::uniform01(g);
+                double fb = b(x.data()) - f.f_opt;
+                if (fid == 14) fb = fb * fb;
+                const double fl = ls(x.data()) - f.f_opt;
+                const double e = std::fabs(fl - fb) / std::max(1.0, std::fabs(fb));
+                if (fid == 19) {
+                    worst19 = std::max(worst19, e);
+                    continue;
+                }
+                if (e > worst) {
+                    worst = e;
+                    where = "f" + std::to_string(fid) + " n" + std::to_string(n);
+                }
+            }
+        }
+    char seen[96];
+    std::snprintf(seen, sizeof seen, "worst %.1e at %s, f19 %.1e", worst, where.c_str(), worst19);
+    check(worst <= 1e-12 && worst19 <= 1e-10,
+          std::string("bbob_largescale at n = 20, 40 with bbob's instance: bbob's values (f14 squared, LS-3) to "
+                      "1e-12, f19 to 1e-10 (") + seen + ")");
+
+    // Algorithm 1 gives permutations; R = P_left B P_right is orthogonal: |R v| = |v|, R^T R v = v
+    {
+        std::mt19937 g(5);
+        const L::Rotation R = L::rotation(g, 100);
+        std::vector<int> l = R.left, r = R.right;
+        std::sort(l.begin(), l.end());
+        std::sort(r.begin(), r.end());
+        bool perm = true;
+        for (int i = 0; i < 100; ++i) perm = perm && l[static_cast<std::size_t>(i)] == i && r[static_cast<std::size_t>(i)] == i;
+        int moved = 0;
+        for (int i = 0; i < 100; ++i) moved += R.left[static_cast<std::size_t>(i)] != i;
+        std::vector<double> v(100), a(100), b(100);
+        for (double& e : v) e = mootation::rnd::normal01(g);
+        R.apply(v.data(), a.data());
+        R.apply_transposed(a.data(), b.data());
+        double nv = 0.0, na = 0.0, back = 0.0;
+        for (int i = 0; i < 100; ++i) {
+            nv += v[static_cast<std::size_t>(i)] * v[static_cast<std::size_t>(i)];
+            na += a[static_cast<std::size_t>(i)] * a[static_cast<std::size_t>(i)];
+            back = std::max(back, std::fabs(b[static_cast<std::size_t>(i)] - v[static_cast<std::size_t>(i)]));
+        }
+        check(perm && moved > 50 && R.blocks() == 3 && R.size_of(2) == 20 && std::fabs(na - nv) <= 1e-12 * nv &&
+                  back <= 1e-13,
+              "bbob_largescale: P_left and P_right permutations (" + std::to_string(moved) +
+                  " of 100 moved), blocks 40, 40, 20, R orthogonal");
+    }
+
+    // f(x_opt) = f_opt (to rounding) in 80 and 160 variables; the box [-5, 5]
+    {
+        double off = 0.0;
+        std::string at;
+        for (int n : {80, 160})
+            for (int fid = 1; fid <= 24; ++fid) {
+                S::Spec s = spec("bbob_largescale", n, 1);
+                s.bbob_fid = fid;
+                const auto p = S::make(s);
+                const L::Instance in = L::instance(fid, 1, n);
+                const double e = std::fabs(objective(*p, in.x_opt) - in.f_opt) / std::max(1.0, std::fabs(in.f_opt));
+                if (e > off) {
+                    off = e;
+                    at = "f" + std::to_string(fid) + " n" + std::to_string(n);
+                }
+            }
+        S::Spec s = spec("bbob_largescale", 640, 1);
+        s.bbob_fid = 21;
+        check(off <= 1e-9 && S::bounds(s).size() == 640 && S::bounds(s)[639].first == -5.0,
+              "bbob_largescale: f(x_opt) = f_opt to 1e-9 at n = 80, 160 (worst " + std::to_string(off) + " at " + at +
+                  "); the box [-5, 5]^640");
+        S::Spec bad = spec("bbob_largescale", 20, 1);
+        check(refused(bad), "bbob_largescale: a spec without bbob_fid is refused");
+    }
+}
+
 int main()
 {
     // NumPy's scalar loops
@@ -974,6 +1067,7 @@ int main()
     }
 
     symmetric_problems();
+    bbob_largescale();
 
     std::printf("suite: %d/%d checks passed%s\n", checks - failed, checks, failed ? ", FAILED" : "");
     return failed == 0 ? 0 : 1;

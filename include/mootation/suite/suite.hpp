@@ -18,7 +18,9 @@
 // family "bbob-biobj" or "bbob-biobj-mixint", the numbers of its two
 // functions in `bbob`. bbob itself (task 18, stage 2): family "bbob", one
 // objective, the function bbob_fid (1..24) at instance bbob_iid drawn here,
-// or its numbers in `bbob` (one function).
+// or its numbers in `bbob` (one function). bbob-largescale (task 20,
+// §24.6.5; bbob_largescale.hpp): family "bbob_largescale", the function
+// bbob_fid at instance bbob_iid drawn here, in 2 or more variables.
 //
 // The CEC 2013 niching benchmark at one objective (task 18, stage 3, §3.5;
 // cec2013.hpp): family "CEC2013", the competition's problem cec_problem (1 ...
@@ -107,6 +109,7 @@
 #include <vector>
 
 #include "bbob.hpp"
+#include "bbob_largescale.hpp"
 #include "cec2013.hpp"
 #include "bits.hpp"
 #include "bt.hpp"
@@ -250,6 +253,7 @@ public:
         else if (f == "C3-DTLZ4") set_cdtlz(4, dtlz::Cons::C3_DTLZ4, n_obj);
         else if (f == "bbob-biobj" || f == "bbob-biobj-mixint") kind_ = Kind::BBOB;
         else if (f == "bbob") kind_ = Kind::BBOB1;
+        else if (f == "bbob_largescale") kind_ = Kind::BBOBLS;
         else if (f == "MGH") kind_ = Kind::MGH;
         else if (f == "CEC2013") kind_ = Kind::CEC2013;
         else if (f == "NIST") kind_ = Kind::NIST;
@@ -322,6 +326,9 @@ public:
                 return;
             case Kind::BBOB1:
                 f[0] = bbob1_(p);
+                return;
+            case Kind::BBOBLS:
+                f[0] = bbobls_(p);
                 return;
             case Kind::CEC2013:
                 f[0] = -cec_.value(std::vector<double>(p, p + n_var));
@@ -502,6 +509,7 @@ public:
                 return b;
             }
             case Kind::BBOB1: return box(n, -5.0, 5.0);    // the search domain [-5, 5]^D (Hansen et al. 2009)
+            case Kind::BBOBLS: return box(n, -5.0, 5.0);   // the same (Varelas et al. 2020)
             case Kind::DOC: return doc::bounds(which_);
             case Kind::MW: {                               // [0, upper] (mw.UPPER)
                 const double upper = which_ == 6 ? 1.1 : which_ == 11 ? mw::kSqrt2
@@ -562,7 +570,7 @@ public:
     }
 
 private:
-    enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB, BBOB1, DASCMOP, LIRCMOP,
+    enum class Kind { ZDT, DTLZ, IDTLZ, SDTLZ, Minus, CDTLZ, MaF, ZCAT, WFG, Classic, BBOB, BBOB1, BBOBLS, DASCMOP, LIRCMOP,
                       DOC, MW, Polygon, IPolygon, MMO, RE, BT, MOP, LZ09, UF, CF, RCM, Bits, CatZDT, MGH, NIST, Sym,
                       CEC2013 };
     enum class MapKind { None, Cyclic, Fold, Shift, RotateHalf, RotateAbs, Rotate, RotateZcat, RotateWfg,
@@ -581,6 +589,7 @@ private:
     zcat::Problem zcat_;
     bbob::Pair bbob_;
     bbob::Objective bbob1_;
+    bbob_ls::Objective bbobls_;
     cec2013::Problem cec_;
     nist::Dataset nist_;
     std::shared_ptr<const sym::Family> sym_;
@@ -757,6 +766,11 @@ private:
                 }
                 if (s_.bbob.size() != 1) fail("one bbob function");
                 bbob1_ = bbob::Objective(s_.bbob[0], n);
+                break;
+            case Kind::BBOBLS:                             // task 20, §24.6.5 (bbob_largescale.hpp)
+                if (M != 1 || s_.bbob_fid < 1 || s_.bbob_fid > 24 || n < 2 || s_.bbob_iid < 1)
+                    fail("one objective, f1..f24 in 2 or more variables, instance 1 or more");
+                bbobls_ = bbob_ls::Objective(bbob_ls::instance(s_.bbob_fid, s_.bbob_iid, n), n);
                 break;
             case Kind::DASCMOP:
                 if (which_ < 1 || which_ > 9 || M != dascmop::n_obj(which_) || n < M)

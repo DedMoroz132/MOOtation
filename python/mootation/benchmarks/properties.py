@@ -494,6 +494,8 @@ def properties(name: str) -> dict | None:
         row["bbob_groups"] = "+".join(sorted((_BBOB_GROUP[fa], _BBOB_GROUP[fb])))
     elif stem.startswith("bbob") and stem[4:].isdigit():
         row["bbob_groups"] = _bbob1_group(int(stem[4:]))
+    elif stem.startswith("bbobls") and stem[6:].isdigit():       # bbob-largescale: bbob's groups
+        row["bbob_groups"] = _bbob1_group(int(stem[6:]))
     row["front_dim"] = _front_dim(stem[5:] if stem.startswith("shiftMaF") else stem, row["n_obj"], front)
     from ..families import VERIFICATION, is_engineering
     row["family_kind"] = ("verification" if name in VERIFICATION else
@@ -736,9 +738,10 @@ def _huband(name: str) -> dict | None:
         fa, fb = PAIRS[int(stem[len("bbobbiobj"):].removeprefix("mixint")) - 1]
         return _p(None, fa in _BBOB_MULTIMODAL or fb in _BBOB_MULTIMODAL, False, None,
                   fa in _BBOB_SEPARABLE and fb in _BBOB_SEPARABLE, False, False)
-    if stem.startswith("bbob") and stem[4:].isdigit():
-        # one objective (_BBOB1_GROUP above): no front, no objective scales
-        fid = int(stem[4:])
+    if stem.startswith("bbob") and stem[4:].isdigit() or stem.startswith("bbobls") and stem[6:].isdigit():
+        # one objective (_BBOB1_GROUP above): no front, no objective scales;
+        # bbob-largescale (task 20, §24.6.5) as bbob: the same functions
+        fid = int(stem[6:] if stem.startswith("bbobls") else stem[4:])
         return _p(None, fid in (3, 4) or fid >= 15, False, None, fid <= 5, False, fid == 5)
     if name.startswith("cec2013_p"):
         # the CEC 2013 niching problems (suite/cec2013.hpp; Li, Engelbrecht,

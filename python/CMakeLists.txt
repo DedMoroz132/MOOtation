@@ -133,6 +133,13 @@ if(MOOTATION_BUILD_TESTS)
                 ${_MOOTATION_PY} ${CMAKE_CURRENT_SOURCE_DIR}/test_symmetric.py)
     set_tests_properties(python.symmetric PROPERTIES TIMEOUT 600)
 
+    # bbob-largescale, C++ against NumPy (task 20, §24.6.5)
+    add_test(NAME python.bbob_largescale
+        COMMAND ${CMAKE_COMMAND} -E env
+                "PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}"
+                ${_MOOTATION_PY} ${CMAKE_CURRENT_SOURCE_DIR}/test_bbob_largescale.py)
+    set_tests_properties(python.bbob_largescale PROPERTIES TIMEOUT 600)
+
     # The examples and the run-layer tests import the SAME extension, so they
     # must use the same interpreter. Registered here rather than in tests/ for
     # that reason: tests/ has no idea which Python the module was built for.
