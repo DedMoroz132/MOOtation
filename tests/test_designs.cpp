@@ -7,16 +7,20 @@
 // of area 2^-m (a (0, m, 2)-net: the scrambles keep it); the first b^m points
 // of a randomized Halton coordinate of base b one in each of its b^m
 // intervals; every column of a Latin hypercube one point in each of its n
-// cells; the ablations spend the budget exactly, the same with the same seed.
+// cells; the ablations spend the budget exactly, the same with the same seed;
+// past 4096 points lhs anneals without the n x n matrices (LHS-1): the same
+// maximin order, a Latin hypercube still.
 
 #include <cmath>
 #include <cstdio>
+#include <random>
 #include <set>
 #include <string>
 #include <vector>
 
 #include <mootation/ablations.hpp>
 #include <mootation/designs.hpp>
+#include <mootation/random.hpp>
 
 namespace ds = mootation::designs;
 namespace ab = mootation::ablations;
@@ -113,6 +117,37 @@ int main()
             for (std::size_t j = 0; j < 100; ++j) prefix = prefix && W[i * 300 + j] == N[i * 100 + j];
         CHECK(prefix);
         for (double u : W) CHECK(u >= 0.0 && u < 1.0);
+    }
+
+    // task 24, §24.3.2, LHS-1: past kLeanN points lhs anneals without the
+    // n x n matrices. Its maximin order is the matrices' one, value for value;
+    // its annealing keeps a Latin hypercube; past 4096 points the design is
+    // one, a point in each cell of every column, the same with the same seed.
+    {
+        std::mt19937 g(3);
+        const std::size_t n = 60, k = 3;
+        std::vector<int> L0(n * k);
+        for (std::size_t c = 0; c < k; ++c) {
+            std::vector<int> col(n);
+            for (std::size_t r = 0; r < n; ++r) col[r] = static_cast<int>(r);
+            mootation::rnd::shuffle(col.begin(), col.end(), g);
+            for (std::size_t r = 0; r < n; ++r) L0[r * k + c] = col[r];
+        }
+        CHECK(ds::maximin_order_lean(L0, n, k) == ds::maximin_order(ds::squared_distances(L0, n, k)));
+        for (int p : {1, 10}) {
+            std::mt19937 h(9);
+            const auto A = ds::anneal_lean(L0, n, k, p, h);
+            CHECK(ds::maximin_order_lean(A, n, k) == ds::maximin_order(ds::squared_distances(A, n, k)));
+            for (std::size_t c = 0; c < k; ++c) {
+                std::set<int> levels;
+                for (std::size_t r = 0; r < n; ++r) levels.insert(A[r * k + c]);
+                CHECK(levels.size() == n && *levels.begin() == 0 && *levels.rbegin() == static_cast<int>(n) - 1);
+            }
+        }
+        const std::size_t big = ds::kLeanN + 1;
+        const auto P = ds::lhs(big, 2, 11), Q = ds::lhs(big, 2, 11);
+        CHECK(P == Q && P.size() == 2 * big);
+        for (int j = 0; j < 2; ++j) CHECK(stratified(P, big, 2, j, big));
     }
 
     if (failures) {

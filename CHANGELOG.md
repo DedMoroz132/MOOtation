@@ -21,6 +21,13 @@ always listed under **Changed** or **Removed**.
   campaigns at one objective. `discriminate::t_optimal`
   (scalar/discriminate.hpp): T-optimum designs for discriminating two
   models after Atkinson and Fedorov 1975. Off by default.
+- Changed (task 24, §24.3.2, the owner's choice of 14.11): the `lhs` design
+  of more than 4 096 points anneals without its two n × n matrices
+  (16 n² bytes): the distances a try needs are counted again from the
+  levels and the maximin order is taken in one pass (`designs.hpp`, LHS-1).
+  Such designs differ from the earlier ones (DESIGN version +1 of round 5);
+  up to 4 096 points they are bit for bit. The memory warning past 1 GiB is
+  gone with the matrices.
 - Fixed (task 24, after task 27's findings): the run with the cache
   (`Problem::cache = exact | canon`) ends once it asks for repeats only:
   as many cache hits in a row as the budget, none evaluated between, end

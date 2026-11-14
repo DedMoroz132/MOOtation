@@ -27,8 +27,18 @@
 //   lhs         the maximin Latin hypercube of designs.py (Morris & Mitchell
 //               1995, its annealing and its two departures), its random
 //               choices from mt19937(seed), then a point drawn in each cell;
-//               it keeps two n x n matrices (16 n^2 bytes: 1.6 GB at n =
-//               10 000) and warns past 1 GiB (mootation::warn)
+//               up to kLeanN = 4096 points it keeps two n x n matrices (16
+//               n^2 bytes, 268 MB at 4096), past it none (LHS-1)
+//
+// READINGS
+//   LHS-1. Past kLeanN = 4096 points (task 24, §24.3.2; the owner's choice
+//     of 14.11) lhs anneals without the n x n matrices: the distances a try
+//     needs are counted again from the levels (whole numbers, nothing
+//     accumulated), O(n k) a try, and the sum of phi_p in full where the
+//     n x n annealing sums its matrix; the maximin order is taken in one
+//     pass over the pairs. Its random choices are the same, its rounding
+//     not, so the designs past 4096 points differ from the earlier ones
+//     (DESIGN version +1 of round 5); up to 4096 they are bit for bit.
 // ============================================================================
 
 #include <algorithm>
@@ -39,12 +49,12 @@
 #include <random>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "detmath.hpp"
 #include "random.hpp"
 #include "sobol.hpp"
-#include "warn.hpp"
 
 namespace mootation::designs {
 
@@ -209,6 +219,7 @@ inline std::vector<double> sobol_owen(std::size_t n, int d, std::int64_t seed, s
 constexpr int kPValues[] = {1, 2, 5, 10, 20, 50, 100};   // Section 5
 constexpr double kFacT = 0.95, kAccept = 0.99;
 constexpr long long kIMaxCap = 2000, kBudget = 20000, kBudgetWork = 20000000;
+constexpr std::size_t kLeanN = 4096;                       // LHS-1: past it, no n x n matrices
 
 // d^-p for an integer p >= 1 by repeated squaring and one division;
 // infinity and overflow give 0
@@ -255,6 +266,43 @@ inline std::vector<double> maximin_order(const std::vector<double>& D2, int dept
         key.push_back(-dmin);
         key.push_back(static_cast<double>(pairs / 2));
         floor = dmin;
+    }
+    return key;
+}
+
+// the squared distance (in levels) between rows a and b of L (n x k)
+inline double level_distance(const std::vector<int>& L, std::size_t k, std::size_t a, std::size_t b)
+{
+    double s = 0.0;
+    for (std::size_t c = 0; c < k; ++c) {
+        const double t = static_cast<double>(L[a * k + c] - L[b * k + c]);
+        s += t * t;
+    }
+    return s;
+}
+
+// maximin_order of L's distances in one pass over the pairs (LHS-1): the
+// `depth` smallest distinct distances, each with its number of pairs
+inline std::vector<double> maximin_order_lean(const std::vector<int>& L, std::size_t n, std::size_t k, int depth = 8)
+{
+    std::vector<std::pair<double, long long>> least;   // ascending
+    const std::size_t cap = static_cast<std::size_t>(depth);
+    for (std::size_t a = 0; a < n; ++a)
+        for (std::size_t b = a + 1; b < n; ++b) {
+            const double d = level_distance(L, k, a, b);
+            auto it = std::lower_bound(least.begin(), least.end(), d,
+                                       [](const std::pair<double, long long>& e, double v) { return e.first < v; });
+            if (it != least.end() && it->first == d) {
+                ++it->second;
+            } else if (least.size() < cap || it != least.end()) {
+                least.insert(it, {d, 1});
+                if (least.size() > cap) least.pop_back();
+            }
+        }
+    std::vector<double> key;
+    for (const auto& e : least) {
+        key.push_back(-e.first);
+        key.push_back(static_cast<double>(e.second));
     }
     return key;
 }
@@ -357,6 +405,77 @@ inline std::vector<int> anneal(std::vector<int> L, std::size_t n, std::size_t k,
     return at_best ? L : best;
 }
 
+// anneal without the n x n matrices (LHS-1): Fig. 1 as anneal(), its random
+// choices the same, the distances a try needs counted again from the levels
+template <class G>
+inline std::vector<int> anneal_lean(std::vector<int> L, std::size_t n, std::size_t k, int p, G& g)
+{
+    double scale = std::numeric_limits<double>::infinity();
+    for (std::size_t a = 0; a < n; ++a)
+        for (std::size_t b = a + 1; b < n; ++b) scale = std::min(scale, level_distance(L, k, a, b));
+    auto total = [&]() {                                     // the sum of phi_p's terms, in full
+        double s = 0.0;
+        for (std::size_t a = 0; a < n; ++a)
+            for (std::size_t b = a + 1; b < n; ++b) s += neg_power(level_distance(L, k, a, b) / scale, p);
+        return s;
+    };
+    double S = total();
+    double phi = dm::pow(S, 1.0 / p);
+    double t = initial_temperature(n, k, p, scale);
+    const long long i_max = std::min<long long>(10LL * static_cast<long long>(k * n * (n - 1) / 2), kIMaxCap);
+    const long long budget = std::min<long long>(kBudget, kBudgetWork / static_cast<long long>(n));
+    std::vector<int> best = L;
+    double best_S = S;
+    bool at_best = true;
+    long long spent = 0;
+    while (spent < budget) {
+        bool accepted = false;
+        long long tries = 1;
+        while (tries < i_max && spent < budget) {
+            ++spent;
+            const std::size_t c = static_cast<std::size_t>(rnd::below(g, k));
+            const std::size_t a = static_cast<std::size_t>(rnd::below(g, n));
+            std::size_t b = static_cast<std::size_t>(rnd::below(g, n - 1));
+            b += b >= a;                                     // a second row, not a
+            // a takes b's level and b a's: the other rows' distances to them change
+            double s_try_delta = 0.0;
+            const double la = L[a * k + c], lb = L[b * k + c];
+            for (std::size_t r = 0; r < n; ++r) {
+                if (r == a || r == b) continue;
+                const double lr = L[r * k + c];
+                const double step = (lb - lr) * (lb - lr) - (la - lr) * (la - lr);
+                const double d_a = level_distance(L, k, a, r), d_b = level_distance(L, k, b, r);
+                s_try_delta += neg_power((d_a + step) / scale, p) - neg_power(d_a / scale, p) +
+                               neg_power((d_b - step) / scale, p) - neg_power(d_b / scale, p);
+            }
+            const double S_try = S + s_try_delta;
+            const double phi_try = S_try > 0 ? dm::pow(S_try, 1.0 / p) : std::numeric_limits<double>::infinity();
+            if (S_try < S || rnd::uniform01(g) < dm::exp(-(phi_try - phi) / t)) {
+                if (at_best && S_try > best_S) {
+                    best = L;                               // leaving the best design
+                    at_best = false;
+                }
+                std::swap(L[a * k + c], L[b * k + c]);
+                S = S_try;
+                phi = phi_try;
+                accepted = true;
+            }
+            if (S_try < best_S) {
+                best_S = S_try;
+                at_best = true;
+                tries = 1;
+            } else {
+                ++tries;
+            }
+        }
+        S = total();                                         // again in full, against the drift
+        phi = dm::pow(S, 1.0 / p);
+        if (!accepted) break;
+        t *= kFacT;
+    }
+    return at_best ? L : best;
+}
+
 // the level matrix (n x k, row-major) of a maximin Latin hypercube: the best
 // of one annealing per p by the maximin order
 template <class G>
@@ -372,8 +491,9 @@ inline std::vector<int> maximin_lhs(std::size_t n, std::size_t k, G& g)
             rnd::shuffle(col.begin(), col.end(), g);
             for (std::size_t r = 0; r < n; ++r) L[r * k + c] = col[r];
         }
-        if (n > 2) L = anneal(std::move(L), n, k, p, g);
-        const auto key = maximin_order(squared_distances(L, n, k));
+        const bool lean = n > kLeanN;                                      // LHS-1
+        if (n > 2) L = lean ? anneal_lean(std::move(L), n, k, p, g) : anneal(std::move(L), n, k, p, g);
+        const auto key = lean ? maximin_order_lean(L, n, k) : maximin_order(squared_distances(L, n, k));
         if (best.empty() || std::lexicographical_compare(key.begin(), key.end(), best_key.begin(), best_key.end())) {
             best = L;
             best_key = key;
@@ -384,16 +504,8 @@ inline std::vector<int> maximin_lhs(std::size_t n, std::size_t k, G& g)
 
 inline std::vector<double> lhs(std::size_t n, int d, std::int64_t seed)
 {
-    // the annealing keeps two n x n matrices of doubles (D2, T), and its
-    // distances are updated by accumulated steps, so that it cannot do
-    // without them and give the same design (task 24, §24.3.2): a large n is
-    // warned of, and the design is as before
-    const double bytes = 2.0 * 8.0 * static_cast<double>(n) * static_cast<double>(n);
-    if (bytes > 1073741824.0)
-        mootation::warn("lhs: " + std::to_string(n) + " points keep two " + std::to_string(n) + " x " +
-                        std::to_string(n) + " matrices, about " +
-                        std::to_string(static_cast<long long>(bytes / 1073741824.0 + 0.5)) +
-                        " GiB; sobol, sobol_owen and halton_rand need no such memory");
+    // up to kLeanN points the annealing keeps two n x n matrices (268 MB at
+    // 4096), past it none (LHS-1)
     std::mt19937 g(seed32(seed));
     const std::size_t k = static_cast<std::size_t>(d);
     const auto L = maximin_lhs(n, k, g);

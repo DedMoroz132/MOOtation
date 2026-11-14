@@ -1166,11 +1166,14 @@ hypercube with the point drawn inside it, not the paper's grid i/(n − 1),
 whose 0, 1 and, at odd n, 1/2 are exactly the optima of DTLZ1–4's and ZDT's
 distance variables (`designs.py`). A smaller budget is another hypercube, so
 the baseline is budget-dependent and a `ladder` runs it at each rung.
-Its memory grows as the square of the points (two n × n matrices of the
-annealing: 1.6 GB at 10 000 points); past 1 GiB the library says so through
-`mootation::warn`, and for such n `sobol`, `sobol_owen` or `halton_rand`
-are the designs to take (a design without the matrices would not be the
-same one; task 24, §24.3.2, is with the owner).
+Up to 4 096 points the annealing keeps two n × n matrices (268 MB at 4 096);
+past that it keeps none: the distances a try needs are counted again from the
+levels, and the maximin order is taken in one pass over the pairs (LHS-1 in
+`designs.hpp`; task 24, §24.3.2). Its random choices are the same, its
+rounding is not, so a design of more than 4 096 points differs from what
+earlier versions drew; up to 4 096 points the designs are as before, bit for
+bit. Its time still grows as the square of the points; `sobol`, `sobol_owen`
+and `halton_rand` are the fast designs for very large n.
 `sobol_search`, `halton_search` and `sobol_owen_search` draw sequences, whose
 first points do not depend on how many follow: a smaller budget is the start of the same run, and
 a `ladder` reads it off the trajectory.
