@@ -91,6 +91,10 @@ always listed under **Changed** or **Removed**.
   reset is the letter and stays `bound_repair = random`, but the papers'
   own tables are reproduced by clipping, and where the letter disagrees
   with the tables the default follows the tables (MDE-6, DRA-13).
+  `test_constraints` exempts `irea` from its feasibility check: its
+  `ConstraintMode::FEASIBILITY` acts only in the mating tournament, and the
+  new default `ibea` reading works against it in survival, so the
+  constrained run's loss of feasible members is systematic, not seed luck.
 - Added (task 26, item 24.5.1, A1): objectives that depend on the
   population for the multi-objective cores. `DataVault::set_aux(k, fn)`
   gives every slot k objectives after the problem's own, computed from the

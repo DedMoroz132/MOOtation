@@ -214,6 +214,17 @@ const FeasExempt FEAS_EXEMPT[] = {
     {"rvea",
      "effect (+0.7 of 91, mean over 20 seeds) is smaller than the per-seed "
      "spread (+-4); one survivor per reference vector leaves little room"},
+    // IREA's FEASIBILITY (an extension: the paper has no constraints) acts only
+    // in the mating tournament (dominates()); the indicator fitness and the
+    // cluster/layer survival read no CV, under either fitness_reading. Over 20
+    // seeds at this pop and generation count the default fitness_reading = ibea
+    // (IREA-1) ends with fewer feasible members on most seeds, a systematic
+    // loss rather than seed luck; under swap the mode shows no consistent
+    // effect either way. The wiring is the same for both readings, so this is
+    // the extension's reach, not a dropped constraint path.
+    {"irea",
+     "FEASIBILITY acts only in the mating tournament and the default ibea "
+     "reading works against it in survival, so the loss is systematic"},
 };
 
 const char* feas_exempt_reason(const char* key)
