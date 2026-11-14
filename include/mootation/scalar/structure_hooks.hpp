@@ -59,7 +59,7 @@
 //   HOOK-6. canon_key (the cache of 24.1.4 with cache = canon) is the
 //     structure's key without the parameters (TREE-5): one evaluation per
 //     structure, right where evaluate fits the parameters itself (a local
-//     fit inside the evaluation, 04 Р3, Р5). A problem whose f depends on
+//     fit inside the evaluation, Kommenda et al. 2020). A problem whose f depends on
 //     the parameters stored in the genome keeps cache = off or exact, or sets
 //     its own canon_key. A GE genome that does not decode has the key
 //     "(invalid)" (it is never evaluated).

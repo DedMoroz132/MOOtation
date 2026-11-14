@@ -18,7 +18,7 @@
 // population. The structure's genes are never moved: a builtin local solver
 // would move every variable, the structure's slots too.
 //
-// Two ways to give a structure its parameters (04 Р3, Р5):
+// Two ways to give a structure its parameters:
 //   - this hook: f(x) is the error of the structure with the genome's
 //     parameters, the fit is a local search the strategy pays for and writes
 //     back; the cache by structure (cache = canon) must stay off then — two

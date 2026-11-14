@@ -212,7 +212,7 @@ static Grammar series_parallel(int max_arity)
     return g;
 }
 
-// the phenotype as gen_audit.py sees it: a leaf's kind or (S|P, children)
+// the phenotype: a leaf's kind or (S|P, children)
 struct Net {
     std::string op;   // "A", "B", "C" for a leaf
     std::vector<Net> kids;
@@ -249,7 +249,7 @@ static std::string key(const Net& n)
     return s + ")";
 }
 
-// gen_audit.py's reduce: nested nodes of one kind merged, equal leaves of a
+// the reduction of a network: nested nodes of one kind merged, equal leaves of a
 // node merged, leaves sorted then subtrees by key, one child: the child
 static Net reduce(const Net& n)
 {
@@ -284,7 +284,7 @@ static void correct_by_construction()
     const Grammar g = series_parallel(3);
     const DepthIndex ix = depth_index(g);
     TreeOptions o;
-    o.max_depth = 4;     // gen_audit.py: nodes at depths 0-2, leaves down to 3
+    o.max_depth = 4;     // nodes at depths 1-3, leaves down to 4 (TREE-1)
     o.init_depth = 0;
     std::mt19937 rng(1);
     int wrong = 0, unreduced = 0;
@@ -295,7 +295,7 @@ static void correct_by_construction()
         const Net n = net_of(g, t, 0, &end);
         wrong += determined(n) ? 0 : 1;
         unreduced += key(reduce(n)) == key(n) ? 0 : 1;
-        check(key(n) == canon_key(g, t), "the canonical key is gen_audit's key of the reduced tree");
+        check(key(n) == canon_key(g, t), "the canonical key is the reduced network's key");
     }
     check(wrong == 0, "typed trees: none undetermined (" + std::to_string(wrong) + ")");
     check(unreduced == 0, "typed trees: none unreduced (" + std::to_string(unreduced) + ")");
