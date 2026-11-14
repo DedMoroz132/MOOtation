@@ -9,6 +9,7 @@
 // indicators and the Pareto-set ones, the same on every platform.
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <set>
 #include <sstream>
@@ -67,8 +68,13 @@ int main()
             ++failures;
             continue;
         }
-        const auto entry = cg::load_entry(dir + "refs/v" + std::to_string(preg.reference_version) + "/" +
-                                          job.problem + "/n" + std::to_string(spec.n_ref) + ".npz");
+        // the entry where refs.entry_path() puts it under the sample's refs/ (references.hpp:
+        // records, .mrf, from reference version 5; .npz before)
+        const auto entry = cg::load_entry(std::filesystem::path(dir) / "refs" /
+                                          ("v" + std::to_string(preg.reference_version)) /
+                                          mootation::store::file::path_of(job.problem) /
+                                          ("n" + std::to_string(spec.n_ref) +
+                                           (preg.reference_version >= cg::kRecordEntries ? ".mrf" : ".npz")));
         cg::JobRun run(job, spec, p, cg::shared_references(entry, true, spec.dense_reference, p.has_pareto_set));
         run.set_registry(preg, jreg);
         cg::Process still;

@@ -4824,7 +4824,8 @@ operator_stats = STATS
                 assert ops == {"sbx": "none", "polynomial": "none"}, ops
                 assert meta["final"]["oob_share"] == 0.0
             else:
-                assert ops["box repair"] == ("reflect" if alg == "de_reflect" else "random"), ops
+                # moead_de clips by default since 2026-11-14 (MDE-6); random is the letter
+                assert ops["box repair"] == ("reflect" if alg == "de_reflect" else "clip"), ops
                 assert meta["final"]["oob_share"] > 0.0, meta["final"]
             assert meta["final"]["n_final"] == 91 and meta["final"]["tau90"] > 0
             off = json.loads((b / "meta.json").read_text(encoding="utf-8"))
@@ -7133,7 +7134,7 @@ def gde3_smsemoa_mocmaes_run_inside_the_box_and_take_their_knobs():
 @test
 def moead_de_and_dra_take_the_three_de_components():
     """Task 15, §1 (Tanabe & Ishibuchi 2019): de_base, de_index, de_p and the
-    bound handling. The default is the explicit current1, wr, random bit for
+    bound handling. The default is the explicit current1, wr, clip bit for
     bit; every combination runs inside the box, takes every knob and gives the
     same run from the same seed; an unknown word is refused."""
     if not _have_numpy() or _core_with("hv_contributions") is None:
@@ -7147,7 +7148,7 @@ def moead_de_and_dra_take_the_three_de_components():
     for alg in ("moead_de", "moead_dra"):
         d = minimize(p.evaluate, algorithm=alg, seed=5, **kw)
         e = minimize(p.evaluate, algorithm=alg, seed=5, de_base="current1", de_index="wr",
-                     bound_repair="random", **kw)
+                     bound_repair="clip", **kw)        # clip by default since 2026-11-14 (MDE-6, DRA-13)
         assert d.objectives == e.objectives and not e.ignored, (alg, e.ignored)
         differs = 0
         for base in ("rand1", "current1", "current_to_pbest1"):

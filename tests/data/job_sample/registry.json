@@ -1,7 +1,7 @@
 {
  "format": 1,
- "code_stamp": "v4-af2341d9e832bace",
- "reference_version": 4,
+ "code_stamp": "v6-70a4e63634133794",
+ "reference_version": 6,
  "mootation": "0.1.0",
  "names": {
   "baselines": [
@@ -22,11 +22,70 @@
    "eps_nm",
    "eps_cmaes",
    "boostdms",
-   "mosqp"
+   "mosqp",
+   "slsqp",
+   "nelder_mead",
+   "cmaes",
+   "lm",
+   "lbfgsb",
+   "eki",
+   "catcma",
+   "de",
+   "jade",
+   "shade",
+   "lshade",
+   "ga_sbx",
+   "ssga",
+   "g3_pcx",
+   "chc",
+   "pso",
+   "spso2011",
+   "sep_cmaes",
+   "multistart",
+   "ipop",
+   "bipop",
+   "bipop_2009",
+   "halving",
+   "mlsl",
+   "basin_hopping",
+   "ils",
+   "memetic",
+   "tiktak",
+   "data_continuation",
+   "pap",
+   "pbh",
+   "mde",
+   "ma_chains",
+   "coevolution",
+   "lns",
+   "cluster_ga",
+   "shrink",
+   "reformulation",
+   "replica_ladder"
   ],
   "scalar_others": [
    "boostdms",
-   "mosqp"
+   "mosqp",
+   "slsqp",
+   "nelder_mead",
+   "cmaes",
+   "lm",
+   "lbfgsb",
+   "eki",
+   "catcma",
+   "de",
+   "jade",
+   "shade",
+   "ga_sbx",
+   "ssga",
+   "g3_pcx",
+   "chc",
+   "pso",
+   "spso2011",
+   "sep_cmaes",
+   "ipop",
+   "bipop",
+   "bipop_2009"
   ],
   "design_kinds": [
    "sobol",
@@ -117,11 +176,81 @@
    "n_offspring",
    "n_ref_points",
    "ada",
+   "grad_cost",
+   "lm_ftol",
+   "lm_xtol",
+   "lm_gtol",
+   "lm_f_scale",
+   "max_seconds",
+   "lm_block_size",
+   "lm_resample_every",
+   "lbfgsb_m",
+   "lbfgsb_pgtol",
+   "lbfgsb_ftol",
+   "np",
+   "jade_p",
+   "jade_c",
+   "shade_h",
+   "shade_p_max",
+   "lshade_p",
+   "lshade_r_arc",
+   "lshade_n_min",
+   "lshade_max_nfe",
+   "ga_tournament",
+   "g3_mu",
+   "g3_lambda",
+   "g3_sigma",
+   "chc_divergence",
+   "chc_bits",
+   "pso_phi",
+   "spso_k",
+   "noise_frac",
+   "gng_eps",
+   "eki_ensemble",
+   "eki_sigma0",
+   "eki_gamma",
+   "eki_noise",
+   "eki_tau",
+   "lm_max_iter",
+   "lm_geodesic_alpha",
+   "lm_geodesic_h",
+   "cma_eigen_every",
+   "cma_margin_alpha",
+   "n_starts",
+   "threads",
+   "min_dist",
+   "min_df",
+   "start_share",
+   "bipop_large",
+   "mlsl_n",
+   "mlsl_sigma",
+   "mlsl_gamma",
+   "mlsl_tau",
+   "mlsl_nu",
+   "start_budget",
+   "bh_temperature",
+   "bh_step",
+   "bh_accept_rate",
+   "bh_interval",
+   "ils_step",
+   "ils_restart",
+   "ils_temperature",
+   "memetic_every",
+   "memetic_points",
+   "local_share",
+   "ga_block_uniform",
+   "ga_block_mutation",
+   "tiktak_n",
+   "tiktak_share",
+   "dc_share",
+   "pap_interval",
+   "pap_size",
    "eta_int",
    "bound_repair",
    "crossover",
    "mutation",
    "crowding_space",
+   "sbx_bounds",
    "dms_init",
    "dms_poll",
    "dms_cache",
@@ -165,10 +294,65 @@
    "tch_weights",
    "sqp_line_search",
    "theta_ties",
+   "k_share",
    "hv_algo",
    "hv_contrib",
    "polish",
-   "int_repair"
+   "lm_loss",
+   "pso_topology",
+   "pso_v0",
+   "pm_literal",
+   "flag1",
+   "flag2",
+   "fitness_reading",
+   "extreme_weights",
+   "slot_exclusive",
+   "nm_coefficients",
+   "lm_gauge",
+   "lm_failed",
+   "lm_geodesic",
+   "cma_margin",
+   "lm_varpro",
+   "profiles",
+   "lm_block_sample",
+   "lm_block_reweight",
+   "lm_rank",
+   "eki_init",
+   "eki_perturb",
+   "kpcm_pm",
+   "edv_tournament",
+   "cma_weights",
+   "cma_cmu",
+   "cma_stop",
+   "cma_stagnation",
+   "cma_tolfun",
+   "start_points",
+   "cma_bounds",
+   "ils_accept",
+   "memetic_pick",
+   "keep_points",
+   "sym",
+   "cv_rule",
+   "cv_norm",
+   "nadir_source",
+   "drs_guard",
+   "clia_norm",
+   "clia_rpil",
+   "gng_ties",
+   "arv_linkage",
+   "min_sym",
+   "aprd_pbi",
+   "rd_ideal",
+   "if_range",
+   "nrv_archive",
+   "nrv_pool",
+   "isde_directions",
+   "int_repair",
+   "inner",
+   "local_solver",
+   "dc_stages",
+   "pap_members",
+   "profile_params"
   ],
   "text_knobs": [
    [
@@ -217,6 +401,13 @@
     [
      "objectives",
      "decision"
+    ]
+   ],
+   [
+    "sbx_bounds",
+    [
+     "bounded",
+     "clip"
     ]
    ],
    [
@@ -554,6 +745,13 @@
     ]
    ],
    [
+    "k_share",
+    [
+     "pp",
+     "dp"
+    ]
+   ],
+   [
     "hv_algo",
     [
      "auto",
@@ -577,6 +775,366 @@
      "off",
      "sqp",
      "nm"
+    ]
+   ],
+   [
+    "lm_loss",
+    [
+     "linear",
+     "huber",
+     "cauchy"
+    ]
+   ],
+   [
+    "pso_topology",
+    [
+     "ring",
+     "global"
+    ]
+   ],
+   [
+    "pso_v0",
+    [
+     "random",
+     "zero"
+    ]
+   ],
+   [
+    "pm_literal",
+    [
+     "on",
+     "off"
+    ]
+   ],
+   [
+    "flag1",
+    [
+     "off",
+     "on"
+    ]
+   ],
+   [
+    "flag2",
+    [
+     "off",
+     "on"
+    ]
+   ],
+   [
+    "fitness_reading",
+    [
+     "ibea",
+     "swap"
+    ]
+   ],
+   [
+    "extreme_weights",
+    [
+     "nsga3",
+     "literal"
+    ]
+   ],
+   [
+    "slot_exclusive",
+    [
+     "off",
+     "on"
+    ]
+   ],
+   [
+    "nm_coefficients",
+    [
+     "adaptive",
+     "standard"
+    ]
+   ],
+   [
+    "lm_gauge",
+    [
+     "off",
+     "on"
+    ]
+   ],
+   [
+    "lm_failed",
+    [
+     "stop",
+     "refuse"
+    ]
+   ],
+   [
+    "lm_geodesic",
+    [
+     "off",
+     "on"
+    ]
+   ],
+   [
+    "cma_margin",
+    [
+     "off",
+     "on"
+    ]
+   ],
+   [
+    "lm_varpro",
+    [
+     "off",
+     "on",
+     "kaufman"
+    ]
+   ],
+   [
+    "profiles",
+    [
+     "off",
+     "all",
+     "list"
+    ]
+   ],
+   [
+    "lm_block_sample",
+    [
+     "off",
+     "frac",
+     "count"
+    ]
+   ],
+   [
+    "lm_block_reweight",
+    [
+     "on",
+     "off"
+    ]
+   ],
+   [
+    "lm_rank",
+    [
+     "off",
+     "on"
+    ]
+   ],
+   [
+    "eki_init",
+    [
+     "around",
+     "sobol",
+     "lhs"
+    ]
+   ],
+   [
+    "eki_perturb",
+    [
+     "yes",
+     "no"
+    ]
+   ],
+   [
+    "kpcm_pm",
+    [
+     "off",
+     "on"
+    ]
+   ],
+   [
+    "edv_tournament",
+    [
+     "fitness",
+     "random"
+    ]
+   ],
+   [
+    "cma_weights",
+    [
+     "active",
+     "positive"
+    ]
+   ],
+   [
+    "cma_cmu",
+    [
+     "tutorial2016",
+     "hansen2009"
+    ]
+   ],
+   [
+    "cma_stop",
+    [
+     "spread",
+     "h09"
+    ]
+   ],
+   [
+    "cma_stagnation",
+    [
+     "h09",
+     "either",
+     "off",
+     "cmaes_m"
+    ]
+   ],
+   [
+    "cma_tolfun",
+    [
+     "h09",
+     "cmaes_m"
+    ]
+   ],
+   [
+    "start_points",
+    [
+     "sobol",
+     "lhs",
+     "uniform",
+     "halton_rand",
+     "sobol_owen"
+    ]
+   ],
+   [
+    "cma_bounds",
+    [
+     "penalty",
+     "none"
+    ]
+   ],
+   [
+    "ils_accept",
+    [
+     "better",
+     "rw",
+     "restart",
+     "lsmc"
+    ]
+   ],
+   [
+    "memetic_pick",
+    [
+     "best",
+     "spread"
+    ]
+   ],
+   [
+    "keep_points",
+    [
+     "all",
+     "best"
+    ]
+   ],
+   [
+    "sym",
+    [
+     "off",
+     "canon",
+     "align"
+    ]
+   ],
+   [
+    "cv_rule",
+    [
+     "angle",
+     "lmea",
+     "platemo"
+    ]
+   ],
+   [
+    "cv_norm",
+    [
+     "population",
+     "nondominated"
+    ]
+   ],
+   [
+    "nadir_source",
+    [
+     "intercepts",
+     "archive"
+    ]
+   ],
+   [
+    "drs_guard",
+    [
+     "off",
+     "normalize",
+     "extreme"
+    ]
+   ],
+   [
+    "clia_norm",
+    [
+     "raw",
+     "intercepts"
+    ]
+   ],
+   [
+    "clia_rpil",
+    [
+     "on",
+     "off"
+    ]
+   ],
+   [
+    "gng_ties",
+    [
+     "first",
+     "random"
+    ]
+   ],
+   [
+    "arv_linkage",
+    [
+     "single",
+     "average",
+     "complete"
+    ]
+   ],
+   [
+    "min_sym",
+    [
+     "off",
+     "canon",
+     "align"
+    ]
+   ],
+   [
+    "aprd_pbi",
+    [
+     "canonical",
+     "printed"
+    ]
+   ],
+   [
+    "rd_ideal",
+    [
+     "running",
+     "origin"
+    ]
+   ],
+   [
+    "if_range",
+    [
+     "pool",
+     "alg1"
+    ]
+   ],
+   [
+    "nrv_archive",
+    [
+     "letter",
+     "platemo"
+    ]
+   ],
+   [
+    "nrv_pool",
+    [
+     "letter",
+     "platemo"
+    ]
+   ],
+   [
+    "isde_directions",
+    [
+     "exact",
+     "lattice"
     ]
    ],
    [
@@ -639,6 +1197,15 @@
    "rvea_star",
    "srv",
    "srv_nsga3"
+  ],
+  "solver_knobs": [
+   "inner",
+   "local_solver"
+  ],
+  "json_knobs": [
+   "dc_stages",
+   "pap_members",
+   "profile_params"
   ]
  },
  "problems": [
@@ -787,12 +1354,36 @@
    "own_evaluator": false,
    "typed": false,
    "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": null,
+   "seeded_stream": null,
    "distance": true,
    "spec": {
     "family": "ZDT1",
     "n_var": 30,
     "n_obj": 2
-   }
+   },
+   "ideal": [
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0
+   ],
+   "front": {
+    "kind": "zdt1",
+    "seed": 2104397228,
+    "of": "ZDT1"
+   },
+   "set": {
+    "kind": "zdt",
+    "base": "ZDT1",
+    "rest": 0.0,
+    "of": "ZDT1"
+   },
+   "frame_files": null
   },
   {
    "name": "DTLZ2_3D",
@@ -867,12 +1458,40 @@
    "own_evaluator": false,
    "typed": false,
    "failing": false,
+   "failing_region": null,
+   "noise": null,
+   "uninformative": null,
+   "seeded_stream": null,
    "distance": true,
    "spec": {
     "family": "DTLZ2",
     "n_var": 12,
     "n_obj": 3
-   }
+   },
+   "ideal": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "nadir": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "front": {
+    "kind": "dtlz2",
+    "M": 3,
+    "seed": 2907601593,
+    "of": "DTLZ2_3D"
+   },
+   "set": {
+    "kind": "dtlz",
+    "M": 3,
+    "n_vars": 12,
+    "rest": 0.5,
+    "of": "DTLZ2_3D"
+   },
+   "frame_files": null
   }
  ]
 }
