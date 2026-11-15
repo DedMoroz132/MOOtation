@@ -7,10 +7,13 @@
 // no nearer); infinite bounds as no bounds, bit for bit; Rosenbrock with x1
 // <= 1/2 ends at (1/2, 1/4); bounded variants end where the projected
 // gradient vanishes (BLNZ (6.1)); a checksum of the MGH runs, the same bits
-// on every platform (dm:: in the problems, + - * / sqrt in the solver).
+// on every platform (dm:: in the problems, + - * / sqrt in the solver); at
+// n = 300 in a box, m = 5, 12, 20: the cost per iteration against m (LB-11)
+// and the runs' bits.
 // ============================================================================
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -135,6 +138,92 @@ int main()
     }
     std::printf("checksum %016llx\n", static_cast<unsigned long long>(g_hash));
     check(g_hash == 0x8ae4a65d9e843c71ull, "the runs' bits as on every platform (dm:: and + - * / sqrt only)");
+    // speed (task 30, §30.4; LB-11): n = 300 in a box, m = 5, 12, 20. From m = 5 to 20 the
+    // time per iteration grew some 150 times (the k^4 n of M's forming), now some 7; the
+    // runs keep their bits (the checksum of the runs before LB-11)
+    {
+        const std::size_t n = 300;
+        auto rosen = [](const Vec& x, Vec& g) {        // extended Rosenbrock
+            double f = 0.0;
+            g.assign(x.size(), 0.0);
+            for (std::size_t i = 0; i + 1 < x.size(); i += 2) {
+                const double t = x[i + 1] - x[i] * x[i], u = 1.0 - x[i];
+                f += 100.0 * t * t + u * u;
+                g[i] += -400.0 * t * x[i] - 2.0 * u;
+                g[i + 1] += 200.0 * t;
+            }
+            return f;
+        };
+        auto quad = [](const Vec& x, Vec& g) {         // ill-conditioned, chained; a third outside the box
+            const std::size_t k = x.size();
+            double f = 0.0;
+            g.assign(k, 0.0);
+            for (std::size_t i = 0; i < k; ++i) {
+                const double d = 1.0 + 1e4 * static_cast<double>(i * 37 % k) / static_cast<double>(k);
+                const double c = (i % 3 == 0) ? 1.5 : 0.3 * static_cast<double>(i % 7) / 7.0;
+                const double r = x[i] - c;
+                f += d * r * r;
+                g[i] += 2.0 * d * r;
+                if (i + 1 < k) {
+                    const double e = x[i] - x[i + 1];
+                    f += 10.0 * e * e;
+                    g[i] += 20.0 * e;
+                    g[i + 1] -= 20.0 * e;
+                }
+            }
+            return f;
+        };
+        std::uint64_t hash = 1469598103934665603ull;
+        double per_it[2][3] = {};
+        const int ms[] = {5, 12, 20};
+        for (int which = 0; which < 2; ++which)
+            for (int a = 0; a < 3; ++a) {
+                LB::Problem p;
+                p.n = n;
+                p.lo.assign(n, which == 0 ? -2.0 : -1.0);
+                p.hi.assign(n, which == 0 ? 2.0 : 1.0);
+                Vec x0(n, 0.0);
+                if (which == 0) {
+                    p.fg = rosen;
+                    for (std::size_t i = 0; i < n; ++i) {
+                        x0[i] = i % 2 == 0 ? -1.2 : 1.0;
+                        if (i % 3 == 0) p.hi[i] = 0.8;
+                    }
+                } else {
+                    p.fg = quad;
+                }
+                LB::Options o;
+                o.m = ms[a];
+                o.pgtol = 1e-12;
+                o.max_nfev = 3000;
+                LB::Result r;
+                double best = 1e300;
+                for (int rep = 0; rep < 3; ++rep) {    // the least of three against the machine's noise
+                    const auto t0 = std::chrono::steady_clock::now();
+                    r = LB::solve(p, x0, o);
+                    best = std::min(best, std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+                }
+                per_it[which][a] = best / static_cast<double>(std::max(r.iterations, 1LL));
+                std::uint64_t b;
+                for (double v : r.x) {
+                    std::memcpy(&b, &v, sizeof b);
+                    hash = (hash ^ b) * 1099511628211ull;
+                }
+                for (const double v : {static_cast<double>(r.nfev), static_cast<double>(r.iterations)}) {
+                    std::memcpy(&b, &v, sizeof b);
+                    hash = (hash ^ b) * 1099511628211ull;
+                }
+                std::printf("      n 300 %s m %2d: %lld iterations, %lld evaluations, %.4f ms per iteration, f %.10g\n",
+                            which == 0 ? "rosenbrock" : "quadratic ", ms[a], r.iterations, r.nfev, 1e3 * per_it[which][a], r.f);
+            }
+        std::printf("      n 300 checksum %016llx\n", static_cast<unsigned long long>(hash));
+        check(hash == 0x1281c1698fa2cdeaull, "n = 300, m = 5, 12, 20: the runs' bits as before LB-11 (on every platform)");
+        for (int which = 0; which < 2; ++which) {
+            const double ratio = per_it[which][2] / per_it[which][0];
+            check(ratio < 30.0, std::string("n = 300: m = 20 costs less than 30 times m = 5 per iteration (") +
+                                    (which == 0 ? "rosenbrock" : "quadratic") + ", " + std::to_string(ratio) + ")");
+        }
+    }
     std::printf(g_failed ? "FAILED\n" : "all passed\n");
     return g_failed ? 1 : 0;
 }

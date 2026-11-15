@@ -65,6 +65,12 @@
 //     SciPy's run, the same for six iterations to six digits, goes on).
 //   LB-6. OURS: the new point is the one the search accepts; where it stops
 //     short of (2.5)-(2.6) (its own limits), the trial with the lowest f.
+//   LB-11. Not a departure, a note on the cost (task 30, §30.4): M and Mbar
+//     take the k x k products S^T Y, S^T S, Y^T Y, each formed once per
+//     iteration (k^2 n). Their entries were formed again inside the loops of
+//     R^-1 and of R^-T (D + Y^T Y / theta) R^-1, k^3 n and k^4 n: at n = 300
+//     m = 12 took some 20 times m = 5 per iteration (test_lbfgsb). The same
+//     products in the same order: the same bits.
 // ============================================================================
 
 #include <algorithm>
@@ -203,15 +209,23 @@ struct Memory {
             for (std::size_t i = 0; i < a.size(); ++i) s += a[i] * b[i];
             return s;
         };
+        // S^T Y, S^T S, Y^T Y: each entry formed once (LB-11), entry (i, j) as dot(row i, column j)
+        std::vector<double> SY(kk * kk), SS(kk * kk), YY(kk * kk);
+        for (std::size_t i = 0; i < kk; ++i)
+            for (std::size_t j = 0; j < kk; ++j) {
+                SY[i * kk + j] = dot(S[i], Y[j]);
+                SS[i * kk + j] = dot(S[i], S[j]);
+                YY[i * kk + j] = dot(Y[i], Y[j]);
+            }
         Vec D(kk);
         std::vector<double> L(kk * kk, 0.0), T(kk * kk, 0.0);
         for (std::size_t i = 0; i < kk; ++i) {
-            D[i] = dot(S[i], Y[i]);
-            for (std::size_t j = 0; j < i; ++j) L[i * kk + j] = dot(S[i], Y[j]);
+            D[i] = SY[i * kk + i];
+            for (std::size_t j = 0; j < i; ++j) L[i * kk + j] = SY[i * kk + j];
         }
         for (std::size_t i = 0; i < kk; ++i)
             for (std::size_t j = 0; j < kk; ++j) {
-                double s = theta * dot(S[i], S[j]);
+                double s = theta * SS[i * kk + j];
                 for (std::size_t l = 0; l < kk; ++l) s += L[i * kk + l] * L[j * kk + l] / D[l];
                 T[i * kk + j] = s;
             }
@@ -253,16 +267,18 @@ struct Memory {
         for (std::size_t c = 0; c < kk; ++c)
             for (std::size_t i = c + 1; i-- > 0;) {
                 double s = i == c ? 1.0 : 0.0;
-                for (std::size_t l = i + 1; l <= c; ++l) s -= dot(S[i], Y[l]) * Ri[l * kk + c];
+                for (std::size_t l = i + 1; l <= c; ++l) s -= SY[i * kk + l] * Ri[l * kk + c];
                 Ri[i * kk + c] = s / D[i];
             }
+        std::vector<double> DY(kk * kk);               // D + Y^T Y / theta
+        for (std::size_t a = 0; a < kk; ++a)
+            for (std::size_t b = 0; b < kk; ++b) DY[a * kk + b] = (a == b ? D[a] : 0.0) + YY[a * kk + b] / theta;
         std::vector<double> G(kk * kk, 0.0);           // R^-T (D + Y^T Y / theta) R^-1
         for (std::size_t i = 0; i < kk; ++i)
             for (std::size_t j = 0; j < kk; ++j) {
                 double s = 0.0;
                 for (std::size_t a = 0; a < kk; ++a)
-                    for (std::size_t b = 0; b < kk; ++b)
-                        s += Ri[a * kk + i] * ((a == b ? D[a] : 0.0) + dot(Y[a], Y[b]) / theta) * Ri[b * kk + j];
+                    for (std::size_t b = 0; b < kk; ++b) s += Ri[a * kk + i] * DY[a * kk + b] * Ri[b * kk + j];
                 G[i * kk + j] = s;
             }
         Mbar.assign(q * q, 0.0);

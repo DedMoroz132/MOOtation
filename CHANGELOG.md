@@ -66,6 +66,11 @@ always listed under **Changed** or **Removed**.
   minima, `off` keeps none and drops the `minima` row from the settings;
   strategies that read their log (`minima_bayes`, `mlsl_stop = bayes`,
   `start_filter = oqnlp`) refuse a log that is not whole (STRAT-15).
+- Fixed (task 30, §30.4): `lbfgsb`'s cost per iteration grew as m⁴ n with
+  the memory m: forming the limited-memory matrices took the products of
+  the stored pairs again inside their loops. Each product is now formed once
+  per iteration (`scalar/lbfgsb.hpp`, LB-11); every run is bit for bit as
+  before. `test_lbfgsb` times n = 300 at m = 5, 12, 20.
 - Added (task 26): `catcma`, task 19's CatCMA (scalar/catcma.hpp) as a
   single-objective solver (scalar/catcma_run.hpp) on problems whose last
   variables are categorical (`Problem::cat_levels`); `minimize(...,
