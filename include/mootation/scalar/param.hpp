@@ -94,8 +94,11 @@
 //     every member carried as the point is, the member equal to the point
 //     (else the last) left out, as the start's seed points: members 2 ... K
 //     of the next level's first population (cluster_ga CGA-5), so the
-//     number of members is kept. shrink_carried: every level's carried
-//     members with the point (0 for the first level).
+//     number of members is kept. A level whose first round did not end
+//     (its target reached in it, or its allowance spent) has no population:
+//     the next starts from the point alone, its members 2 ... K uniform.
+//     shrink_carried: every level's carried members with the point (0 for
+//     the first level).
 // ============================================================================
 
 #include <algorithm>

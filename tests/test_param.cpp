@@ -266,11 +266,19 @@ int main()
     {
         const char* cga = "{\"cga_init\":\"seed_points\",\"cga_pop\":4,\"inner\":{\"solver\":\"nelder_mead\"},"
                           "\"solver\":\"cluster_ga\",\"start_budget\":200}";
+        // without the target: a level that reached it in its first round would end before its population
+        sc::Problem N = P;
+        N.stop_at = -INFINITY;
+        N.at_param = [](double L2) {
+            sc::Problem Q = at(L2);
+            Q.stop_at = -INFINITY;
+            return Q;
+        };
         auto with = [&](const char* carry) {
             sc::Knobs k{{"shrink_step", word("ladder")}, {"shrink_ladder", word("[2, 1.5, 1.2]")},
                         {"start_budget", number(2000)}, {"inner", word(cga)}};
             if (carry) k.push_back({"shrink_carry", word(carry)});
-            return sc::run("shrink", P, 1e-6, false, 0.0, 10, 6000, 7, k, {}, 0, from);
+            return sc::run("shrink", N, 1e-6, false, 0.0, 10, 6000, 7, k, {}, 0, from);
         };
         const sc::Result d = with(nullptr), pt = with("point"), pop = with("population"), pop2 = with("population");
         check(same(d, pt) && setting(d, "shrink_carried").empty(), "shrink_carry = point: the default run, bit for bit");
