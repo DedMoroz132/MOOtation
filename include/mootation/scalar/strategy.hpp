@@ -159,6 +159,38 @@
 //     canonical (canon), the problem's symmetries' (symmetry.hpp; its
 //     sym_blocks, canon, align), so that minima equal but for a permutation
 //     of the blocks are one. In the settings only where given.
+//   STRAT-15. minima_log = all | best | off (task 30, §30.3; off by default:
+//     all, and then nothing changes): what the minima log keeps of a strategy
+//     with one (the strategies that take min_sym). best keeps the
+//     minima_best (100) lowest by f: a start's answer joins a kept minimum
+//     as before (STRAT-4); a new one, with the log full, takes the place of
+//     the highest kept (a NaN one first) where it is lower, else is not
+//     kept, so a later answer near a minimum no longer kept opens it again
+//     (its count of starts restarts). off keeps nothing, and the settings
+//     have no minima row. A strategy that reads its log (minima_bayes,
+//     mlsl_stop = bayes, start_filter = oqnlp) refuses a log not whole.
+//     minima_log, and minima_best with best, in the settings only where
+//     given.
+//   STRAT-16. round_stop = target | off (task 30, §30.9; target by default
+//     since the owner's choice of 16.11, method version 5; off: the runs
+//     before). A round's starts run on the archive of its beginning, and the
+//     target ends the run only when the round merges (evaluator.hpp THE
+//     TARGET): before, the starts after the one that reached it ran to their
+//     ends, their evaluations not in the result (they come after the run's
+//     end) but made — the problem called, the time spent, a campaign job's
+//     own count of the calls holding them. Now a round on one thread runs no
+//     start after one whose merge will end the run (View::reaches_target: a
+//     point it evaluated at or below the target, feasible at the run's
+//     tolerance; told only at one objective without an eq_tol schedule, and
+//     with the success hook only where the start asked it). The result is
+//     the same, bit for bit, as the merge never reaches the starts left out;
+//     what changes is the problem's calls (a campaign job's count, an
+//     exception a start left out would have thrown). A round on several
+//     threads runs them all, as before. The knob of every strategy with
+//     rounds (multistart, mlsl, ils, basin_hopping, halving, memetic,
+//     tiktak, pbh, mde, ma_chains, cluster_ga); where given, the settings
+//     say it and round_skipped (the starts left out). The default is
+//     Evaluator::round_stop's.
 // ============================================================================
 
 #include <algorithm>
@@ -327,6 +359,23 @@ public:
 
     View(const View&) = delete;
     View& operator=(const View&) = delete;
+
+    // STRAT-16: whether merging this start ends the run at the target — a
+    // point it evaluated (counted at the merge) that the run's evaluator
+    // takes for the target: f <= stop_at, or f <= post_at with the success
+    // hook's yes asked here, feasible at the run's tolerance. Told here only
+    // with one objective and a fixed tolerance (no eq_tol schedule); else no
+    bool reaches_target(const Evaluator& ev) const
+    {
+        if (P_.m != 1 || ev.has_tol0) return false;
+        for (const Event& e : events_) {
+            if (e.evals <= 0) continue;
+            const Known& k = own[e.at];
+            if (k.bad || k.f.empty() || ev.violation(k.g, ev.eq_tol_end) > 0.0) continue;
+            if (P_.accept_success ? (k.f[0] <= P_.post_at && k.verdict == 1) : k.f[0] <= P_.stop_at) return true;
+        }
+        return false;
+    }
 
     // the start's calls into the run's archive (the end of the round), in
     // the order it made them: the counts of every record as the start's own
@@ -608,7 +657,13 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
     const std::size_t T = start_depth() > 0 ? 1                                       // STRAT-7
                                             : std::min<std::size_t>(n, static_cast<std::size_t>(std::max(1, threads)));
     if (T <= 1) {
-        for (std::size_t k = 0; k < n; ++k) one(k);
+        for (std::size_t k = 0; k < n; ++k) {
+            one(k);
+            if (ev.round_stop && k + 1 < n && !error[k] && views[k]->reaches_target(ev)) {   // STRAT-16
+                ev.round_skipped += static_cast<long long>(n - k - 1);
+                break;
+            }
+        }
     } else {
         std::atomic<std::size_t> next{0};
         std::vector<std::thread> pool;
@@ -669,7 +724,42 @@ public:
     // the problem's periodic variables (periodic.hpp PER-3; task 24, §24.4.2)
     void periodic(const std::vector<char>& mask) { periodic_ = mask; }
 
+    // what the log keeps (STRAT-15)
+    enum class Keep { all, best, off };
+    void keep(Keep how, std::size_t k)
+    {
+        keep_ = how;
+        k_ = k;
+    }
+    bool complete() const { return keep_ == Keep::all; }
+    bool on() const { return keep_ != Keep::off; }
+
     void add(const Vec& x, double f, long long start)
+    {
+        if (keep_ == Keep::off) return;                                            // STRAT-15
+        const std::size_t before = list_.size();
+        if (keep_ != Keep::best || before < k_) {
+            add_all(x, f, start);
+            return;
+        }
+        // best: the log is full; a new minimum enters in place of the worst
+        // kept (a NaN first), and only where it is lower
+        std::size_t worst = 0;
+        for (std::size_t q = 1; q < before; ++q)
+            if (!std::isnan(list_[worst].f) && (std::isnan(list_[q].f) || list_[q].f > list_[worst].f)) worst = q;
+        add_all(x, f, start);
+        if (list_.size() == before) return;                                         // it joined a kept one
+        if (!std::isnan(list_[worst].f) && !(f < list_[worst].f)) {
+            drop(before);                                                           // not among the k best
+            joined_ = list_.size();
+            return;
+        }
+        drop(worst);
+        joined_ = list_.size() - 1;
+    }
+
+private:
+    void add_all(const Vec& x, double f, long long start)
     {
         // STRAT-4: the minima within min_df of f, the first opened that is
         // within min_dist too
@@ -701,6 +791,16 @@ public:
         if (!std::isnan(f)) by_f_.emplace(f, joined_);
     }
 
+    // minimum q out of the log (STRAT-15), the later ones one place down
+    void drop(std::size_t q)
+    {
+        if (!std::isnan(list_[q].f)) unindex(q);
+        list_.erase(list_.begin() + static_cast<std::ptrdiff_t>(q));
+        for (auto& e : by_f_)
+            if (e.second > q) --e.second;
+    }
+
+public:
     // the minimum the last add() joined or opened
     std::size_t joined() const { return joined_; }
 
@@ -729,6 +829,8 @@ private:
     symmetry::Sym sym_;
     std::vector<char> periodic_;
     std::size_t joined_ = 0;
+    Keep keep_ = Keep::all;                       // STRAT-15
+    std::size_t k_ = 0;
 
     // minimum q out of the order by f (its f is about to change)
     void unindex(std::size_t q)
@@ -806,6 +908,12 @@ public:
         return in;
     }
 
+    // a knob read by a helper common to the strategies (STRAT-15): not ignored
+    void allow(const std::string& k)
+    {
+        if (!detail::listed(own_, k)) own_.push_back(k);
+    }
+
     std::vector<std::string> ignored() const
     {
         std::vector<std::string> out;
@@ -838,12 +946,26 @@ inline std::vector<std::pair<std::string, std::string>> bayes_estimates(long lon
             {"minima_expected", expected}, {"minima_uncovered", uncovered}};
 }
 
+// a strategy that reads its minima log (its count, its points) needs all of it
+inline void whole_log(const MinimaLog& log, bool needed, const std::string& what)
+{
+    if (needed && !log.complete())
+        throw std::invalid_argument(what + " reads the minima log: minima_log = all (STRAT-15)");
+}
+
 inline bool bayes_of(StrategyKnobs& k)
 {
     return k.find("minima_bayes") && k.word("minima_bayes", "off", {"off", "on"}) == "on";
 }
 
 // the lean mode, where keep_points = best is given (see STRAT-12)
+// round_stop where given, else Evaluator::round_stop (STRAT-16)
+inline void round_stop_of(StrategyKnobs& k, Evaluator& ev)
+{
+    k.allow("round_stop");
+    if (k.find("round_stop")) ev.round_stop = k.word("round_stop", "target", {"off", "target"}) == "target";
+}
+
 inline bool lean_of(StrategyKnobs& k)
 {
     return k.find("keep_points") && k.word("keep_points", "all", {"all", "best"}) == "best";
@@ -853,6 +975,14 @@ inline bool lean_of(StrategyKnobs& k)
 inline void group_by_symmetry(StrategyKnobs& k, const Problem& P, MinimaLog& log)
 {
     if (!P.periodic.empty()) log.periodic(P.periodic);           // periodic.hpp PER-3
+    k.allow("minima_log");                                        // STRAT-15
+    if (k.find("minima_log")) {
+        const std::string w = k.word("minima_log", "all", {"all", "best", "off"});
+        if (w == "best") k.allow("minima_best");
+        const long long best = w == "best" ? k.whole("minima_best", 100, 1) : 0;
+        log.keep(w == "all" ? MinimaLog::Keep::all : w == "best" ? MinimaLog::Keep::best : MinimaLog::Keep::off,
+                 static_cast<std::size_t>(best));
+    }
     if (k.find("min_sym") == nullptr) return;
     const std::string w = k.word("min_sym", "off", {"off", "canon", "align"});
     symmetry::Sym s;
@@ -988,6 +1118,7 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
                 throw std::invalid_argument("multistart draws its starts in the box: every bound must be finite");
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    round_stop_of(k, ev);                                                            // STRAT-16
     ev.lean = lean_of(k);                                                            // STRAT-12
     std::vector<StartSpec> starts(static_cast<std::size_t>(n_starts));
     const std::vector<double> U =
@@ -1020,6 +1151,7 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
     std::vector<Result> runs;
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     group_by_symmetry(k, P, log);
+    whole_log(log, bayes || oqnlp, "multistart: minima_bayes = on or start_filter = oqnlp");
     long long oq_starts = 0, oq_rejected_merit = 0, oq_rejected_distance = 0;
     try {
         if (oqnlp) {                                                                  // STRAT-14
@@ -1142,7 +1274,8 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
     }
     if (bayes)                                                                        // STRAT-13
         for (auto& e : bayes_estimates(static_cast<long long>(log.list().size()), answered)) r.settings.push_back(e);
-    r.settings.push_back({"minima", log.json_text()});
+    if (k.find("round_stop")) r.settings.push_back({"round_skipped", std::to_string(ev.round_skipped)});   // STRAT-16
+    if (log.on()) r.settings.push_back({"minima", log.json_text()});                // STRAT-15
     r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
     return r;
 }

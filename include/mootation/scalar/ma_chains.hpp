@@ -106,6 +106,7 @@ inline Result run_ma_chains(const Problem& P, double eq_tol, bool has_tol0, doub
     const std::size_t n = P.lo.size();
     const long long n_freq = std::max(1LL, std::llround(static_cast<double>(istr) * (1.0 - rlg) / rlg));   // MAC-4
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    strategy::round_stop_of(k, ev);                                                  // STRAT-16
     ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);

@@ -274,7 +274,8 @@ inline Result finish(Evaluator& ev, strategy::StrategyKnobs& k, const strategy::
     r.ignored = k.ignored();
     r.settings = k.settings;
     for (auto& e : extra) r.settings.push_back(std::move(e));
-    r.settings.push_back({"minima", log.json_text()});
+    if (k.find("round_stop")) r.settings.push_back({"round_skipped", std::to_string(ev.round_skipped)});   // STRAT-16
+    if (log.on()) r.settings.push_back({"minima", log.json_text()});                // STRAT-15
     r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
     return r;
 }
@@ -307,9 +308,11 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
     const std::size_t n = P.lo.size();
     const double dn = static_cast<double>(n);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    strategy::round_stop_of(k, ev);                                                  // STRAT-16
     ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
+    strategy::whole_log(log, bayes || bayes_stop, "mlsl: minima_bayes = on or mlsl_stop = bayes");
     std::mt19937 sampler(seed);
     std::vector<Vec> U;                       // the sample, normalized
     std::vector<double> f;                    // its values (failed or infeasible: +inf)
@@ -494,6 +497,7 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     search::finite_box(name, P);
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    strategy::round_stop_of(k, ev);                                                  // STRAT-16
     ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
@@ -615,6 +619,7 @@ inline Result run_halving(const Problem& P, double eq_tol, bool has_tol0, double
     const std::size_t n = P.lo.size();
     if (n_arms > 1) search::finite_box("halving", P);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    strategy::round_stop_of(k, ev);                                                  // STRAT-16
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
     const std::vector<double> D =
@@ -702,6 +707,7 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
     if (lamarck != "off") seeded.knobs.push_back({"warm_start", Knob{true, "on", 0.0}});
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    strategy::round_stop_of(k, ev);                                                  // STRAT-16
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
     StartSpec g;

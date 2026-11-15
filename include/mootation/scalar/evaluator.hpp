@@ -395,6 +395,10 @@ public:
     bool recorded = false;             // gen 0 has gone to the observer
     long long gen0 = 0;                // gens before this evaluator (polish.hpp)
     bool lean = false;                 // THE LEAN MODE: the best and the last point only
+    // a strategy's round on one thread starts no start after one that reached
+    // the target (strategy.hpp STRAT-16; task 30, §30.9; round_stop = off: all run)
+    bool round_stop = true;
+    long long round_skipped = 0;       // ... the starts it did not run
     static constexpr double kArchiveWarnBytes = 2147483648.0;     // 2 GiB (task 24, §24.3.3)
     ImprovementLog improvements;       // m = 1: the best point's records (improvements.hpp)
     long long success_calls = 0;       // THE SUCCESS: accept_success's calls,

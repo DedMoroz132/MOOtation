@@ -147,7 +147,11 @@
 // NumPy's generator (task 9), 2 — the library's own solvers and rnd:: (task
 // 17, stage 6), 3 — sqp_line_search = accept by default (the presets with
 // local = sqp change; polish, mosqp and boostdms run as in 2), 4 —
-// sqp_line_search = powell by default (the same presets change again).
+// sqp_line_search = powell by default (the same presets change again), 5 —
+// task 30: shrink charges a level its whole spending (shrink_count =
+// budget, param.hpp PARAM-8) and a round on one thread stops at the target
+// (round_stop = target, strategy.hpp STRAT-16); the methods of 4 run as in
+// 4, the strategies' results only shrink's with gradients or hook costs.
 // ============================================================================
 
 #include <algorithm>
@@ -189,7 +193,7 @@
 
 namespace mootation::scalar {
 
-inline constexpr int METHOD_VERSION = 4;
+inline constexpr int METHOD_VERSION = 5;
 
 // A knob as the caller gives it: a word or a number.
 struct Knob {

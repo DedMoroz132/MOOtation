@@ -10,7 +10,17 @@
 //   * problem_at's refusals (PARAM-1); carried clips into the new box;
 //   * reformulation without other formulations is the inner solver, bit for
 //     bit; with a scaled formulation its answer is mapped back into the box;
-//     its refusals.
+//     its refusals;
+//   * max_seconds (task 30, §30.1; PARAM-7): problem_at carries the run's
+//     deadline; with max_seconds every rule of shrink ends by the deadline
+//     (plus a level), stopped_by = deadline where the rule would go on; no
+//     stopped_by without it;
+//   * shrink_count (task 30, §30.2; PARAM-8; budget by default, method
+//     version 5): with an inner solver on a gradient the levels charged by
+//     evaluations go past the run's budget, charged by budget they stay
+//     within it; evaluations gives the numbers of the baseline 8909670 bit
+//     for bit (kOld*, from that commit's headers); without gradients the two
+//     are one run; the default is kDefaultCount.
 
 #include <cmath>
 #include <cstdio>
@@ -57,6 +67,60 @@ sc::Problem at(double L)
         for (double& v : x) v *= to / from;
     };
     return P;
+}
+
+// the same box at every level (param L, any L): geometric, ilsqn and idts
+// never end by themselves on it, every level a success at its first point
+sc::Problem flat(double L)
+{
+    sc::Problem P = at(2.0);
+    P.param = L;
+    P.at_param = [](double L2) { return flat(L2); };
+    P.rescale = nullptr;
+    return P;
+}
+
+// the default of shrink_count (PARAM-8), and the scenario below at 8909670
+// (no shrink_count then): what shrink_count = evaluations gives again
+const char* kDefaultCount = "budget";
+const long long kOldEvaluations = 400, kOldGradCalls = 398;
+const double kOldF = 0x1.8ac3333333333p+12;
+
+// Rosenbrock in [-L, L]^10 with its gradient; every level starts again at
+// (-1.2, ..., -1.2) (the rescale hook), so that each spends its allowance
+sc::Problem rosen(double L)
+{
+    sc::Problem P;
+    P.lo.assign(10, -L);
+    P.hi.assign(10, L);
+    P.m = 1;
+    P.param = L;
+    P.evaluate = [](const Vec& x, Vec& f, Vec&) {
+        double s = 0.0;
+        for (std::size_t i = 0; i + 1 < x.size(); ++i)
+            s += 100.0 * (x[i + 1] - x[i] * x[i]) * (x[i + 1] - x[i] * x[i]) + (1.0 - x[i]) * (1.0 - x[i]);
+        f.assign(1, s);
+    };
+    P.gradient = [](const Vec& x, Vec& g, sc::Rows&) {
+        g.assign(x.size(), 0.0);
+        for (std::size_t i = 0; i + 1 < x.size(); ++i) {
+            const double t = x[i + 1] - x[i] * x[i];
+            g[i] += -400.0 * x[i] * t - 2.0 * (1.0 - x[i]);
+            g[i + 1] += 200.0 * t;
+        }
+    };
+    P.at_param = [](double L2) { return rosen(L2); };
+    P.rescale = [](Vec& x, double, double) { x.assign(x.size(), -1.2); };
+    return P;
+}
+
+// the sum of column c of shrink_counts' rows
+double column(const sc::Result& r, std::size_t c)
+{
+    double s = 0.0;
+    for (const auto& row : mootation::json::parse(setting(r, "shrink_counts")).items)
+        s += row.items[c].kind == mootation::json::Value::Kind::Int ? static_cast<double>(row.items[c].i) : row.items[c].f;
+    return s;
 }
 
 // L-BFGS-B: the optimum x_1 = 0 is on the bound, where Nelder-Mead's clipped simplex
@@ -134,6 +198,64 @@ int main()
         check(c[0] == 1.0 && c[1] == 0.4, "carried without rescale: unchanged, clipped to the new box");
         const Vec r = sc::carried(P, at(1.0), {1.7, 0.4}, 2.0, 1.0);
         check(std::fabs(r[0] - 0.85) < 1e-15 && std::fabs(r[1] - 0.2) < 1e-15, "carried: the source's rescale");
+    }
+
+    // ── max_seconds (task 30, §30.1; PARAM-7) ──────────────────────────────
+    {
+        sc::Problem D = P;
+        D.deadline = 5.0;
+        check(sc::problem_at(D, 1.5).deadline == 5.0 && std::isinf(sc::problem_at(P, 1.5).deadline),
+              "problem_at: the problem at L keeps the run's deadline (PARAM-7)");
+        const sc::Result plain = run("shrink", P, {{"shrink_step", word("geometric")}, {"shrink_rho", number(0.9)}}, 40000, from);
+        check(setting(plain, "stopped_by").empty() && setting(plain, "time_up").empty(),
+              "shrink without max_seconds: no stopped_by, as before");
+        const sc::Problem F = flat(2.0);
+        for (const char* rule : {"geometric", "bisect", "ilsqn", "idts", "ladder"}) {
+            sc::Knobs k{{"shrink_step", word(rule)}, {"max_seconds", number(0.3)}, {"shrink_rounds", number(200000)}};
+            if (std::string(rule) == "bisect") k.push_back({"shrink_lo", number(0.5)});
+            if (std::string(rule) == "ladder") k.push_back({"shrink_ladder", word("[2, 1.5, 1.2]")});
+            const sc::Result r = run("shrink", F, k, 10000000000LL, from);
+            const bool endless = std::string(rule) != "bisect" && std::string(rule) != "ladder";
+            check(r.seconds < 1.3 && (endless ? setting(r, "stopped_by") == "deadline" && r.time_up
+                                              : setting(r, "stopped_by") == "rule"),
+                  std::string("shrink_step = ") + rule + " with max_seconds = 0.3: " + std::to_string(r.seconds) +
+                      " s, stopped_by = " + setting(r, "stopped_by") + ", levels " + setting(r, "shrink_levels"));
+        }
+    }
+
+    // ── shrink_count (task 30, §30.2; PARAM-8) ─────────────────────────────
+    {
+        const sc::Problem R = rosen(2.0);
+        sc::Start far;
+        far.has_x0 = true;
+        far.x0.assign(10, -1.2);
+        std::string ladder = "[2";
+        for (int i = 1; i < 40; ++i) ladder += ",2";
+        ladder += "]";
+        auto with = [&](const sc::Problem& Q, const char* count) {
+            sc::Knobs k{{"shrink_step", word("ladder")}, {"shrink_ladder", word(ladder)}, {"start_budget", number(40)}};
+            if (count) k.push_back({"shrink_count", word(count)});
+            k.push_back({"inner", word("{\"solver\":\"lbfgsb\"}")});
+            return sc::run("shrink", Q, 1e-6, false, 0.0, 10, 400, 7, k, {}, 0, far);
+        };
+        const sc::Result d = with(R, nullptr), e = with(R, "evaluations"), b = with(R, "budget");
+        check(same(d, with(R, kDefaultCount)) && setting(d, "shrink_count").empty() && !setting(d, "shrink_counts").empty(),
+              std::string("shrink_count: the default is ") + kDefaultCount + ", the levels' counts in the settings");
+        check(e.evaluations == kOldEvaluations && e.grad_calls == kOldGradCalls && !e.objectives.empty() &&
+                  e.objectives[0][0] == kOldF,
+              "shrink_count = evaluations: the baseline's run bit for bit (" + std::to_string(e.evaluations) + ", " +
+                  std::to_string(e.grad_calls) + ")");
+        const long long used_e = e.evaluations + e.grad_calls, used_b = b.evaluations + b.grad_calls;
+        check(e.grad_calls > 0 && used_e > 400,
+              "shrink_count = evaluations with gradients: the levels spend past the budget, " + std::to_string(used_e) + " > 400");
+        check(used_b <= 400 && column(b, 2) <= 400.0 && static_cast<long long>(column(b, 0)) == b.evaluations &&
+                  static_cast<long long>(column(b, 1)) == b.grad_calls,
+              "shrink_count = budget: evaluations + gradient calls " + std::to_string(used_b) + " <= 400, the levels' rows add up");
+        sc::Problem plain = rosen(2.0);
+        plain.gradient = nullptr;
+        plain.at_param = [](double L2) { sc::Problem Q = rosen(L2); Q.gradient = nullptr; return Q; };
+        check(same(with(plain, "evaluations"), with(plain, "budget")),
+              "shrink_count: without gradients evaluations and budget are one run");
     }
 
     // ── reformulation ───────────────────────────────────────────────────────

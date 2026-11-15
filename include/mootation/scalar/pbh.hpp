@@ -121,6 +121,7 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
     search::finite_box("pbh", P);
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    strategy::round_stop_of(k, ev);                                                  // STRAT-16
     ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);

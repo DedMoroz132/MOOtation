@@ -136,6 +136,7 @@ inline Result run_mde(const Problem& P, double eq_tol, bool has_tol0, double eq_
         throw std::invalid_argument("mde: mde_match = greedy needs the problem's sym_blocks");
     search::finite_box("mde", P);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    strategy::round_stop_of(k, ev);                                                  // STRAT-16
     ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);

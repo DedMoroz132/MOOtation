@@ -5,9 +5,22 @@
 //   * the built-in cut and splice (CGA-1): k points of the first parent as
 //     they are, N - k of the second moved into its frame, inside the box;
 //   * the refusals; the crossover hook's children; the same run twice;
+//   * minima_log (task 30, §30.3; strategy.hpp STRAT-15): all is the
+//     default run bit for bit; best keeps min(k, found) minima, the lowest
+//     among them; off has no minima row and keeps nothing however many
+//     answers come; a strategy reading its log refuses a log not whole;
+//   * round_stop (task 30, §30.9; STRAT-16; target by default, method
+//     version 5): with the start already at the target, round_stop = off
+//     runs the first round's other members (their calls of the problem
+//     made, not in the result) as the baseline 8909670 did, its numbers bit
+//     for bit (kOld*); target leaves them out, the result bit for bit;
+//     several threads run them all, the same result; the default is
+//     kDefaultStop;
 //   * a short check on the 7-atom Lennard-Jones cluster: the global minimum
 //     -16.505384 (Wales & Doye 1997, Table I).
 
+#include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <random>
@@ -87,6 +100,11 @@ sc::Problem lj(int N)
     P.gradient = [energy](const Vec& x, Vec& gf, sc::Rows&) { energy(x, &gf); };
     return P;
 }
+
+// the default of round_stop (STRAT-16), and the round_stop scenario at
+// 8909670 (no round_stop then): what round_stop = off gives again
+const char* kDefaultStop = "target";
+const long long kOldCalls = 1002, kOldEvaluations = 130;
 
 const char* kNM = "{\"local_tol\":1e-10,\"solver\":\"nelder_mead\"}";
 
@@ -195,6 +213,115 @@ int main()
         bool threw = false;
         try { run("cluster_ga", R, {{"cga_replace", word("tournament")}}, 1000, from); } catch (const std::invalid_argument&) { threw = true; }
         check(threw, "cluster_ga: an unknown cga_replace refused");
+    }
+
+    // ── minima_log (task 30, §30.3; STRAT-15) ───────────────────────────────
+    {
+        const sc::Problem R = rastrigin(4);
+        const sc::Knobs base{{"cga_pop", number(6)}};
+        auto with = [&](sc::Knobs extra) {
+            sc::Knobs k = base;
+            for (auto& e : extra) k.push_back(e);
+            return run("cluster_ga", R, k, 8000, from);
+        };
+        auto rows = [&](const sc::Result& r) {
+            const std::string m = setting(r, "minima");
+            return m.empty() ? -1 : static_cast<int>(mootation::json::parse(m).items.size());
+        };
+        auto lowest = [&](const sc::Result& r) {
+            double lo = INFINITY;
+            for (const auto& row : mootation::json::parse(setting(r, "minima")).items) {
+                const auto& v = row.items[0];
+                lo = std::min(lo, v.kind == mootation::json::Value::Kind::Int ? static_cast<double>(v.i) : v.f);
+            }
+            return lo;
+        };
+        const sc::Result d = with({});
+        const sc::Result all = with({{"minima_log", word("all")}});
+        check(same(d, all) && setting(d, "minima") == setting(all, "minima") && setting(d, "minima_log").empty() &&
+                  setting(all, "minima_log") == "all",
+              "minima_log = all: the default run and log, bit for bit (" + std::to_string(rows(d)) + " minima)");
+        const sc::Result b3 = with({{"minima_log", word("best")}, {"minima_best", number(3)}});
+        check(same(d, b3) && rows(b3) == std::min(3, rows(d)) && lowest(b3) == lowest(d),
+              "minima_log = best, minima_best = 3: the same run, " + std::to_string(rows(b3)) + " minima, the lowest kept");
+        const sc::Result big = with({{"minima_log", word("best")}, {"minima_best", number(100000)}});
+        check(setting(big, "minima") == setting(d, "minima"), "minima_log = best with k above the count: the whole log");
+        const sc::Result off = with({{"minima_log", word("off")}});
+        bool no_row = true;
+        for (const auto& kv : off.settings) no_row = no_row && kv.first != "minima";
+        check(same(d, off) && no_row, "minima_log = off: the same run, no minima row in the settings");
+        const sc::Result stray = with({{"minima_best", number(3)}});
+        check(std::find(stray.ignored.begin(), stray.ignored.end(), "minima_best") != stray.ignored.end() &&
+                  std::find(b3.ignored.begin(), b3.ignored.end(), "minima_best") == b3.ignored.end(),
+              "minima_best without minima_log = best: ignored");
+        bool threw = false;
+        try { run("multistart", R, {{"minima_log", word("best")}, {"minima_bayes", word("on")}}, 2000, from); }
+        catch (const std::invalid_argument&) { threw = true; }
+        check(threw, "multistart: minima_bayes with a log not whole refused");
+        threw = false;
+        try { with({{"minima_log", word("some")}}); } catch (const std::invalid_argument&) { threw = true; }
+        check(threw, "cluster_ga: an unknown minima_log refused");
+
+        // the log itself: 10 000 answers far apart, their f from a generator
+        std::mt19937 gen(5);
+        std::vector<double> fs;
+        sc::strategy::MinimaLog keep_off({0.0, 0.0}, {1.0, 1.0}, 1e-3, 1e-8), keep5({0.0, 0.0}, {1.0, 1.0}, 1e-3, 1e-8);
+        keep_off.keep(sc::strategy::MinimaLog::Keep::off, 0);
+        keep5.keep(sc::strategy::MinimaLog::Keep::best, 5);
+        for (int i = 0; i < 10000; ++i) {
+            const Vec x{0.01 * (i % 100), 0.01 * (i / 100)};
+            const double f = mootation::rnd::uniform01(gen);
+            fs.push_back(f);
+            keep_off.add(x, f, i);
+            keep5.add(x, f, i);
+        }
+        std::sort(fs.begin(), fs.end());
+        std::vector<double> kept;
+        for (const auto& m : keep5.list()) kept.push_back(m.f);
+        std::sort(kept.begin(), kept.end());
+        check(keep_off.list().empty() && keep_off.json_text() == "[]", "minima_log = off: 10 000 answers, nothing kept");
+        check(kept == std::vector<double>(fs.begin(), fs.begin() + 5), "minima_log = best: the 5 lowest of 10 000 answers");
+    }
+
+    // ── round_stop (task 30, §30.9; STRAT-16) ───────────────────────────────
+    {
+        std::atomic<long long> calls{0};              // the starts may call from two threads
+        sc::Problem S;
+        S.lo.assign(4, -5.0);
+        S.hi.assign(4, 5.0);
+        S.m = 1;
+        S.stop_at = 1e-6;
+        S.evaluate = [&calls](const Vec& x, Vec& f, Vec&) {
+            ++calls;
+            double s = 0.0;
+            for (double v : x) s += v * v;
+            f.assign(1, s);
+        };
+        sc::Start near;
+        near.has_x0 = true;
+        near.x0 = {0.1, -0.1, 0.05, 0.02};
+        auto with = [&](const char* stop, int threads, long long& made) {
+            sc::Knobs k{{"cga_pop", number(6)}, {"start_budget", number(500)}, {"threads", number(threads)}};
+            if (stop) k.push_back({"round_stop", word(stop)});
+            calls = 0;
+            const sc::Result r = run("cluster_ga", S, k, 20000, near);
+            made = calls.load();
+            return r;
+        };
+        long long c_default = 0, c_off = 0, c_target = 0, c_threads = 0, c_kept = 0;
+        const sc::Result d = with(nullptr, 1, c_default), off = with("off", 1, c_off), tgt = with("target", 1, c_target);
+        const sc::Result thr = with("target", 2, c_threads), kept = with(kDefaultStop, 1, c_kept);
+        check(!d.objectives.empty() && d.objectives[0][0] <= 1e-6 && c_off > d.evaluations,
+              "the start reaches the target in the first round; the other members still run: " + std::to_string(c_off) +
+                  " calls, " + std::to_string(d.evaluations) + " in the result (30.9)");
+        check(same(d, off) && same(d, tgt) && same(d, thr), "round_stop = target: the same result, bit for bit, 1 or 2 threads");
+        check(c_target < c_off && setting(tgt, "round_skipped") == "5" && setting(thr, "round_skipped") == "0",
+              "round_stop = target: the 5 members after the start left out, " + std::to_string(c_target) + " calls (threads: all run)");
+        check(same(d, kept) && c_default == c_kept && setting(d, "round_stop").empty() && setting(d, "round_skipped").empty(),
+              std::string("round_stop: the default is ") + kDefaultStop);
+        check(c_off == kOldCalls && off.evaluations == kOldEvaluations,
+              "round_stop = off: the baseline's calls and evaluations, " + std::to_string(c_off) + " and " +
+                  std::to_string(off.evaluations));
     }
 
     // ── LJ7 (short) ─────────────────────────────────────────────────────────

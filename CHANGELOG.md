@@ -22,6 +22,34 @@ always listed under **Changed** or **Removed**.
   `gen_job_sample.py` no longer leaves `refs/registry/` behind; the commands
   for `random_reference.txt` and the golden fingerprints in
   `tests/data/README.md`.
+- Fixed (task 30, §30.1): `shrink` with `max_seconds` kept starting levels
+  past the deadline — the problem at a level (`problem_at`, also used by
+  `replica_ladder`) did not carry the run's deadline, and the level loop did
+  not look at it. The problem at L now keeps the earlier deadline, the loop
+  starts no level after it, and the settings say `stopped_by` (deadline,
+  budget, rounds, rule) when a deadline is set (PARAM-7). Without
+  `max_seconds` nothing changes.
+- Changed (task 30, §30.2, the owner's choice of 16.11; method version 5):
+  `shrink` charges each level what it spent of its allowance — evaluations,
+  gradient calls at the inner solver's `grad_cost`, the success, hook and
+  delta costs — so the levels together stay within the run's budget when the
+  inner solver uses a gradient. They counted the evaluations alone, and with
+  gradients the levels went on past the budget. `shrink_count = evaluations`
+  gives the old runs bit for bit; the settings list each level's counts
+  (`shrink_counts`; PARAM-8). Runs without gradients or hook costs are
+  unchanged.
+- Changed (task 30, §30.9, the owner's choice of 16.11; method version 5):
+  a strategy's round on one thread starts no start after one whose merge
+  ends the run at the target (`round_stop = target`, the knob of every
+  strategy with rounds). The starts after it ran to their ends before, their
+  evaluations not in the result but made. The results are the same, bit for
+  bit; the problem's calls (a campaign job's own count) are fewer.
+  `round_stop = off` runs every start as before (STRAT-16).
+- Added (task 30, §30.3): the strategies' `minima_log = all | best | off`
+  (all by default, bit for bit): `best` keeps the `minima_best` (100) lowest
+  minima, `off` keeps none and drops the `minima` row from the settings;
+  strategies that read their log (`minima_bayes`, `mlsl_stop = bayes`,
+  `start_filter = oqnlp`) refuse a log that is not whole (STRAT-15).
 - Added (task 26): `catcma`, task 19's CatCMA (scalar/catcma.hpp) as a
   single-objective solver (scalar/catcma_run.hpp) on problems whose last
   variables are categorical (`Problem::cat_levels`); `minimize(...,

@@ -299,7 +299,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
     res.ignored = ignored;
     res.settings = k.settings;
     res.settings.push_back({"restarts", json::dump(list, -1, ",", ":")});
-    res.settings.push_back({"minima", log.json_text()});
+    if (log.on()) res.settings.push_back({"minima", log.json_text()});              // STRAT-15
     res.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
     return res;
 }

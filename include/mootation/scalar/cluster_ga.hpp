@@ -62,7 +62,8 @@
 // (1e-6), cga_maxgen (0: the budget), crossover (builtin | user), mutation
 // (builtin | user), cga_replace (worst_if_better | multi_dynamic | afpo),
 // md_di (0.5), md_end (1), md_distance (euclid | aligned), afpo_tournament
-// (2), threads, start_budget, min_dist, min_df, keep_points.
+// (2), threads, start_budget, min_dist, min_df, keep_points, round_stop
+// (target | off; strategy.hpp STRAT-16), minima_log (STRAT-15).
 //
 // READINGS:
 //   CGA-1. The built-in cut and splice (DH95) needs the problem's first
@@ -211,6 +212,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
     search::finite_box("cluster_ga", P);
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    strategy::round_stop_of(k, ev);                                                  // STRAT-16
     ev.lean = lean_of(k);
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     group_by_symmetry(k, P, log);

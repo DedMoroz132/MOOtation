@@ -89,9 +89,12 @@ inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double 
     const long long n_star = std::max(1LL, std::llround(share * static_cast<double>(N)));            // TT-3
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    strategy::round_stop_of(k, ev);                                                  // STRAT-16
     ev.lean = lean_of(k);                                                            // strategy.hpp STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
+    const Knob* by = k.find("minima_bayes");                                         // read again at the end
+    strategy::whole_log(log, by && by->is_word && by->word == "on", "tiktak: minima_bayes = on");
     long long searches = 0;
     try {
         // Step 0: the sample, evaluated, its N* best in ascending order (TT-1, TT-3)

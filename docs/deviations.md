@@ -423,7 +423,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-486 items: 409 yes, 74 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+490 items: 411 yes, 76 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -688,6 +688,8 @@ Their readings, from every comment of each file (the first column the file's nam
 | `param` | PARAM-4 | A level's budget: start_budget, else what is left over the levels still allowed (shrink_rounds), else a tenth of what is left (the rules other than ladder do not know their number of levels); ladder shares what is lef... | yes | `param.hpp` |
 | `param` | PARAM-5 | No observer across the levels: each level's run has its own archive; the run's trajectory is the best level's. | yes | `param.hpp` |
 | `param` | PARAM-6 | The levels in the settings (shrink_trail, param_best) carry 17 significant digits, so that they read back as the values tried. | yes | `param.hpp` |
+| `param` | PARAM-7 (only when asked: max_seconds) | The run's deadline (scalar.hpp TIME-1; task 30, §30.1): problem_at gives the problem at L the earlier of its own deadline and P's, so a level's run ends at the run's deadline; shrink starts no level once the deadline... | no: option | `param.hpp` |
+| `param` | PARAM-8 | shrink_count = budget \| evaluations (task 30, §30.2; budget by default since the owner's choice of 16.11, method version 5; evaluations: the runs before). | yes | `param.hpp` |
 | `pbest` | PB-1 | The trial's draws: x_pbest, r1, r2, j_rand, then one U(0, 1) a coordinate, j_rand's included, v_j taken where U < CR or j = j_rand (de.hpp draws the same way). r1 and r2 are drawn again until they differ as asked; r2... | yes | `pbest.hpp` |
 | `pbest` | PB-2 | "The best" of P: ranked by the comparison of evo.hpp, ties by index; x_pbest is drawn from the first `top`, and may be x_i or x_r1. | yes | `pbest.hpp` |
 | `pbest` | PB-3 | sym (task 19, symmetry.hpp SYM-8; off by default): after the draws, x_pbest, x_r1 and x~_r2 aligned to x_i (align), or the four canonical (canon); no draw changes, and sym = off is the trial as before. | no: option | `pbest.hpp` |
@@ -871,6 +873,8 @@ Their readings, from every comment of each file (the first column the file's nam
 | `strategy` | STRAT-7 | A round within a start (a strategy as another's inner solver) runs its starts in the start's own thread, one after another, whatever its threads knob: its views reach the outer start's view, which one thread owns. | yes | `strategy.hpp` |
 | `strategy` | STRAT-8 | Every strategy ends below its budget too where its points cost nothing (the archive answers them: points clipped onto known ones, a box of zero width): a loop over the budget ends when a pass of it spends nothing. mul... | yes | `strategy.hpp` |
 | `strategy` | STRAT-9 | min_sym = off \| canon \| align (task 19, §19.2.2, S5; off by default): the log's distance between a start's answer and a minimum taken after the answer is aligned to the minimum (align), or both are canonical (canon),... | no: option | `strategy.hpp` |
+| `strategy` | STRAT-15 | minima_log = all \| best \| off (task 30, §30.3; off by default: all, and then nothing changes): what the minima log keeps of a strategy with one (the strategies that take min_sym). best keeps the minima_best (100) lowe... | no: option | `strategy.hpp` |
+| `strategy` | STRAT-16 | round_stop = target \| off (task 30, §30.9; target by default since the owner's choice of 16.11, method version 5; off: the runs before). | yes | `strategy.hpp` |
 | `strategy` | STRAT-9 | the log grouped by the problem's symmetries where min_sym is given | yes | `strategy.hpp` |
 | `structure_fit` | FIT-1 | The inner run's budget is the hook's allowance (ctx.budget), at most fit_budget evaluations when that is > 0; its generator's seed is drawn from the hook's generator (rnd::below(2^32)), its eq_tol 1e-6 (a structure's... | yes | `structure_fit.hpp` |
 | `structure_fit` | FIT-2 | A genome that does not decode, or that has no active gene, comes back canonical (decode's x_canon, or x itself when invalid) with nothing spent. | yes | `structure_fit.hpp` |

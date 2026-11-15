@@ -45,7 +45,8 @@
 //
 // Knobs: inner, shrink_step (geometric), shrink_rho, shrink_lo, shrink_tol,
 // ilsqn_dec, ilsqn_inc, idts_theta, idts_delta, idts_min, shrink_ladder,
-// shrink_rounds (0: until the budget or the rule ends), start_budget.
+// shrink_rounds (0: until the budget or the rule ends), start_budget,
+// shrink_count (budget; PARAM-8).
 //
 // READINGS:
 //   PARAM-1. problem_at refuses a problem without at_param, a non-finite L,
@@ -64,6 +65,27 @@
 //     archive; the run's trajectory is the best level's.
 //   PARAM-6. The levels in the settings (shrink_trail, param_best) carry 17
 //     significant digits, so that they read back as the values tried.
+//   PARAM-7 (only when asked: max_seconds). The run's deadline (scalar.hpp
+//     TIME-1; task 30, §30.1): problem_at gives the problem at L the earlier of
+//     its own deadline and P's, so a level's run ends at the run's
+//     deadline; shrink starts no level once the deadline has passed (a
+//     level it cut short ends the levels, not as the rule's failure), and
+//     the settings say why the levels ended (stopped_by: deadline, budget,
+//     rounds, or rule — the rule's own end). Without a deadline nothing
+//     changes, stopped_by included.
+//   PARAM-8. shrink_count = budget | evaluations (task 30, §30.2; budget by
+//     default since the owner's choice of 16.11, method version 5;
+//     evaluations: the runs before). A level's run spends its allowance in
+//     the budget's units: evaluations + grad_cost gradient calls + the
+//     success, hook and delta costs (evaluator.hpp THE COUNTS). budget
+//     charges each level all of it (grad_cost the inner solver's knob where
+//     it takes one, else 1), so the levels together stay within the run's
+//     budget; evaluations charged the evaluations alone, so with gradients
+//     the levels went on past the budget (up to shrink_rounds times
+//     start_budget). Without gradients and costs the two are the same run.
+//     The settings have shrink_counts: every level's [evaluations, gradient
+//     calls, charge]; evaluations in the result is the sum of the levels'
+//     evaluations, grad_calls of their gradient calls.
 // ============================================================================
 
 #include <algorithm>
@@ -98,6 +120,7 @@ inline Problem problem_at(const Problem& P, double L)
         throw std::invalid_argument("at_param(" + std::to_string(L) + ") changed the number of variables");
     if (std::isnan(Q.param) || Q.param != L)
         throw std::invalid_argument("at_param(" + std::to_string(L) + ") gave a problem whose param is not L");
+    Q.deadline = std::min(Q.deadline, P.deadline);                                   // PARAM-7
     return Q;
 }
 
@@ -130,7 +153,7 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
     (void)record_every;                                                              // PARAM-5
     StrategyKnobs k("shrink", knobs, {"inner", "shrink_step", "shrink_rho", "shrink_lo", "shrink_tol", "ilsqn_dec",
                                       "ilsqn_inc", "idts_theta", "idts_delta", "idts_min", "shrink_ladder",
-                                      "shrink_rounds", "start_budget"});
+                                      "shrink_rounds", "start_budget", "shrink_count"});
     const Inner inner = k.inner("inner");
     const std::string rule = k.word("shrink_step", "geometric", {"geometric", "bisect", "ilsqn", "idts", "ladder"});
     const double rho = k.number("shrink_rho", 0.99), tol = k.number("shrink_tol", 1e-6);
@@ -149,6 +172,10 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
         for (const auto& it : v.items)
             ladder.push_back(it.kind == json::Value::Kind::Int ? static_cast<double>(it.i) : it.f);
     }
+    // PARAM-8: what a level is charged; the default is this one line's
+    const std::string count_default = "budget";
+    const bool by_budget = (k.find("shrink_count") ? k.word("shrink_count", count_default, {"budget", "evaluations"})
+                                                   : count_default) == "budget";
     double lo_b = 0.0;
     if (rule == "bisect") {
         lo_b = k.number("shrink_lo", std::numeric_limits<double>::quiet_NaN());
@@ -163,9 +190,23 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
     Vec x_best, x_last;
     double L_last = P.param;
     std::string trail = "[";
+    std::string stopped = "rule";                                                    // PARAM-7
+    double charged = 0.0;                                                            // PARAM-8
+    std::string counts = "[";
     for (;;) {
-        const long long left = budget - spent;
-        if (left <= 0 || (rounds > 0 && levels >= rounds)) break;
+        const long long left = budget - (by_budget ? static_cast<long long>(std::ceil(charged)) : spent);
+        if (past_deadline(P)) {
+            stopped = "deadline";
+            break;
+        }
+        if (left <= 0) {
+            stopped = "budget";
+            break;
+        }
+        if (rounds > 0 && levels >= rounds) {
+            stopped = "rounds";
+            break;
+        }
         if (rule == "ladder" && static_cast<std::size_t>(levels) >= ladder.size()) break;
         long long allowance = cap > 0 ? std::min(cap, left)                                        // PARAM-4
                               : rounds > 0 ? left / (rounds - levels)
@@ -183,6 +224,15 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
                              start_seed(seed, static_cast<std::uint64_t>(levels)), inner.knobs, {}, 0, st);
         spent += r.evaluations;
         grads += r.grad_calls;
+        double grad_cost = 1.0;                                                      // PARAM-8
+        if (std::find(r.ignored.begin(), r.ignored.end(), "grad_cost") == r.ignored.end())
+            for (const auto& kv : inner.knobs)
+                if (kv.first == "grad_cost" && !kv.second.is_word) grad_cost = kv.second.number;
+        const double cost = static_cast<double>(r.evaluations) + grad_cost * static_cast<double>(r.grad_calls) +
+                            r.success_spent + r.hook_spent + r.delta_spent;
+        charged += cost;
+        counts += (levels ? "," : "") + std::string("[") + std::to_string(r.evaluations) + "," +
+                  std::to_string(r.grad_calls) + "," + param_text(cost) + "]";
         const bool ok = reached(Q, r);
         trail += (levels ? "," : "") + std::string("[") + param_text(L) + "," + (ok ? "1" : "0") + "]";
         if (levels == 0) first = r;
@@ -203,6 +253,10 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
             have_best = true;
             L_best = L;
             x_best = r.variables[0];
+        }
+        if (past_deadline(P)) {                                                      // PARAM-7: not the rule's end
+            stopped = "deadline";
+            break;
         }
         if (rule == "geometric") {
             if (!ok) break;
@@ -232,6 +286,8 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
     out.settings.push_back({"shrink_levels", std::to_string(levels)});
     out.settings.push_back({"shrink_trail", trail});
     if (have_best) out.settings.push_back({"param_best", param_text(L_best)});
+    if (P.deadline < std::numeric_limits<double>::infinity()) out.settings.push_back({"stopped_by", stopped});
+    out.settings.push_back({"shrink_counts", counts + "]"});                                 // PARAM-8
     return out;
 }
 
