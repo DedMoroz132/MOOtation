@@ -423,7 +423,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-493 items: 411 yes, 79 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+494 items: 411 yes, 80 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -488,6 +488,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `cluster_ga` | AF-2 | A Pareto tournament draws afpo_tournament distinct members (a partial Fisher-Yates draw) and removes those another of them dominates; the selection stops at cga_pop or when no member of the whole population is dominated. | yes | `cluster_ga.hpp` |
 | `cluster_ga` | CGA-5 | cga_init = uniform \| around_x0 \| seed_points (task 30, §30.5; off by default: uniform, step 0 above). around_x0: members 2 ... | no: option | `cluster_ga.hpp` |
 | `cluster_ga` | CGA-6 | cga_islands = I (task 30, §30.8; off by default: 1, the one population above). | no: option | `cluster_ga.hpp` |
+| `cluster_ga` | CGA-7 | The operator portfolios (task 30, §30.7; off by default: the one crossover and mutation above). crossover = ops, mutation = ops: the problem's crossover_ops, mutate_ops (named hooks of crossover's and mutate's form),... | no: option | `cluster_ga.hpp` |
 | `cluster_ga` | CGA-1 | the cut and splice of a and b over the point blocks of g | yes | `cluster_ga.hpp` |
 | `cmaes` | INJ-1 | The strategy's own parameters stay the tutorial's (Table 1 of the report lists those of [5], Hansen & Kern 2004; the report itself advises keeping the original strategy parameters, p. 7). | yes | `cmaes.hpp` |
 | `cmaes` | INJ-2 | Δσ_max = 1.0 as the report's Table 1 has it (its text on p. 5 says the factor exp(0.6)); c_y = sqrt(n) + 2n/(n + 2), c_y^m = sqrt(2n) + 2n/(n + 2) (Table 1). | yes | `cmaes.hpp` |

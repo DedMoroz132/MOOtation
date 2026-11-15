@@ -31,6 +31,13 @@ always listed under **Changed** or **Removed**.
   `cluster_ga`'s islands, `cga_islands`, `cga_migrate_every`,
   `cga_migrants`: populations on a ring with their own streams, their
   children in one round (1 thread = N threads), the best migrating (CGA-6).
+- Added (task 30, §30.7; off by default, bit for bit): `cluster_ga`'s
+  operator portfolios, `crossover = ops` and `mutation = ops` over the
+  problem's named `crossover_ops` and `mutate_ops`, chosen by `op_select =
+  fixed | probability_matching | adaptive_pursuit` (Thierens 2005; `op_pmin`,
+  `op_alpha`, `op_beta`), rewarded by whether their children enter the
+  population; each operator's calls, children taken and mean gain in f in
+  the settings (CGA-7).
 - Fixed (task 30, §30.1): `shrink` with `max_seconds` kept starting levels
   past the deadline — the problem at a level (`problem_at`, also used by
   `replica_ladder`) did not carry the run's deadline, and the level loop did

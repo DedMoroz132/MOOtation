@@ -156,6 +156,7 @@
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "../dss.hpp"
@@ -250,6 +251,11 @@ struct Problem {
     // ga_mutation, ga_repair, ga_init = user), and its decoding, written back
     std::function<void(const Vec& p1, const Vec& p2, Vec& c1, Vec& c2, std::mt19937& rng)> crossover;
     std::function<void(Vec& x, std::mt19937& rng)> mutate;
+    // cluster_ga's portfolios of named operators (task 30, §30.7; cluster_ga.hpp
+    // CGA-7: crossover = ops, mutation = ops), each of crossover's or mutate's form
+    std::vector<std::pair<std::string, std::function<void(const Vec& p1, const Vec& p2, Vec& c1, Vec& c2,
+                                                          std::mt19937& rng)>>> crossover_ops;
+    std::vector<std::pair<std::string, std::function<void(Vec& x, std::mt19937& rng)>>> mutate_ops;
     std::function<void(Vec& x)> repair;
     std::function<Decoded(const Vec& x)> decode;
     std::function<void(Vec& x, std::mt19937& rng)> sample;     // x arrives with n values

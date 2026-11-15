@@ -22,6 +22,10 @@
 //   * cga_islands (task 30, §30.8; CGA-6): one island is the default run
 //     bit for bit; three islands on 1 thread and on 3 give the same run,
 //     every island's members in Result::population, migrants placed;
+//   * the operator portfolio (task 30, §30.7; CGA-7): one operator with
+//     op_select = fixed is crossover = user with it, bit for bit; the
+//     operators' calls add up to the crossings; the allocation rules step
+//     by step on Thierens 2005's (2) and (3)-(5); op_pmin >= 1/K refused;
 //   * a short check on the 7-atom Lennard-Jones cluster: the global minimum
 //     -16.505384 (Wales & Doye 1997, Table I).
 
@@ -382,6 +386,68 @@ int main()
         try { run("cluster_ga", R, {{"cga_islands", number(2)}, {"cga_replace", word("afpo")}}, 1000, from); }
         catch (const std::invalid_argument&) { threw = true; }
         check(threw, "cga_islands > 1 with afpo refused");
+    }
+
+    // ── the operator portfolio (task 30, §30.7; CGA-7) ──────────────────────
+    {
+        auto uniform_x = [](const Vec& p1, const Vec& p2, Vec& c1, Vec& c2, std::mt19937& g) {
+            for (std::size_t j = 0; j < p1.size(); ++j) {
+                const bool first = mootation::rnd::uniform01(g) < 0.5;
+                c1[j] = first ? p1[j] : p2[j];
+                c2[j] = first ? p2[j] : p1[j];
+            }
+        };
+        auto blend_x = [](const Vec& p1, const Vec& p2, Vec& c1, Vec& c2, std::mt19937& g) {
+            const double t = mootation::rnd::uniform01(g);
+            for (std::size_t j = 0; j < p1.size(); ++j) {
+                c1[j] = t * p1[j] + (1.0 - t) * p2[j];
+                c2[j] = (1.0 - t) * p1[j] + t * p2[j];
+            }
+        };
+        sc::Problem U = rastrigin(4);
+        U.crossover = uniform_x;
+        U.crossover_ops = {{"uniform", uniform_x}};
+        const sc::Result user = run("cluster_ga", U, {{"cga_pop", number(5)}, {"crossover", word("user")}}, 8000, from);
+        const sc::Result one = run("cluster_ga", U, {{"cga_pop", number(5)}, {"crossover", word("ops")}}, 8000, from);
+        check(same(user, one) && setting(user, "crossings") == setting(one, "crossings"),
+              "one crossover operator, op_select = fixed: crossover = user with it, bit for bit");
+        U.crossover_ops.push_back({"blend", blend_x});
+        auto with = [&](const char* rule) {
+            return run("cluster_ga", U, {{"cga_pop", number(5)}, {"crossover", word("ops")}, {"op_select", word(rule)}}, 8000, from);
+        };
+        for (const char* rule : {"fixed", "probability_matching", "adaptive_pursuit"}) {
+            const sc::Result a = with(rule), b = with(rule);
+            const auto rows = mootation::json::parse(setting(a, "operators")).items;
+            long long calls = 0;
+            double psum = 0.0, pmin = 1.0;
+            for (const auto& row : rows) {
+                calls += row.items[2].i;
+                psum += row.items[5].f;
+                pmin = std::min(pmin, row.items[5].f);
+            }
+            check(same(a, b) && rows.size() == 2 && std::to_string(calls) == setting(a, "crossings") &&
+                      std::fabs(psum - 1.0) < 1e-12 && pmin >= 0.25 - 1e-12,
+                  std::string("op_select = ") + rule + ": the same run twice, the calls add up to the crossings (" +
+                      setting(a, "crossings") + "), P >= p_min = 1/(2K), sum 1");
+        }
+        bool threw = false;
+        try { run("cluster_ga", U, {{"crossover", word("ops")}, {"op_select", word("adaptive_pursuit")}, {"op_pmin", number(0.5)}}, 1000, from); }
+        catch (const std::invalid_argument&) { threw = true; }
+        check(threw, "op_pmin = 1/K refused (Thierens, footnote 2)");
+
+        // the rules step by step: K = 2, p_min = 0.1, alpha = beta = 0.8
+        std::mt19937 g(1);
+        sc::cga::Portfolio pm, ap;
+        pm.start({"a", "b"}, 1, 0.1, 0.8, 0.8);
+        ap.start({"a", "b"}, 2, 0.1, 0.8, 0.8);
+        pm.reward(0, 0.0, g);                                  // Q = (0.2, 1): P_a = 0.1 + 0.8 * 0.2 / 1.2
+        check(std::fabs(pm.P[0] - (0.1 + 0.8 * 0.2 / 1.2)) < 1e-15 && std::fabs(pm.P[1] - (0.1 + 0.8 * 1.0 / 1.2)) < 1e-15,
+              "probability matching, (1) and (2): one step");
+        ap.reward(1, 0.0, g);                                  // Q = (1, 0.2): a* = a, P_a = 0.5 + 0.8 (0.9 - 0.5)
+        check(std::fabs(ap.P[0] - 0.82) < 1e-15 && std::fabs(ap.P[1] - 0.18) < 1e-15, "adaptive pursuit, (3)-(5): one step");
+        for (int t = 0; t < 60; ++t) ap.reward(0, 1.0, g);
+        check(std::fabs(ap.P[0] - 0.9) < 1e-12 && std::fabs(ap.P[1] - 0.1) < 1e-12,
+              "adaptive pursuit: the best operator goes to P_max = 1 - (K - 1) p_min = 0.9");
     }
 
     // ── LJ7 (short) ─────────────────────────────────────────────────────────
