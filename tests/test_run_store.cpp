@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <mootation/campaign/config.hpp>
+#include <mootation/campaign/engine.hpp>
 #include <mootation/campaign/job_run.hpp>
 #include <mootation/campaign/jobs.hpp>
 #include <mootation/campaign/registry.hpp>
@@ -53,15 +54,11 @@ static bool same_blocks(const std::vector<st::Block>& a, const std::vector<st::B
 int main()
 {
     const std::string dir = std::string(MOOTATION_TEST_DATA) + "/job_sample/";
-    cg::Registry reg;
-    reg.algorithms = {"moead_de", "nsga2"};
-    reg.problems = {{"DTLZ2_3D", 3}, {"ZDT1", 2}};
-    reg.executable_findable = [](const std::string&) { return true; };
-    reg.regex_groups = [](const std::string&, std::string&) { return 0; };
+    // the config and the jobs checked against the sample's exported registry,
+    // its problems and lists, as the engine checks them (engine.hpp)
     const cg::ProblemRegistry preg = cg::load_registry(dir + "registry.json");
-    cg::JobsRegistry jreg;
-    jreg.metric_names = {"igd", "igdp", "hv"};
-    for (const auto& [name, p] : preg.problems) jreg.problems[name] = {p.n_obj, p.pop_size, p.n_gen};
+    const cg::Registry reg = cg::config_registry(preg);
+    const cg::JobsRegistry jreg = cg::jobs_registry(preg);
     cg::Config cfg = cg::loads(read_text(dir + "campaign.toml"), reg, std::filesystem::path(dir + "campaign.toml"));
     CHECK(cg::validate(cfg, reg).empty());
     const cg::CampaignSpec spec = cg::campaign_spec(cfg, jreg);
@@ -123,7 +120,9 @@ int main()
         std::filesystem::path mhd = f.path();
         mhd.replace_extension(".mhd");
         const std::string head = read_text(mhd.string());
-        CHECK(head.rfind("format = mootation-store\nformat_version = 3\nkind = segment\n", 0) == 0);
+        CHECK(head.rfind("format = mootation-store\nformat_version = " + std::to_string(cg::kStoreFormatVersion) +
+                             "\nkind = segment\n",
+                         0) == 0);
         CHECK(head.find("\ncode_stamp = " + preg.code_stamp + "\n") != std::string::npos);
     }
     CHECK(found == jobs.size());

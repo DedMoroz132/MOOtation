@@ -35,9 +35,22 @@ python tools/refs/gen_job_sample.py
 PYTHONPATH=python python tools/refs/gen_wrap_refs.py
 ```
 
+`gen_registry_sample.py`, `gen_job_sample.py` and `gen_npz_samples.py` need
+the extension of the same tree; the files they write carry no date, so a run
+on an unchanged tree gives them again byte for byte (the references of
+`job_sample/refs` but their `seconds`, the time the entry took to build).
+
+`random_reference.txt` is written by the test that reads it, and the
+defaults' fingerprints (`tests/golden_fingerprints.txt`) by
+`tools/compat_check.py`:
+
+```
+<build>/tests/test_random --write tests/data/random_reference.txt
+python tools/compat_check.py --write-golden
+```
+
 The other reference data of the tests stay where they were: the problems'
-fronts inside the package (`python/mootation/benchmarks/`) and the defaults'
-fingerprints (`tools/compat_check.py`).
+fronts inside the package (`python/mootation/benchmarks/`).
 
 ## The library's elementary functions
 

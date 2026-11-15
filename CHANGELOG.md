@@ -10,6 +10,18 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Changed (task 29, tests only): `test_hvc` and `test_dss` check a part of
+  their random sets on every push and all of them nightly (`--full`, ctest
+  `test_hvc_full` and `test_dss_full`, labelled `nightly;full`); `test_search`
+  states MLSL's bounded searches at smaller budgets. The run layer's tests
+  take the lists of single-objective methods from the C++ headers, the knob
+  words from settings.hpp and the defaults from the runs at their defaults;
+  `test_job_run` and `test_run_store` check the sample against its own
+  registry as the engine does; eight tests skip by `_core_with` like the
+  rest. `tests/data/registry_sample.json` written again by its generator;
+  `gen_job_sample.py` no longer leaves `refs/registry/` behind; the commands
+  for `random_reference.txt` and the golden fingerprints in
+  `tests/data/README.md`.
 - Added (task 26): `catcma`, task 19's CatCMA (scalar/catcma.hpp) as a
   single-objective solver (scalar/catcma_run.hpp) on problems whose last
   variables are categorical (`Problem::cat_levels`); `minimize(...,

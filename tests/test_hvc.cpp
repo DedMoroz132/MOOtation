@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // ============================================================================
 // hvc.hpp: HVC3D and HVC4D (Guerreiro & Fonseca, IEEE TEVC 2018) against
-// contributions_exact (WFG, hv_contribution.hpp) on 10 000 random sets at 3
-// and 4 objectives — fronts, dominated points, copies, equal coordinates,
+// contributions_exact (WFG, hv_contribution.hpp) on 2 000 random sets (10 000
+// with --full) at 3 and 4 objectives — fronts, dominated points, copies, equal coordinates,
 // points on the reference point's faces and outside it — every contribution
 // within 1e-12 of the set's hypervolume. The kept structure (HvcKept) through
 // streams of single-point additions and removals, SMS-EMOA's add one and
 // remove the least among them: its contributions equal those of a structure
 // built from scratch for the same set bit for bit. The knob hv_contrib of
-// SMS-EMOA and MO-CMA-ES. Small cases by hand.
+// SMS-EMOA and MO-CMA-ES. Small cases by hand. IWFG against WFG on 1 000
+// random sets at five to ten objectives, 10 000 with --full (the nightly
+// test_hvc_full); the race on 100 sets, 400 with --full.
 // ============================================================================
 
 #include <algorithm>
@@ -101,11 +103,31 @@ double largest_gap(const std::vector<double>& a, const std::vector<double>& b)
 
 }   // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     namespace hv = mootation::hv;
     namespace H = mootation::hypervolume;
+    // --full (ctest test_hvc_full, nightly): HVC and IWFG against WFG on 10 000
+    // random sets each and the race on 400. On every push HVC on 2 000 (the
+    // sets past them drawn all the same, so that the kept structure's streams
+    // after them are the same either way), IWFG on 1 000 (every pair of M and
+    // kind of set about 40 times), the race on 100 (every M 20 times).
+    const bool all_sets = argc > 1 && std::strcmp(argv[1], "--full") == 0;
+    const int hvc_sets = all_sets ? 10000 : 2000;
+    const int iwfg_sets = all_sets ? 10000 : 1000;
+    const int race_sets = all_sets ? 400 : 100;
 
+    // the time of each part, printed at the end (task 29: what the test spends)
+    using sclk = std::chrono::steady_clock;
+    auto t_last = sclk::now();
+    std::string laps;
+    auto lap = [&](const char* part) {
+        const auto now = sclk::now();
+        char b[96];
+        std::snprintf(b, sizeof b, "%s %.1f s; ", part, std::chrono::duration<double>(now - t_last).count());
+        laps += b;
+        t_last = now;
+    };
     // ── by hand ─────────────────────────────────────────────────────────────
     {
         const std::vector<double> r3 = {1.0, 1.0, 1.0}, r4 = {1.0, 1.0, 1.0, 1.0};
@@ -133,7 +155,7 @@ int main()
         check(all, "the 4-D staircase: 1/16 each");
     }
 
-    // ── 10 000 random sets against WFG ──────────────────────────────────────
+    // ── 2 000 random sets (--full: 10 000) against WFG ──────────────────────
     std::mt19937_64 rng(20261019);
     std::uniform_real_distribution<double> u(0.0, 1.0);
     double worst = 0.0, worst_rel = 0.0;
@@ -146,6 +168,7 @@ int main()
         std::vector<double> r(m, 1.1);
         if (t % 7 == 0) r[0] = F[0][0];                      // a point on the reference's face
         if (t % 11 == 0) r[1] = 0.9;                         // some points outside
+        if (t >= hvc_sets) continue;                         // drawn, not compared
         const double Hs = H::wfg(F, r);
         const auto ch = hv::contributions_hvc(F, r), cw = hv::contributions_exact(F, r);
         const double d = largest_gap(ch, cw);
@@ -165,6 +188,7 @@ int main()
                 "largest relative difference %.3g over %ld contributions above 1e-6 of it; "
                 "%ld equal bit for bit\n", worst, worst_rel, compared, equal_bits);
 
+    lap("random sets against wfg");
     // ── the kept structure: single-point updates against a fresh build ──────
     long steps = 0, same = 0;
     long builds = 0, updates = 0, builds_front = 0, updates_front = 0;
@@ -338,6 +362,7 @@ int main()
               "settings: monte-carlo, n_samples given");
     }
 
+    lap("kept structure and the knobs");
     // ── the race (Bringmann & Friedrich 2012; task 14, §11) ─────────────────
     {
         std::mt19937 gen(20261020);
@@ -345,7 +370,7 @@ int main()
         std::uniform_real_distribution<double> ud(0.0, 1.0);
         int sets = 0, within = 0, twice = 0, never_skipped = 0, capped = 0, full = 0, full_within = 0;
         hv::RaceSettings set;
-        for (int t = 0; t < 400; ++t) {
+        for (int t = 0; t < race_sets; ++t) {
             const std::size_t m = 4 + static_cast<std::size_t>(t % 5);       // 4 to 8 objectives
             const std::size_t n = 10 + static_cast<std::size_t>(t % 31);
             std::vector<std::vector<double>> F(n, std::vector<double>(m));
@@ -379,10 +404,10 @@ int main()
             (void)least;
             (void)ud;
         }
-        std::printf("race, 400 random sets at M = 4 to 8: within (1 + eps) of the least %d "
+        std::printf("race, %d random sets at M = 4 to 8: within (1 + eps) of the least %d "
                     "(of the %d races that ended by the paper's rule: %d), the same answer twice %d, "
                     "a skipped point never %d, stopped at race_max_samples %d\n",
-                    within, full, full_within, twice, never_skipped, capped);
+                    sets, within, full, full_within, twice, never_skipped, capped);
         // the guarantee (Corollary 5) holds for a race that ends by its rule;
         // one stopped at race_max_samples takes the current least
         check(full_within == full && full > sets / 2,
@@ -437,8 +462,9 @@ int main()
         }
     }
 
+    lap("race");
     // ── IWFG (task 14, supplement 3, Д8.2) ─────────────────────────────────
-    // 10 000 random sets at M = 5 to 10: fronts on the sphere, fronts with
+    // 1 000 random sets (--full: 10 000) at M = 5 to 10: fronts on the sphere, fronts with
     // dominated points, with copies, on a coarse grid (equal coordinates);
     // IWFG's least, its ties and its contenders' values against
     // contributions_exact, bit for bit; one set in four with a point skipped
@@ -450,7 +476,7 @@ int main()
         std::size_t contenders = 0, points = 0;
         double t_exact = 0.0, t_iwfg = 0.0;
         using clk = std::chrono::steady_clock;
-        for (int t = 0; t < 10000; ++t) {
+        for (int t = 0; t < iwfg_sets; ++t) {
             const std::size_t m = 5 + static_cast<std::size_t>(t % 6);
             const std::size_t n = 5 + static_cast<std::size_t>(gen() % 36);
             const int kind = t % 4;                     // 0 front, 1 dominated, 2 copies, 3 grid
@@ -498,14 +524,15 @@ int main()
             contenders += st.contenders;
             points += n;
         }
-        std::printf("iwfg, 10 000 random sets at M = 5 to 10: the least as WFG's %d, its ties %d, the "
+        std::printf("iwfg, %d random sets at M = 5 to 10: the least as WFG's %d, its ties %d, the "
                     "contenders' values bit for bit %d; contenders %.3f of the points; time %.2f s "
                     "(WFG for every point %.2f s)\n",
-                    same_least, same_ties, same_values, double(contenders) / double(points), t_iwfg, t_exact);
+                    sets, same_least, same_ties, same_values, double(contenders) / double(points), t_iwfg, t_exact);
         check(same_least == sets && same_ties == sets && same_values == sets,
               "IWFG: the least contributor, its ties and the contenders' values are WFG's, bit for bit");
     }
 
+    lap("iwfg");
     // ── the kept exact counts (task 14, supplement 3, Д8.3) ─────────────────
     // a (mu + 1) sequence: one point in, the least contributor out, now and
     // then r moved; with ExactKept the contributions are those without it,
@@ -550,9 +577,12 @@ int main()
         check(reused > 0, "ExactKept: counts reused between (mu + 1) steps");
     }
 
+    lap("kept exact counts");
     run_with_hvc<mootation::testing::HvcSMS, mootation::SMSEMOACore<mootation::testing::HvcSMS>>("sms_emoa");
     run_with_hvc<mootation::testing::HvcCMA, mootation::MOCMAESCore<mootation::testing::HvcCMA>>("mo_cma_es");
 
+    lap("the runs");
+    std::printf("seconds: %s\n", laps.c_str());
     std::printf("hvc: %d/%d checks passed%s\n", checks - failed, checks, failed ? ", FAILED" : "");
     return failed == 0 ? 0 : 1;
 }

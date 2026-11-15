@@ -4,8 +4,8 @@
 // (§4: the bound on three sums per node of the k-d tree in the setting aside,
 // no round after one that leaves the kept points' range as it was, the tree
 // built once and fitted to the points left after a round), bit for
-// bit, and order_plain's. 10 000 random sets at 2 to 10 objectives, of up to
-// 25 000 points: fronts (simplex, sphere, convex, with a little depth),
+// bit, and order_plain's. 2 000 random sets (--full, nightly: 10 000) at 2 to
+// 10 objectives, of up to 25 000 points: fronts (simplex, sphere, convex, with a little depth),
 // clouds of dominated points, flat tails and far points (set aside), copies,
 // values on a grid (ties), a constant objective; k from 1 to all.
 // ============================================================================
@@ -340,13 +340,17 @@ Set make(std::mt19937_64& rng, std::size_t n, std::size_t m, int kind)
 
 }   // namespace
 
-int main()
+int main(int argc, char** argv)
 {
+    // --full (ctest test_dss_full, nightly): 10 000 sets; 2 000 on every push,
+    // the same kinds, sizes and objectives (the first sets of the same stream)
+    const bool all_sets = argc > 1 && std::string(argv[1]) == "--full";
+    const int trials = all_sets ? 10000 : 2000;
     std::printf("dss::order: as before task 12, and as order_plain\n");
     std::mt19937_64 rng(12);
     std::uniform_real_distribution<double> u(0.0, 1.0);
     std::size_t sets = 0, points = 0;
-    for (int trial = 0; trial < 10000; ++trial) {
+    for (int trial = 0; trial < trials; ++trial) {
         const std::size_t m = 2 + rng() % 9;
         // sizes log-uniform from 2 to 2 000, and every 500th set up to 25 000
         const double top = trial % 500 == 0 ? 25000.0 : 2000.0;

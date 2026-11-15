@@ -97,7 +97,10 @@ void mlsl()
     long long searches[2] = {0, 0};
     std::string minima[2];
     int k = 0;
-    for (long long budget : {20000LL, 80000LL}) {
+    // 5 000 and 20 000 (until task 29 20 000 and 80 000: the same three searches
+    // and both minima, the larger run most of the test's time, the sample's
+    // distances growing with its square)
+    for (long long budget : {5000LL, 20000LL}) {
         auto calls = std::make_shared<long long>(0);
         const sc::Result r = sc::run("mlsl", two_minima(calls), 1e-6, false, 0.0, 10, budget, 5,
                                      {{"inner", word(kNM)}, {"mlsl_nu", number(0.05)}}, {}, 0, {});
@@ -114,7 +117,7 @@ void mlsl()
           "mlsl, nu = 0.05: the sample four times larger, no more local searches (" + std::to_string(searches[0]) +
               ", " + std::to_string(searches[1]) + "); both minima: " + minima[1].substr(0, 90));
     auto calls = std::make_shared<long long>(0);
-    const sc::Result r0 = sc::run("mlsl", two_minima(calls), 1e-6, false, 0.0, 10, 20000, 5, {{"inner", word(kNM)}},
+    const sc::Result r0 = sc::run("mlsl", two_minima(calls), 1e-6, false, 0.0, 10, 5000, 5, {{"inner", word(kNM)}},
                                   {}, 0, {});
     check(std::stoll(setting(r0, "local_searches")) > searches[0],
           "mlsl, nu = 0 (the paper's experiments): searches near the minima found start again (" +

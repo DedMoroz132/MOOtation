@@ -1,6 +1,6 @@
 {
  "format": 1,
- "code_stamp": "v6-f34652d5bddaccc0",
+ "code_stamp": "v6-70a4e63634133794",
  "reference_version": 6,
  "mootation": "0.1.0",
  "names": {
@@ -325,6 +325,7 @@
    "cma_cmu",
    "cma_stop",
    "cma_stagnation",
+   "cma_tolfun",
    "start_points",
    "cma_bounds",
    "ils_accept",
@@ -822,8 +823,8 @@
    [
     "fitness_reading",
     [
-     "swap",
-     "ibea"
+     "ibea",
+     "swap"
     ]
    ],
    [
@@ -968,7 +969,15 @@
     [
      "h09",
      "either",
-     "off"
+     "off",
+     "cmaes_m"
+    ]
+   ],
+   [
+    "cma_tolfun",
+    [
+     "h09",
+     "cmaes_m"
     ]
    ],
    [
@@ -1124,8 +1133,8 @@
    [
     "isde_directions",
     [
-     "lattice",
-     "exact"
+     "exact",
+     "lattice"
     ]
    ],
    [

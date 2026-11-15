@@ -1674,11 +1674,8 @@ def campaign_numbers_of_the_wrong_type_are_config_errors():
 def the_registry_exported_builds_the_same_problems():
     """run/registry_export.py: a suite problem's exported spec builds the
     problem the registry has (task 17, stage 5); the refusals are named."""
-    try:
-        from mootation import _core
-    except ImportError:
-        _core = None
-    if not hasattr(_core, "Native"):
+    _core = _core_with("Native")
+    if _core is None:
         print("    (skipped: no extension)"); return
     from mootation.benchmarks.registry import PROBLEMS
     from mootation.run.registry_export import entry
@@ -1728,11 +1725,8 @@ def every_suite_problem_has_cxx_s_box():
     """Task 17, supplement 7, section 2.4: the box of every problem of the C++
     suite from its definition there (Native.bounds) is Python's, bit for bit:
     the tables of DOC, RE, RCM and MMF and every family's formula."""
-    try:
-        from mootation import _core
-    except ImportError:
-        _core = None
-    if not hasattr(getattr(_core, "Native", None), "bounds"):
+    _core = _core_with("Native")
+    if _core is None or not hasattr(_core.Native, "bounds"):
         print("    (skipped: no extension)"); return
     from mootation.benchmarks.registry import PROBLEMS
     checked, differ = 0, []
@@ -1757,11 +1751,8 @@ def the_registry_has_problems_at_one_objective():
     lm's again and to (d)'s digits — the least-squares ones their start, no
     box and their residuals, MGH's its local levels and large_residual;
     data/registry.json carries these for them alone."""
-    try:
-        from mootation import _core
-    except ImportError:
-        _core = None
-    if not hasattr(_core, "nist_dataset"):
+    _core = _core_with("nist_dataset")
+    if _core is None:
         print("    (skipped: no extension, or one before §1d)"); return
     import json
     import math
@@ -1841,18 +1832,15 @@ def single_objective_measures_agree_with_their_python_cross_check():
     budgets; each problem of the registry at one objective says its kind.
     The simulated restarts' mirror: its mt19937 gives the standard's
     10000th word, and its samples are C++'s from seeds 0 ... 2^32 - 1."""
-    try:
-        from mootation import _core
-    except ImportError:
-        _core = None
-    if not hasattr(_core, "so_metrics") or not hasattr(_core, "nist_dataset"):
+    _core = _core_with("so_metrics")
+    if _core is None or not hasattr(_core, "nist_dataset"):
         print("    (skipped: no extension, or one before §1c)"); return
     import math
     import mootation
     from mootation.benchmarks.registry import PROBLEMS
     from mootation.run import so_metrics as P
     C = _core.so_metrics
-    assert C.REFERENCE_VERSION == P.REFERENCE_VERSION == 1
+    assert C.REFERENCE_VERSION == P.REFERENCE_VERSION >= 1, (C.REFERENCE_VERSION, P.REFERENCE_VERSION)
     assert C.coco_table_precisions() == P.coco_table_precisions() and C.more_wild_factors() == P.more_wild_factors()
     assert all(abs(a - b) <= 4.5e-16 * b for a, b in zip(C.coco_precisions(), P.coco_precisions()))   # pow: an ulp or two
     assert len(C.coco_precisions()) == 51 and len(C.coco_precisions(-6)) == 41
@@ -3262,13 +3250,8 @@ def results_record_the_revision_they_were_made_with():
 @test
 def a_campaign_writes_the_log_grid_the_archive_and_snapshots():
     """The 2026-09-22 recording options end to end, on two tiny problems."""
-    try:
-        import numpy as np
-        import mootation._core as _core
-    except ImportError:
-        return
-    if not hasattr(_core.Config(), "max_evaluations"):
-        print("  skip  a_campaign_writes_the_log_grid...: stale _core"); return
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("  skip  a_campaign_writes_the_log_grid...: no NumPy or stale _core"); return
     from mootation.run import campaign as C
     from mootation.run.config import load
     text = """algorithms = [
@@ -3323,15 +3306,10 @@ snapshots = ["ZDT1"]
 @test
 def campaign_results_round_trip():
     """Run two tiny jobs for real and read them back through scan/compare."""
-    try:
-        import numpy  # noqa: F401
-        import mootation._core as _core
-    except ImportError:
-        return
-    if not hasattr(_core.Config(), "on_generation"):
-        # An extension built before the observer existed (a stale .pyd for
-        # this interpreter): the campaign cannot record trajectories with it.
-        print("  skip  campaign_results_round_trip: _core has no on_generation "
+    # an extension built before the observer existed (a stale .pyd for this
+    # interpreter) cannot record trajectories: on_generation
+    if not _have_numpy() or _core_with("on_generation") is None:
+        print("  skip  campaign_results_round_trip: no NumPy or _core has no on_generation "
               "(rebuild the extension for this interpreter)")
         return
     from mootation.run import campaign as C
@@ -3515,13 +3493,8 @@ def campaign_control_files():
 @test
 def campaign_worker_pool():
     """The pool runs every job, and a target of 0 drains without running any."""
-    try:
-        import numpy  # noqa: F401
-        from mootation import _core
-    except ImportError:
-        return
-    if not hasattr(_core.Config(), "max_evaluations"):
-        print("  skip  campaign_worker_pool: _core has no max_evaluations "
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("  skip  campaign_worker_pool: no NumPy or _core has no max_evaluations "
               "(rebuild the extension for this interpreter)")
         return
     from mootation.run import campaign as C
@@ -3563,14 +3536,9 @@ def _worker_that_drops_a_job(cfg_path, force, conn):
 @test
 def campaign_pool_fails_only_the_job_whose_worker_died_holding_it():
     """A worker that dies holding a job fails that job, and the pool runs the rest."""
-    try:
-        import numpy  # noqa: F401
-        from mootation import _core
-    except ImportError:
-        return
-    if not hasattr(_core.Config(), "max_evaluations"):
-        print("  skip  campaign_pool_fails_only_the_job_whose_worker_died_holding_it: _core has "
-              "no max_evaluations (rebuild the extension for this interpreter)")
+    if not _have_numpy() or _core_with("max_evaluations") is None:
+        print("  skip  campaign_pool_fails_only_the_job_whose_worker_died_holding_it: no NumPy or "
+              "_core has no max_evaluations (rebuild the extension for this interpreter)")
         return
     import threading
     from mootation.run import campaign as C
@@ -3637,6 +3605,19 @@ def _core_with(attr: str):
     except ImportError:
         return None
     return _core if hasattr(_core, attr) or hasattr(_core.Config(), attr) else None
+
+
+def _cxx_names(header: str, function: str) -> tuple:
+    """The names a list function of the C++ headers returns, read out of its
+    source as knobs.py reads settings.hpp: `inline const
+    std::vector<std::string>& <function>()` with its `static const ... v{...}`
+    (e.g. scalar/strategy.hpp, strategy_names)."""
+    import re
+    text = (HERE.parent / "include" / "mootation" / header).read_text(encoding="utf-8")
+    m = re.search(r"std::vector<std::string>& " + function + r"\(\)\s*\{\s*static const "
+                  r"std::vector<std::string> v\{(.*?)\};", text, re.S)
+    assert m, (header, function)
+    return tuple(re.findall(r'"([^"]+)"', m.group(1)))
 
 
 def _without_balls(name: str) -> bool:
@@ -4775,8 +4756,17 @@ def operator_statistics_leave_the_run_alone_and_describe_it():
         print("  skip  operator_statistics...: no NumPy or stale _core"); return
     import contextlib
     import io
+    from mootation import minimize
+    from mootation.benchmarks import get
     from mootation.run import campaign as C
     from mootation.run.config import load
+    from mootation.run.knobs import text_knobs
+    # moead_de's box repair at its defaults, as the core reports it (not the
+    # default named here: it moves with the owner's decisions, MDE-6)
+    d2 = get("DTLZ2_3D")
+    moead_de_repair = dict(minimize(d2.evaluate, algorithm="moead_de", bounds=d2.bounds, n_objs=3,
+                                    pop_size=91, n_gen=1, seed=1).operators)["box repair"]
+    assert moead_de_repair in text_knobs()["bound_repair"] and moead_de_repair != "reflect", moead_de_repair
     text = """algorithms = [
     { name = "nsga2", pop = 0, gens = 0 },
     { name = "moead_de", pop = 0, gens = 0 },
@@ -4824,8 +4814,8 @@ operator_stats = STATS
                 assert ops == {"sbx": "none", "polynomial": "none"}, ops
                 assert meta["final"]["oob_share"] == 0.0
             else:
-                # moead_de clips by default since 2026-11-14 (MDE-6); random is the letter
-                assert ops["box repair"] == ("reflect" if alg == "de_reflect" else "clip"), ops
+                # the core's own default (MDE-6), as a run at its defaults reports it
+                assert ops["box repair"] == ("reflect" if alg == "de_reflect" else moead_de_repair), ops
                 assert meta["final"]["oob_share"] > 0.0, meta["final"]
             assert meta["final"]["n_final"] == 91 and meta["final"]["tau90"] > 0
             off = json.loads((b / "meta.json").read_text(encoding="utf-8"))
@@ -7134,9 +7124,10 @@ def gde3_smsemoa_mocmaes_run_inside_the_box_and_take_their_knobs():
 @test
 def moead_de_and_dra_take_the_three_de_components():
     """Task 15, §1 (Tanabe & Ishibuchi 2019): de_base, de_index, de_p and the
-    bound handling. The default is the explicit current1, wr, clip bit for
-    bit; every combination runs inside the box, takes every knob and gives the
-    same run from the same seed; an unknown word is refused."""
+    bound handling. The default is the explicit current1, wr and the box
+    repair the default run reports (clip since 2026-11-14, MDE-6, DRA-13)
+    bit for bit; every combination runs inside the box, takes every knob and
+    gives the same run from the same seed; an unknown word is refused."""
     if not _have_numpy() or _core_with("hv_contributions") is None:
         print("  skip  moead_de_and_dra_take...: no NumPy or stale _core"); return
     import numpy as np
@@ -7147,9 +7138,11 @@ def moead_de_and_dra_take_the_three_de_components():
     kw = dict(bounds=p.bounds, n_objs=2, pop_size=20, max_evaluations=400)
     for alg in ("moead_de", "moead_dra"):
         d = minimize(p.evaluate, algorithm=alg, seed=5, **kw)
+        repair = dict(d.operators)["box repair"]          # the core's default, as it reports it
         e = minimize(p.evaluate, algorithm=alg, seed=5, de_base="current1", de_index="wr",
-                     bound_repair="clip", **kw)        # clip by default since 2026-11-14 (MDE-6, DRA-13)
+                     bound_repair=repair, **kw)
         assert d.objectives == e.objectives and not e.ignored, (alg, e.ignored)
+        assert dict(e.operators)["box repair"] == repair, (alg, e.operators)
         differs = 0
         for base in ("rand1", "current1", "current_to_pbest1"):
             for index in ("wor", "wr", "wpr"):
@@ -7588,54 +7581,61 @@ def sbx_bounds_and_lis_lcs_knobs():
 
 @test
 def readings_knobs_of_2026_11_02():
-    """The owner's decisions of 2026-11-02: six knobs, one reading of a core's
-    paper each, with the default unchanged. Each reaches its core (not in
-    ignored): the default named gives the default run, the other value
-    another (aprd's slot_exclusive only where a slot repeats, so it is checked
-    as taken); another core reports the knob ignored; a value the knob does
-    not take is refused."""
+    """The owner's decisions of 2026-11-02 and after: knobs of one reading of a
+    core's paper each. Each reaches its core (not in ignored) with every word
+    settings.hpp lists for it (a numeric knob: its two values): one of them
+    gives the default run, every other another (aprd's slot_exclusive only
+    where a slot repeats, so it is checked as taken); another core reports the
+    knob ignored; a value the knob does not take is refused. Which word is the
+    default is the core's (the run without the knob): test_core_readings and
+    the golden fingerprints hold it, so a default the owner moves is not
+    written here a second time."""
     if not _have_numpy() or _core_with("sbx_bounds") is None:
         print("  skip  readings_knobs_of_2026_11_02: no NumPy or stale _core"); return
     from mootation import minimize
     from mootation.benchmarks import get
+    from mootation.run.knobs import text_knobs
     d2 = get("DTLZ2_3D")
     k = dict(bounds=d2.bounds, n_objs=3, pop_size=91, n_gen=20, seed=7)
     if minimize(d2.evaluate, algorithm="aprd", slot_exclusive="on", **k).ignored:
         print("  skip  readings_knobs_of_2026_11_02: stale _core"); return
-    cases = [("edv", "pm_literal", "on", "off"), ("naemo", "flag1", "off", "on"),
-             ("naemo", "flag2", "off", "on"), ("irea", "fitness_reading", "ibea", "swap"),
-             ("moead_ds", "extreme_weights", "nsga3", "literal"),
-             ("maoea_iamd", "noise_frac", 0.01, 0.316), ("aprd", "slot_exclusive", "off", "on"),
-             ("maoea_iamd", "kpcm_pm", "off", "on"),      # 2026-11-05 (IAMD-1)
-             ("edv", "edv_tournament", "fitness", "random"),  # 2026-11-05 (EDV-5)
-             ("maoea_iamd", "cv_rule", "angle", "lmea"),       # 2026-11-06 (IAMD-2)
-             ("maoea_iamd", "cv_norm", "population", "nondominated"),  # 2026-11-06 (IAMD-3)
-             ("moead_ds", "nadir_source", "intercepts", "archive"),  # 2026-11-06 (DDS-9)
-             ("moead_ds", "drs_guard", "off", "normalize"),       # 2026-11-06 (DDS-10)
-             ("moead_ds", "drs_guard", "off", "extreme"),
-             ("clia", "clia_norm", "raw", "intercepts"),          # 2026-11-06 (CLIA-8)
-             ("clia", "clia_rpil", "on", "off"),                  # 2026-11-06 (CLIA-9)
-             ("dea_gng", "gng_ties", "first", "random"),          # 2026-11-06 (GNG-11)
-             ("dea_gng", "gng_eps", 0.05 * 3.141592653589793, 0.314),
-             ("maoeaarv", "arv_linkage", "single", "average"),   # 2026-11-06 (ARV-2)
-             ("aprd", "aprd_pbi", "canonical", "printed"),       # 2026-11-06 (APRD-12)
-             ("rd_emo", "rd_ideal", "running", "origin"),         # 2026-11-13 (RDE-9)
-             ("if_maoea", "if_range", "pool", "alg1"),          # 2026-11-13 (IF-MaOEA-12)
-             ("nrv_moea", "nrv_archive", "letter", "platemo"),   # 2026-11-13 (NRV-3)
-             ("nrv_moea", "nrv_pool", "letter", "platemo"),      # 2026-11-13 (NRV-4)
-             ("isde_rd", "isde_directions", "exact", "lattice")]  # 2026-11-13 (ISDE-11; exact by default 2026-11-14)
-    for alg, knob, dflt, other in cases:
+    words = text_knobs()
+    cases = [("edv", "pm_literal"), ("naemo", "flag1"), ("naemo", "flag2"), ("irea", "fitness_reading"),
+             ("moead_ds", "extreme_weights"),
+             ("maoea_iamd", "noise_frac", (0.01, 0.316)), ("aprd", "slot_exclusive"),
+             ("maoea_iamd", "kpcm_pm"),                   # 2026-11-05 (IAMD-1)
+             ("edv", "edv_tournament"),                   # 2026-11-05 (EDV-5)
+             ("maoea_iamd", "cv_rule"),                   # 2026-11-06 (IAMD-2)
+             ("maoea_iamd", "cv_norm"),                   # 2026-11-06 (IAMD-3)
+             ("moead_ds", "nadir_source"),                # 2026-11-06 (DDS-9)
+             ("moead_ds", "drs_guard"),                   # 2026-11-06 (DDS-10)
+             ("clia", "clia_norm"),                       # 2026-11-06 (CLIA-8)
+             ("clia", "clia_rpil"),                       # 2026-11-06 (CLIA-9)
+             ("dea_gng", "gng_ties"),                     # 2026-11-06 (GNG-11)
+             ("dea_gng", "gng_eps", (0.05 * 3.141592653589793, 0.314)),
+             ("maoeaarv", "arv_linkage"),                 # 2026-11-06 (ARV-2)
+             ("aprd", "aprd_pbi"),                        # 2026-11-06 (APRD-12)
+             ("rd_emo", "rd_ideal"),                      # 2026-11-13 (RDE-9)
+             ("if_maoea", "if_range"),                    # 2026-11-13 (IF-MaOEA-12)
+             ("nrv_moea", "nrv_archive"),                 # 2026-11-13 (NRV-3)
+             ("nrv_moea", "nrv_pool"),                    # 2026-11-13 (NRV-4)
+             ("isde_rd", "isde_directions")]              # 2026-11-13 (ISDE-11)
+    for alg, knob, *given in cases:
+        values = given[0] if given else words[knob]
+        assert len(values) >= 2, (knob, values)
         d = minimize(d2.evaluate, algorithm=alg, **k)
-        n = minimize(d2.evaluate, algorithm=alg, **{knob: dflt}, **k)
-        o = minimize(d2.evaluate, algorithm=alg, **{knob: other}, **k)
-        assert d.objectives == n.objectives and not n.ignored, (alg, knob, n.ignored)
-        assert not o.ignored, (alg, knob, o.ignored)
+        runs = [minimize(d2.evaluate, algorithm=alg, **{knob: v}, **k) for v in values]
+        for v, r in zip(values, runs):
+            assert not r.ignored, (alg, knob, v, r.ignored)
+        default = [v for v, r in zip(values, runs) if r.objectives == d.objectives]
+        assert default, (alg, knob, "none of", values, "gives the default run")
         # aprd's slots and maoea_iamd's classification rules agree on DTLZ2 (CV = the
         # distance variables under every rule; test_core_readings checks the sets)
         # isde_rd's default K = 10 is on the lattice at M = 3 (test_core_readings
         # checks exact where it is not)
         if alg != "aprd" and knob not in ("cv_rule", "cv_norm", "clia_rpil", "isde_directions"):
-            assert o.objectives != d.objectives, (alg, knob, other)
+            assert len(default) == 1, (alg, knob, default)
+        other = next(v for v in values if v != default[0])
         r = minimize(d2.evaluate, algorithm="nsga2", **{knob: other}, **k)
         assert r.ignored == [knob], (knob, r.ignored)
     # edv takes the run knob normalize (EDV-6): false is the default, true another run
@@ -11370,14 +11370,12 @@ def scalar_presets_budget_and_refusals():
     import math
     import mootation
     from mootation.run.metrics import nondominated
-    from mootation.scalar import NAMES, PRESETS
+    from mootation.scalar import NAMES, PRESETS, SINGLE
+    # the presets and the order of the names as C++ has them (scalar/scalar.hpp)
     assert tuple(PRESETS) == ("scalar", "eps_sqp", "tch_sqp", "nbi_sqp", "nnc_sqp", "eps_nm",
-                              "eps_cmaes") and NAMES == tuple(PRESETS) + (
-                                  "boostdms", "mosqp", "slsqp", "nelder_mead", "cmaes", "lm",
-                                  "lbfgsb", "eki", "catcma", "de", "jade", "shade", "lshade", "ga_sbx", "ssga",
-                                  "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes", "multistart", "ipop",
-                                  "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils", "memetic",
-                                  "tiktak", "data_continuation", "pap", "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder")
+                              "eps_cmaes") == _cxx_names("scalar/scalar.hpp", "preset_names")
+    assert NAMES == tuple(PRESETS) + ("boostdms", "mosqp") + SINGLE == _cxx_names("scalar/scalar.hpp", "names"), \
+        set(NAMES) ^ set(_cxx_names("scalar/scalar.hpp", "names"))
     calls = [0]
     def f(x):
         calls[0] += 1
@@ -11539,12 +11537,15 @@ def single_objective_solvers_and_baselines_at_one_objective():
     from mootation.run.archive import GridArchive
     from mootation.run.baselines import run_baseline
     from mootation.run.budget import depends_on_budget
-    from mootation.scalar import SINGLE
-    assert SINGLE == ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb", "eki", "catcma", "de", "jade", "shade", "lshade",
-                      "ga_sbx", "ssga", "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes", "multistart", "ipop",
-                      "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils", "memetic", "tiktak",
-                      "data_continuation", "pap", "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder")
-    for name in SINGLE[5:]:                          # eki, stage 4's population methods, stage 3's strategies
+    from mootation.scalar import POPULATION, SINGLE, STRATEGIES
+    # the first five by hand (the checks below take them by place); the rest as C++ lists them
+    # (scalar/scalar.hpp, strategy.hpp), not a third copy here
+    assert SINGLE[:5] == ("slsqp", "nelder_mead", "cmaes", "lm", "lbfgsb"), SINGLE[:5]
+    assert SINGLE[:3] == _cxx_names("scalar/scalar.hpp", "single_names")
+    assert SINGLE == _cxx_names("scalar/scalar.hpp", "names")[-len(SINGLE):], SINGLE
+    assert SINGLE[-len(POPULATION) - len(STRATEGIES):] == POPULATION + STRATEGIES == \
+        _cxx_names("scalar/scalar.hpp", "population_names") + _cxx_names("scalar/strategy.hpp", "strategy_names")
+    for name in SINGLE[5:]:                          # eki, catcma, stage 4's population methods, stage 3's strategies
         assert check_pop(name, 20, 2) == (f"{name} is a single-objective algorithm: n_objs must "
                                           "be 1, got 2"), name
         assert check_pop(name, 20, 1) is None, name
@@ -12211,8 +12212,8 @@ def a_strategy_runs_its_inner_solver_through_minimize():
     minima = json.loads(got["minima"])
     assert len(minima) == 2 and sum(m[2] for m in minima) == 6, minima
     assert sorted(round(m[3]) for m in minima) == [-1, 1], minima
-    assert STRATEGIES == ("multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl", "basin_hopping", "ils",
-                          "memetic", "tiktak", "data_continuation", "pap", "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder")
+    # the C++ list (scalar/strategy.hpp), not a third copy of it here
+    assert STRATEGIES == _cxx_names("scalar/strategy.hpp", "strategy_names"), STRATEGIES
     assert [s for s in STRATEGIES if not depends_on_budget(s)] == ["ipop", "bipop", "bipop_2009"]
     mem = mootation.minimize(f, box, 1, algorithm="memetic", max_evaluations=3000, seed=2,
                              inner={"solver": "de"}, local_solver={"solver": "nelder_mead"}, memetic_every=500)

@@ -224,6 +224,18 @@ mootation_test_timeout(test_core_readings 300)
 # the whole reason to have one.
 mootation_test_timeout(test_warm_start 600)
 
+# test_hvc and test_dss check against an independent computation on random
+# sets: on every push a part of them (every kind of set still dozens of
+# times; the counts are in the tests), all of them nightly with --full.
+# Labelled `full` as well, so that the nightly job's sanitized run
+# (-LE "python|full") leaves them to the push job's, which runs the same code
+# paths on the part.
+add_test(NAME test_hvc_full COMMAND test_hvc --full)
+add_test(NAME test_dss_full COMMAND test_dss --full)
+set_tests_properties(test_hvc_full test_dss_full PROPERTIES LABELS "nightly;full")
+mootation_test_timeout(test_hvc_full 900)
+mootation_test_timeout(test_dss_full 600)
+
 # A compile-only check that the umbrella header is self-contained: it must pull
 # in everything it needs without the user having included anything first.
 add_executable(test_umbrella_selfcontained umbrella_tu.cpp)

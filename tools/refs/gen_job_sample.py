@@ -92,4 +92,7 @@ with tempfile.TemporaryDirectory() as tmp:
         lines.append(json.dumps({"index": j.index, "problem": j.problem, "algorithm": j.key, "lines": traj,
                                  "meta": meta, "tables": heads}))
 (out / "expected.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+# the parts of the exported registry the references were built from
+# (refs.py, _registry_for): a cache beside the entries, not the sample's
+shutil.rmtree(out / "refs" / "registry", ignore_errors=True)
 print(out, len(jobs), "jobs", file=sys.stderr)

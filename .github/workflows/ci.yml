@@ -850,9 +850,11 @@ jobs:
       # The long tests are the only ones that drive every algorithm to
       # convergence, so they are the only place a use-after-free in a rarely
       # taken branch will surface. Running them under the sanitizers is slow,
-      # which is precisely why it belongs here and not on a push.
+      # which is precisely why it belongs here and not on a push. The `full`
+      # tests (test_hvc and test_dss on all their random sets) are left out:
+      # the push job's sanitized run takes the same code paths on a fifth.
       - name: The long tests again, under ASan and UBSan
         run: |
           cmake -S . -B build-asan             -DCMAKE_BUILD_TYPE=Debug             -DCMAKE_CXX_COMPILER=clang++             -DMOOTATION_SANITIZE=ON
           cmake --build build-asan -j 2
-          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1           ASAN_OPTIONS=detect_leaks=1             ctest --test-dir build-asan --output-on-failure -j 2 -L nightly -LE python
+          UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1           ASAN_OPTIONS=detect_leaks=1             ctest --test-dir build-asan --output-on-failure -j 2 -L nightly -LE "python|full"
