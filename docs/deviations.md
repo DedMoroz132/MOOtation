@@ -423,7 +423,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-490 items: 411 yes, 76 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+493 items: 411 yes, 79 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -486,6 +486,8 @@ Their readings, from every comment of each file (the first column the file's nam
 | `cluster_ga` | MD-2 | A child is in the joined set as it is; the members' and the children's ties in the non-dominated choice ("without repetitions") are the first of each (f, DCN) pair; the random choice is one uniform. | yes | `cluster_ga.hpp` |
 | `cluster_ga` | AF-1 | The newcomer is a uniform point of the box, searched locally like every child, age 1; the ages of the members grow by one after the selection. | yes | `cluster_ga.hpp` |
 | `cluster_ga` | AF-2 | A Pareto tournament draws afpo_tournament distinct members (a partial Fisher-Yates draw) and removes those another of them dominates; the selection stops at cga_pop or when no member of the whole population is dominated. | yes | `cluster_ga.hpp` |
+| `cluster_ga` | CGA-5 | cga_init = uniform \| around_x0 \| seed_points (task 30, §30.5; off by default: uniform, step 0 above). around_x0: members 2 ... | no: option | `cluster_ga.hpp` |
+| `cluster_ga` | CGA-6 | cga_islands = I (task 30, §30.8; off by default: 1, the one population above). | no: option | `cluster_ga.hpp` |
 | `cluster_ga` | CGA-1 | the cut and splice of a and b over the point blocks of g | yes | `cluster_ga.hpp` |
 | `cmaes` | INJ-1 | The strategy's own parameters stay the tutorial's (Table 1 of the report lists those of [5], Hansen & Kern 2004; the report itself advises keeping the original strategy parameters, p. 7). | yes | `cmaes.hpp` |
 | `cmaes` | INJ-2 | Δσ_max = 1.0 as the report's Table 1 has it (its text on p. 5 says the factor exp(0.6)); c_y = sqrt(n) + 2n/(n + 2), c_y^m = sqrt(2n) + 2n/(n + 2) (Table 1). | yes | `cmaes.hpp` |
@@ -690,6 +692,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `param` | PARAM-6 | The levels in the settings (shrink_trail, param_best) carry 17 significant digits, so that they read back as the values tried. | yes | `param.hpp` |
 | `param` | PARAM-7 (only when asked: max_seconds) | The run's deadline (scalar.hpp TIME-1; task 30, §30.1): problem_at gives the problem at L the earlier of its own deadline and P's, so a level's run ends at the run's deadline; shrink starts no level once the deadline... | no: option | `param.hpp` |
 | `param` | PARAM-8 | shrink_count = budget \| evaluations (task 30, §30.2; budget by default since the owner's choice of 16.11, method version 5; evaluations: the runs before). | yes | `param.hpp` |
+| `param` | PARAM-9 | shrink_carry = point \| population (task 30, §30.6; off by default: point, the level from one point). population: the inner solver is cluster_ga with cga_init = seed_points (else refused); a level starts from the carri... | no: option | `param.hpp` |
 | `pbest` | PB-1 | The trial's draws: x_pbest, r1, r2, j_rand, then one U(0, 1) a coordinate, j_rand's included, v_j taken where U < CR or j = j_rand (de.hpp draws the same way). r1 and r2 are drawn again until they differ as asked; r2... | yes | `pbest.hpp` |
 | `pbest` | PB-2 | "The best" of P: ranked by the comparison of evo.hpp, ties by index; x_pbest is drawn from the first `top`, and may be x_i or x_r1. | yes | `pbest.hpp` |
 | `pbest` | PB-3 | sym (task 19, symmetry.hpp SYM-8; off by default): after the draws, x_pbest, x_r1 and x~_r2 aligned to x_i (align), or the four canonical (canon); no draw changes, and sym = off is the trial as before. | no: option | `pbest.hpp` |

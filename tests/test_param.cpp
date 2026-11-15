@@ -20,7 +20,11 @@
 //     evaluations go past the run's budget, charged by budget they stay
 //     within it; evaluations gives the numbers of the baseline 8909670 bit
 //     for bit (kOld*, from that commit's headers); without gradients the two
-//     are one run; the default is kDefaultCount.
+//     are one run; the default is kDefaultCount;
+//   * shrink_carry = population (task 30, §30.6; PARAM-9): cluster_ga's
+//     last population goes to the next level, the number of members kept;
+//     point is the default run bit for bit; an inner solver that cannot
+//     take it refused.
 
 #include <cmath>
 #include <cstdio>
@@ -256,6 +260,28 @@ int main()
         plain.at_param = [](double L2) { sc::Problem Q = rosen(L2); Q.gradient = nullptr; return Q; };
         check(same(with(plain, "evaluations"), with(plain, "budget")),
               "shrink_count: without gradients evaluations and budget are one run");
+    }
+
+    // ── shrink_carry (task 30, §30.6; PARAM-9) ─────────────────────────────
+    {
+        const char* cga = "{\"cga_init\":\"seed_points\",\"cga_pop\":4,\"inner\":{\"solver\":\"nelder_mead\"},"
+                          "\"solver\":\"cluster_ga\",\"start_budget\":200}";
+        auto with = [&](const char* carry) {
+            sc::Knobs k{{"shrink_step", word("ladder")}, {"shrink_ladder", word("[2, 1.5, 1.2]")},
+                        {"start_budget", number(2000)}, {"inner", word(cga)}};
+            if (carry) k.push_back({"shrink_carry", word(carry)});
+            return sc::run("shrink", P, 1e-6, false, 0.0, 10, 6000, 7, k, {}, 0, from);
+        };
+        const sc::Result d = with(nullptr), pt = with("point"), pop = with("population"), pop2 = with("population");
+        check(same(d, pt) && setting(d, "shrink_carried").empty(), "shrink_carry = point: the default run, bit for bit");
+        check(same(pop, pop2) && setting(pop, "shrink_carried") == "[0,4,4]" && setting(pop, "init_seeded") == "3",
+              "shrink_carry = population: 4 members carried to every level, " + setting(pop, "shrink_carried"));
+        bool threw = false;
+        try {
+            sc::Knobs k{{"shrink_carry", word("population")}, {"inner", word(kNM)}};
+            sc::run("shrink", P, 1e-6, false, 0.0, 10, 1000, 7, k, {}, 0, from);
+        } catch (const std::invalid_argument&) { threw = true; }
+        check(threw, "shrink_carry = population with an inner solver other than cluster_ga refused");
     }
 
     // ── reformulation ───────────────────────────────────────────────────────

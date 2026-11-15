@@ -46,7 +46,7 @@
 // Knobs: inner, shrink_step (geometric), shrink_rho, shrink_lo, shrink_tol,
 // ilsqn_dec, ilsqn_inc, idts_theta, idts_delta, idts_min, shrink_ladder,
 // shrink_rounds (0: until the budget or the rule ends), start_budget,
-// shrink_count (budget; PARAM-8).
+// shrink_count (budget; PARAM-8), shrink_carry (point; PARAM-9).
 //
 // READINGS:
 //   PARAM-1. problem_at refuses a problem without at_param, a non-finite L,
@@ -86,6 +86,16 @@
 //     The settings have shrink_counts: every level's [evaluations, gradient
 //     calls, charge]; evaluations in the result is the sum of the levels'
 //     evaluations, grad_calls of their gradient calls.
+//   PARAM-9. shrink_carry = point | population (task 30, §30.6; off by
+//     default: point, the level from one point). population: the inner
+//     solver is cluster_ga with cga_init = seed_points (else refused); a
+//     level starts from the carried point as before and from the last
+//     population of the level it is carried from (Result::population),
+//     every member carried as the point is, the member equal to the point
+//     (else the last) left out, as the start's seed points: members 2 ... K
+//     of the next level's first population (cluster_ga CGA-5), so the
+//     number of members is kept. shrink_carried: every level's carried
+//     members with the point (0 for the first level).
 // ============================================================================
 
 #include <algorithm>
@@ -153,7 +163,7 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
     (void)record_every;                                                              // PARAM-5
     StrategyKnobs k("shrink", knobs, {"inner", "shrink_step", "shrink_rho", "shrink_lo", "shrink_tol", "ilsqn_dec",
                                       "ilsqn_inc", "idts_theta", "idts_delta", "idts_min", "shrink_ladder",
-                                      "shrink_rounds", "start_budget", "shrink_count"});
+                                      "shrink_rounds", "start_budget", "shrink_count", "shrink_carry"});
     const Inner inner = k.inner("inner");
     const std::string rule = k.word("shrink_step", "geometric", {"geometric", "bisect", "ilsqn", "idts", "ladder"});
     const double rho = k.number("shrink_rho", 0.99), tol = k.number("shrink_tol", 1e-6);
@@ -176,6 +186,15 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
     const std::string count_default = "budget";
     const bool by_budget = (k.find("shrink_count") ? k.word("shrink_count", count_default, {"budget", "evaluations"})
                                                    : count_default) == "budget";
+    const bool carry_pop =                                                           // PARAM-9
+        k.find("shrink_carry") && k.word("shrink_carry", "point", {"point", "population"}) == "population";
+    if (carry_pop) {
+        bool seeded = false;
+        for (const auto& kv : inner.knobs) seeded = seeded || (kv.first == "cga_init" && kv.second.word == "seed_points");
+        if (inner.name != "cluster_ga" || !seeded)
+            throw std::invalid_argument("shrink: shrink_carry = population needs inner cluster_ga with cga_init = "
+                                        "seed_points (PARAM-9)");
+    }
     double lo_b = 0.0;
     if (rule == "bisect") {
         lo_b = k.number("shrink_lo", std::numeric_limits<double>::quiet_NaN());
@@ -188,6 +207,8 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
     Result best, first;
     bool have_best = false;
     Vec x_best, x_last;
+    Rows pop_best, pop_last;                                                         // PARAM-9
+    std::string carried_sizes = "[";
     double L_last = P.param;
     std::string trail = "[";
     std::string stopped = "rule";                                                    // PARAM-7
@@ -219,7 +240,19 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
             const Vec& from_x = rule == "ladder" ? x_last : (have_best ? x_best : x_last);
             const double from_L = rule == "ladder" ? L_last : (have_best ? L_best : L_last);
             st = search::at(carried(P, Q, from_x, from_L, L));
+            if (carry_pop) {                                                         // PARAM-9
+                const Rows& from_pop = rule == "ladder" ? pop_last : (have_best ? pop_best : pop_last);
+                std::size_t skip = from_pop.size();
+                for (std::size_t q = 0; q < from_pop.size() && skip == from_pop.size(); ++q)
+                    if (from_pop[q] == from_x) skip = q;
+                if (skip == from_pop.size() && !from_pop.empty()) skip = from_pop.size() - 1;
+                st.has_seed_points = true;
+                for (std::size_t q = 0; q < from_pop.size(); ++q)
+                    if (q != skip) st.seed_points.push_back(Point{carried(P, Q, from_pop[q], from_L, L), {}, {}});
+            }
         }
+        if (carry_pop)
+            carried_sizes += (levels ? "," : "") + std::to_string(levels ? st.seed_points.size() + 1 : 0);
         const Result r = run(inner.name, Q, eq_tol, has_tol0, eq_tol0, pop_size, allowance,
                              start_seed(seed, static_cast<std::uint64_t>(levels)), inner.knobs, {}, 0, st);
         spent += r.evaluations;
@@ -239,6 +272,7 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
         ++levels;
         if (!r.variables.empty()) {
             x_last = r.variables[0];
+            pop_last = r.population;
             L_last = L;
         }
         if (rule == "ladder") {
@@ -253,6 +287,7 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
             have_best = true;
             L_best = L;
             x_best = r.variables[0];
+            pop_best = r.population;
         }
         if (past_deadline(P)) {                                                      // PARAM-7: not the rule's end
             stopped = "deadline";
@@ -288,6 +323,7 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
     if (have_best) out.settings.push_back({"param_best", param_text(L_best)});
     if (P.deadline < std::numeric_limits<double>::infinity()) out.settings.push_back({"stopped_by", stopped});
     out.settings.push_back({"shrink_counts", counts + "]"});                                 // PARAM-8
+    if (carry_pop) out.settings.push_back({"shrink_carried", carried_sizes + "]"});           // PARAM-9
     return out;
 }
 

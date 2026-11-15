@@ -22,6 +22,15 @@ always listed under **Changed** or **Removed**.
   `gen_job_sample.py` no longer leaves `refs/registry/` behind; the commands
   for `random_reference.txt` and the golden fingerprints in
   `tests/data/README.md`.
+- Added (task 30, §30.5, §30.6, §30.8; off by default, bit for bit):
+  `cluster_ga`'s `cga_init = uniform | around_x0 | seed_points` (the first
+  population's members 2 ... K from x0 by `cga_init_moves` moves of the
+  mutation, or from the start's seed points; CGA-5); `shrink`'s
+  `shrink_carry = population`, the last population of a `cluster_ga` level
+  carried to the next as its seed points (`Result::population`; PARAM-9);
+  `cluster_ga`'s islands, `cga_islands`, `cga_migrate_every`,
+  `cga_migrants`: populations on a ring with their own streams, their
+  children in one round (1 thread = N threads), the best migrating (CGA-6).
 - Fixed (task 30, §30.1): `shrink` with `max_seconds` kept starting levels
   past the deadline — the problem at a level (`problem_at`, also used by
   `replica_ladder`) did not carry the run's deadline, and the level loop did

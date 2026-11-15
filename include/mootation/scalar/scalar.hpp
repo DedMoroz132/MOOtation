@@ -212,6 +212,7 @@ struct Result {
     long long n_failed = 0;          // failed evaluations in the archive
     std::vector<std::pair<std::string, std::string>> settings;
     Rows solutions;                  // scalar: every subproblem's solution, anchors first
+    Rows population;                 // cluster_ga: its last population (task 30, §30.6; param.hpp PARAM-9)
     std::vector<Improvement> improvements;   // one objective: the best point's records (improvements.hpp)
     // the points the method made, how many of them left the box and by how
     // many variables (operators/bound_repair.hpp, RepairCounts; Kononova et

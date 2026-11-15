@@ -63,7 +63,9 @@
 // (builtin | user), cga_replace (worst_if_better | multi_dynamic | afpo),
 // md_di (0.5), md_end (1), md_distance (euclid | aligned), afpo_tournament
 // (2), threads, start_budget, min_dist, min_df, keep_points, round_stop
-// (target | off; strategy.hpp STRAT-16), minima_log (STRAT-15).
+// (target | off; strategy.hpp STRAT-16), minima_log (STRAT-15), cga_init
+// (uniform | around_x0 | seed_points), cga_init_moves (1; CGA-5),
+// cga_islands (1), cga_migrate_every (5), cga_migrants (1; CGA-6).
 //
 // READINGS:
 //   CGA-1. The built-in cut and splice (DH95) needs the problem's first
@@ -103,6 +105,30 @@
 //     partial Fisher-Yates draw) and removes those another of them
 //     dominates; the selection stops at cga_pop or when no member of the
 //     whole population is dominated.
+//   CGA-5. cga_init = uniform | around_x0 | seed_points (task 30, §30.5;
+//     off by default: uniform, step 0 above). around_x0: members 2 ... K
+//     are x0 (clipped to the box) moved cga_init_moves (1) times by the
+//     mutation's move (the mutate hook with mutation = user, else pbh's),
+//     from the same stream, member by member; the moves are counted apart
+//     (init_moves), not in mutations. seed_points: members 2 ... K are the
+//     start's seed points in their order (their x, clipped; their values
+//     are not used: each is a local search's start), the rest uniform as
+//     before; init_seeded says how many. Member 1 is the start, as before
+//     (with seed_points, without its seed points: they are members).
+//   CGA-6. cga_islands = I (task 30, §30.8; off by default: 1, the one
+//     population above). I populations of cga_pop members on a ring, with
+//     cga_replace = worst_if_better: island 0 is the one population (its
+//     stream, its first population from the start), island i has its own
+//     stream, mt19937(start_seed(seed, 0x9E3779B9 + i)), and cga_pop first
+//     members of its own by the rule of CGA-5. A generation: every island's
+//     children from its own members and stream, all of them in one round
+//     (threads: 1 thread and N give the same run), each placed into its
+//     island (step 3). Every cga_migrate_every (5) generations the
+//     cga_migrants (1) best members of island i - 1 (as they were before
+//     the migration) are placed into island i by step 3's rule (migrated
+//     counts those taken). The answer is the run's archive's best, as
+//     before; Result::population holds every island's members. Not here:
+//     an island's own parameter of the problem (at_param).
 //   Not here: the pool mode, the
 //   stagnation trigger of mutation, the predator, the outlier parents of
 //   Jørgensen et al. and USPEX's antiseeds; Wolf and Landman's two-stage
@@ -185,7 +211,8 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
     StrategyKnobs k("cluster_ga", knobs,
                     {"inner", "cga_pop", "cga_mating", "cga_children", "cga_mut_rate", "cga_step", "cga_de",
                      "cga_maxgen", "crossover", "mutation", "threads", "start_budget", "min_dist", "min_df",
-                     "keep_points", "cga_replace", "md_di", "md_end", "md_distance", "afpo_tournament"});
+                     "keep_points", "cga_replace", "md_di", "md_end", "md_distance", "afpo_tournament",
+                     "cga_init", "cga_init_moves", "cga_islands", "cga_migrate_every", "cga_migrants"});
     const Inner inner = k.inner("inner");
     const long long K = k.whole("cga_pop", 8, 1), threads = k.whole("threads", 1, 1);
     const bool pairs = k.word("cga_mating", "boltzmann", {"boltzmann", "all_pairs"}) == "all_pairs";
@@ -211,13 +238,24 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
     const bool points = !P.sym_blocks.empty() && (P.sym_blocks[0].size == 2 || P.sym_blocks[0].size == 3);
     search::finite_box("cluster_ga", P);
     const std::size_t n = P.lo.size();
+    const std::string init_mode =                                                    // CGA-5
+        k.find("cga_init") ? k.word("cga_init", "uniform", {"uniform", "around_x0", "seed_points"}) : "uniform";
+    const long long init_moves = init_mode == "around_x0" ? k.whole("cga_init_moves", 1, 1) : 0;
+    if (init_mode == "around_x0" && !(start.has_x0 && start.x0.size() == n))
+        throw std::invalid_argument("cluster_ga: cga_init = around_x0 needs x0 (of n values)");
+    const long long I = k.find("cga_islands") ? k.whole("cga_islands", 1, 1) : 1;      // CGA-6
+    const long long mig_every = I > 1 ? k.whole("cga_migrate_every", 5, 1) : 0;
+    const long long migrants = I > 1 ? k.whole("cga_migrants", 1, 1) : 0;
+    if (I > 1 && (md || afpo))
+        throw std::invalid_argument("cluster_ga: cga_islands > 1 needs cga_replace = worst_if_better");
+    if (I > 1 && migrants > K) throw std::invalid_argument("cluster_ga: cga_migrants at most cga_pop");
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     strategy::round_stop_of(k, ev);                                                  // STRAT-16
     ev.lean = lean_of(k);
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     group_by_symmetry(k, P, log);
     std::mt19937 rng(start_seed(seed, 0x9E3779B9u));                                 // CGA-3: pbh's stream
-    long long searches = 0, generations = 0, crossings = 0, mutations = 0, accepted = 0;
+    long long searches = 0, generations = 0, crossings = 0, mutations = 0, accepted = 0, migrated = 0;
     auto spec = [&](const Start& st) {
         StartSpec sp;
         sp.seed = start_seed(seed, static_cast<std::uint64_t>(searches++));
@@ -230,18 +268,33 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
         for (const Result& q : r) out.push_back(search::found(q));
         return out;
     };
-    auto move = [&](Vec& y) {                                                        // pbh's move
+    auto shift = [&](Vec& y, std::mt19937& g) {                                      // pbh's move
         if (user_m) {
-            P.mutate(y, rng);
+            P.mutate(y, g);
             if (y.size() != n) throw std::runtime_error("cluster_ga: the mutate hook changed the point's length");
         } else {
-            for (std::size_t j = 0; j < n; ++j) y[j] += (2.0 * rnd::uniform01(rng) - 1.0) * step * search::width(P, j);
+            for (std::size_t j = 0; j < n; ++j) y[j] += (2.0 * rnd::uniform01(g) - 1.0) * step * search::width(P, j);
         }
         for (std::size_t j = 0; j < n; ++j)
             y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
                                                : std::min(P.hi[j], std::max(P.lo[j], y[j]));
+    };
+    auto move = [&](Vec& y, std::mt19937& g) {
+        shift(y, g);
         ++mutations;
     };
+    auto clipped = [&](Vec y) {
+        for (std::size_t j = 0; j < n; ++j)
+            y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
+                                               : std::min(P.hi[j], std::max(P.lo[j], y[j]));
+        return y;
+    };
+    long long init_shifts = 0, init_seeded = 0;                                      // CGA-5
+    Start head = start;                                                              // member 1's start
+    if (init_mode == "seed_points") {
+        head.has_seed_points = false;                                                // the seeds are members
+        head.seed_points.clear();
+    }
     std::vector<search::Found> pop;
     std::vector<long long> age;                                                      // AF-1
     auto dist = [&](const Vec& a, const Vec& b) {                                    // MD-1
@@ -254,236 +307,328 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
         }
         return std::sqrt(q);
     };
-    double D_I = 0.0;
-    try {
-        std::vector<StartSpec> init{spec(start)};
-        for (long long p = 1; p < K; ++p) {
-            Vec x(n);
-            for (std::size_t j = 0; j < n; ++j) x[j] = P.lo[j] + rnd::uniform01(rng) * search::width(P, j);
-            init.push_back(spec(search::at(x)));
+    auto member = [&](std::mt19937& g) {                                             // CGA-5
+        Vec x(n);
+        if (init_mode == "around_x0") {
+            x = clipped(start.x0);
+            for (long long m = 0; m < init_moves; ++m, ++init_shifts) shift(x, g);
+        } else if (init_mode == "seed_points" && start.has_seed_points &&
+                   static_cast<std::size_t>(init_seeded) < start.seed_points.size()) {
+            x = start.seed_points[static_cast<std::size_t>(init_seeded++)].x;
+            if (x.size() != n) throw std::invalid_argument("cluster_ga: a seed point is not of n values");
+            x = clipped(x);
+        } else {
+            for (std::size_t j = 0; j < n; ++j) x[j] = P.lo[j] + rnd::uniform01(g) * search::width(P, j);
         }
-        const long long first = searches - K;
-        pop = run_round(init);
-        for (std::size_t p = 0; p < pop.size(); ++p)
-            if (pop[p].ok) log.add(pop[p].x, pop[p].f, first + static_cast<long long>(p));
-        if (static_cast<long long>(pop.size()) < K) throw BudgetSpent();
-        for (const auto& m : pop)
-            if (!m.ok) throw BudgetSpent();
-        age.assign(pop.size(), 1);
-        if (md) {
-            double G = std::sqrt(static_cast<double>(n));
-            if (md_aligned) {
-                G = 0.0;
-                for (std::size_t a = 0; a < pop.size(); ++a)
-                    for (std::size_t b = a + 1; b < pop.size(); ++b) G = std::max(G, dist(pop[a].x, pop[b].x));
+        return x;
+    };
+    // 1. the children of ps (CGA-2, CGA-3) from generator g: their parents and starts
+    auto breed = [&](const std::vector<search::Found>& ps, std::mt19937& g,
+                     std::vector<std::pair<std::size_t, std::size_t>>& parents, std::vector<StartSpec>& kids) {
+        const long long n_kids = kids0 > 0 ? kids0 : K;
+        if (K == 1) {
+            parents.push_back({0, 0});
+        } else if (md || afpo) {
+            auto any = [&]() {
+                return std::min(ps.size() - 1, static_cast<std::size_t>(rnd::uniform01(g) * static_cast<double>(ps.size())));
+            };
+            auto tournament = [&]() {                                            // Segura: on f
+                const std::size_t a = any(), b = any();
+                return search::better(ps[b], ps[a]) ? b : a;
+            };
+            for (long long c = 0; c < n_kids; ++c) {
+                const std::size_t a = md ? tournament() : any();
+                const std::size_t b = md ? tournament() : any();
+                parents.push_back({a, b});
             }
-            D_I = md_di * G;
+        } else if (pairs) {
+            for (std::size_t a = 0; a < ps.size(); ++a)
+                for (std::size_t b = a + 1; b < ps.size(); ++b) parents.push_back({a, b});
+        } else {
+            double lo_e = ps[0].f, hi_e = ps[0].f;
+            for (const auto& m : ps) {
+                lo_e = std::min(lo_e, m.f);
+                hi_e = std::max(hi_e, m.f);
+            }
+            const double T = hi_e - lo_e;
+            std::vector<double> w(ps.size());
+            double sum = 0.0;
+            for (std::size_t q = 0; q < ps.size(); ++q) sum += w[q] = T > 0.0 ? dm::exp(-(ps[q].f - lo_e) / T) : 1.0;
+            auto draw = [&]() {
+                double u = rnd::uniform01(g) * sum;
+                for (std::size_t q = 0; q < w.size(); ++q) {
+                    if (u < w[q]) return q;
+                    u -= w[q];
+                }
+                return w.size() - 1;
+            };
+            for (long long c = 0; c < n_kids; ++c) {
+                const std::size_t a = draw();
+                const std::size_t b = draw();
+                parents.push_back({a, b});
+            }
         }
-        long long idle = 0;
-        while (search::left(ev) > 0 && idle < 100 && (maxgen == 0 || generations < maxgen)) {   // SRCH-10
-            const double before = ev.used();
-            // 1. the children (CGA-2, CGA-3)
-            std::vector<std::pair<std::size_t, std::size_t>> parents;
-            const long long n_kids = kids0 > 0 ? kids0 : K;
+        for (const auto& pr : parents) {
+            Vec y;
             if (K == 1) {
-                parents.push_back({0, 0});
-            } else if (md || afpo) {
-                auto any = [&]() {
-                    return std::min(pop.size() - 1, static_cast<std::size_t>(rnd::uniform01(rng) * static_cast<double>(pop.size())));
-                };
-                auto tournament = [&]() {                                            // Segura: on f
-                    const std::size_t a = any(), b = any();
-                    return search::better(pop[b], pop[a]) ? b : a;
-                };
-                for (long long c = 0; c < n_kids; ++c) {
-                    const std::size_t a = md ? tournament() : any();
-                    const std::size_t b = md ? tournament() : any();
-                    parents.push_back({a, b});
-                }
-            } else if (pairs) {
-                for (std::size_t a = 0; a < pop.size(); ++a)
-                    for (std::size_t b = a + 1; b < pop.size(); ++b) parents.push_back({a, b});
+                y = ps[0].x;
+                move(y, g);                                                         // CGA-2
             } else {
-                double lo_e = pop[0].f, hi_e = pop[0].f;
-                for (const auto& m : pop) {
-                    lo_e = std::min(lo_e, m.f);
-                    hi_e = std::max(hi_e, m.f);
+                const Vec& a = ps[pr.first].x;
+                const Vec& b = ps[pr.second].x;
+                if (user_x) {
+                    Vec c1(n), c2(n);
+                    P.crossover(a, b, c1, c2, g);
+                    if (c1.size() != n) throw std::runtime_error("cluster_ga: the crossover hook gave a child of another length");
+                    y = c1;
+                } else if (points) {
+                    y = cga::cut_and_splice(P, P.sym_blocks[0], a, b, g);
+                } else {                                                         // CGA-1: uniform
+                    y = a;
+                    for (std::size_t j = 0; j < n; ++j)
+                        if (rnd::uniform01(g) < 0.5) y[j] = b[j];
                 }
-                const double T = hi_e - lo_e;
-                std::vector<double> w(pop.size());
-                double sum = 0.0;
-                for (std::size_t q = 0; q < pop.size(); ++q) sum += w[q] = T > 0.0 ? dm::exp(-(pop[q].f - lo_e) / T) : 1.0;
-                auto draw = [&]() {
-                    double u = rnd::uniform01(rng) * sum;
-                    for (std::size_t q = 0; q < w.size(); ++q) {
-                        if (u < w[q]) return q;
-                        u -= w[q];
-                    }
-                    return w.size() - 1;
-                };
-                for (long long c = 0; c < n_kids; ++c) {
-                    const std::size_t a = draw();
-                    const std::size_t b = draw();
-                    parents.push_back({a, b});
-                }
+                ++crossings;
+                if (rnd::uniform01(g) < mut_rate) move(y, g);
             }
-            std::vector<StartSpec> kids;
-            const long long first_kid = searches;
-            for (const auto& pr : parents) {
-                Vec y;
-                if (K == 1) {
-                    y = pop[0].x;
-                    move(y);                                                         // CGA-2
-                } else {
-                    const Vec& a = pop[pr.first].x;
-                    const Vec& b = pop[pr.second].x;
-                    if (user_x) {
-                        Vec c1(n), c2(n);
-                        P.crossover(a, b, c1, c2, rng);
-                        if (c1.size() != n) throw std::runtime_error("cluster_ga: the crossover hook gave a child of another length");
-                        y = c1;
-                    } else if (points) {
-                        y = cga::cut_and_splice(P, P.sym_blocks[0], a, b, rng);
-                    } else {                                                         // CGA-1: uniform
-                        y = a;
-                        for (std::size_t j = 0; j < n; ++j)
-                            if (rnd::uniform01(rng) < 0.5) y[j] = b[j];
-                    }
-                    ++crossings;
-                    if (rnd::uniform01(rng) < mut_rate) move(y);
-                }
-                (void)rnd::uniform01(rng);                                           // PBH-4
-                kids.push_back(spec(search::at(y)));
-            }
-            if (afpo) {                                                              // AF-1: the newcomer
-                Vec x(n);
-                for (std::size_t j = 0; j < n; ++j) x[j] = P.lo[j] + rnd::uniform01(rng) * search::width(P, j);
-                kids.push_back(spec(search::at(x)));
-            }
-            const std::vector<search::Found> Y = run_round(kids);
-            ++generations;
-            // 3. placed one after the other
-            bool all = Y.size() == kids.size();
-            if (md || afpo) {
-                std::vector<search::Found> U = pop;
-                std::vector<long long> A = age;
-                for (std::size_t p = 0; p < Y.size(); ++p) {
-                    if (!Y[p].ok) {
-                        all = false;
-                        continue;
-                    }
-                    log.add(Y[p].x, Y[p].f, first_kid + static_cast<long long>(p));
-                    U.push_back(Y[p]);
-                    A.push_back(p < parents.size() ? std::max(age[parents[p].first], age[parents[p].second]) : 1);
-                }
-                if (md) {                                                            // Segura, Algorithm 2
-                    const double frac = std::max(0.0, 1.0 - ev.used() / (md_end * static_cast<double>(budget)));
-                    const double D = D_I * frac;
-                    std::vector<char> taken(U.size(), 0);
-                    std::vector<search::Found> next;
-                    std::size_t best = 0;
-                    for (std::size_t q = 1; q < U.size(); ++q)
-                        if (search::better(U[q], U[best])) best = q;
-                    taken[best] = 1;
-                    next.push_back(U[best]);
-                    while (static_cast<long long>(next.size()) < K) {
-                        std::vector<std::size_t> cand;
-                        std::vector<double> fv, dcn;
-                        for (std::size_t q = 0; q < U.size(); ++q) {
-                            if (taken[q]) continue;
-                            double dmin = std::numeric_limits<double>::infinity();
-                            for (const auto& m : next) dmin = std::min(dmin, dist(U[q].x, m.x));
-                            cand.push_back(q);
-                            dcn.push_back(dmin);
-                            const bool feasible = U[q].cv <= 0.0;
-                            fv.push_back(dmin < D ? std::numeric_limits<double>::infinity()
-                                                  : (feasible ? U[q].f : std::numeric_limits<double>::infinity()));
-                        }
-                        if (cand.empty()) break;
-                        std::vector<std::size_t> front;                              // (f min, DCN max), MD-2
-                        for (std::size_t a = 0; a < cand.size(); ++a) {
-                            bool dominated = false, repeat = false;
-                            for (std::size_t b = 0; b < cand.size() && !dominated; ++b)
-                                dominated = (fv[b] <= fv[a] && dcn[b] >= dcn[a]) && (fv[b] < fv[a] || dcn[b] > dcn[a]);
-                            for (std::size_t f : front) repeat = repeat || (fv[f] == fv[a] && dcn[f] == dcn[a]);
-                            if (!dominated && !repeat) front.push_back(a);
-                        }
-                        const std::size_t pick = front[std::min(front.size() - 1,
-                                                                static_cast<std::size_t>(rnd::uniform01(rng) *
-                                                                                         static_cast<double>(front.size())))];
-                        taken[cand[pick]] = 1;
-                        next.push_back(U[cand[pick]]);
-                    }
-                    accepted += static_cast<long long>(next.size());
-                    pop = next;
-                    age.assign(pop.size(), 1);
-                } else {                                                             // AFPO, AF-2
-                    auto dominates = [&](std::size_t a, std::size_t b) {
-                        const bool fa = search::better(U[a], U[b]) || (!search::better(U[b], U[a]));
-                        return fa && A[a] <= A[b] && (search::better(U[a], U[b]) || A[a] < A[b]);
-                    };
-                    std::vector<std::size_t> live(U.size());
-                    for (std::size_t q = 0; q < U.size(); ++q) live[q] = q;
-                    while (static_cast<long long>(live.size()) > K) {
-                        bool any_dominated = false;
-                        for (std::size_t a = 0; a < live.size() && !any_dominated; ++a)
-                            for (std::size_t b = 0; b < live.size() && !any_dominated; ++b)
-                                any_dominated = a != b && dominates(live[b], live[a]);
-                        if (!any_dominated) break;
-                        const std::size_t t = std::min<std::size_t>(static_cast<std::size_t>(tour), live.size());
-                        std::vector<std::size_t> group(live);
-                        for (std::size_t g = 0; g < t; ++g) {                        // a partial Fisher-Yates draw
-                            const std::size_t r = g + std::min(group.size() - g - 1,
-                                                               static_cast<std::size_t>(rnd::uniform01(rng) *
-                                                                                        static_cast<double>(group.size() - g)));
-                            std::swap(group[g], group[r]);
-                        }
-                        std::vector<std::size_t> out;
-                        for (std::size_t a = 0; a < t; ++a)
-                            for (std::size_t b = 0; b < t; ++b)
-                                if (a != b && dominates(group[b], group[a])) {
-                                    out.push_back(group[a]);
-                                    break;
-                                }
-                        for (std::size_t o : out) {
-                            if (static_cast<long long>(live.size()) <= K) break;
-                            live.erase(std::find(live.begin(), live.end(), o));
-                        }
-                    }
-                    std::vector<search::Found> next;
-                    std::vector<long long> nage;
-                    for (std::size_t q : live) {
-                        next.push_back(U[q]);
-                        nage.push_back(A[q] + 1);                                    // AF-1
-                    }
-                    accepted += static_cast<long long>(live.size());
-                    pop = next;
-                    age = nage;
-                }
-                if (!all) break;
-                idle = ev.used() == before ? idle + 1 : 0;
+            (void)rnd::uniform01(g);                                           // PBH-4
+            kids.push_back(spec(search::at(y)));
+        }
+    };
+    // 3. c in place of the highest member of ps where lower and none within cga_de of it
+    auto settle = [&](std::vector<search::Found>& ps, const search::Found& c) {
+        std::size_t worst = 0;
+        bool near = false;
+        for (std::size_t q = 0; q < ps.size(); ++q) {
+            if (search::better(ps[worst], ps[q])) worst = q;
+            if (std::fabs(ps[q].f - c.f) < de) near = true;
+        }
+        if (near || !search::better(c, ps[worst])) return false;
+        ps[worst] = c;
+        return true;
+    };
+    // ... the children Y placed into ps one after the other (worst_if_better); false where one failed
+    auto place = [&](std::vector<search::Found>& ps, const std::vector<search::Found>& Y, long long first_kid) {
+        bool all = true;
+        for (std::size_t p = 0; p < Y.size(); ++p) {
+            const search::Found& c = Y[p];
+            if (!c.ok) {
+                all = false;
                 continue;
             }
-            for (std::size_t p = 0; p < Y.size(); ++p) {
-                const search::Found& c = Y[p];
-                if (!c.ok) {
-                    all = false;
+            log.add(c.x, c.f, first_kid + static_cast<long long>(p));
+            if (settle(ps, c)) ++accepted;
+        }
+        return all;
+    };
+    double D_I = 0.0;
+    try {
+        if (I > 1) {                                                                 // CGA-6: the islands
+            std::vector<std::mt19937> gens{rng};
+            for (long long i = 1; i < I; ++i)
+                gens.emplace_back(start_seed(seed, 0x9E3779B9u + static_cast<std::uint64_t>(i)));
+            const std::size_t KK = static_cast<std::size_t>(K);
+            std::vector<StartSpec> init{spec(head)};
+            for (long long p = 1; p < K; ++p) init.push_back(spec(search::at(member(gens[0]))));
+            for (std::size_t i = 1; i < gens.size(); ++i)
+                for (long long p = 0; p < K; ++p) init.push_back(spec(search::at(member(gens[i]))));
+            const long long first = searches - K * I;
+            const std::vector<search::Found> all0 = run_round(init);
+            for (std::size_t p = 0; p < all0.size(); ++p)
+                if (all0[p].ok) log.add(all0[p].x, all0[p].f, first + static_cast<long long>(p));
+            if (all0.size() < KK * gens.size()) throw BudgetSpent();
+            for (const auto& m : all0)
+                if (!m.ok) throw BudgetSpent();
+            std::vector<std::vector<search::Found>> isles;
+            for (std::size_t i = 0; i < gens.size(); ++i)
+                isles.emplace_back(all0.begin() + static_cast<std::ptrdiff_t>(i * KK),
+                                   all0.begin() + static_cast<std::ptrdiff_t>((i + 1) * KK));
+            auto gather = [&]() {
+                pop.clear();
+                for (const auto& is : isles) pop.insert(pop.end(), is.begin(), is.end());
+            };
+            gather();
+            long long idle = 0;
+            while (search::left(ev) > 0 && idle < 100 && (maxgen == 0 || generations < maxgen)) {   // SRCH-10
+                const double before = ev.used();
+                std::vector<StartSpec> kids;
+                std::vector<std::size_t> made;
+                const long long first_kid = searches;
+                for (std::size_t i = 0; i < isles.size(); ++i) {
+                    std::vector<std::pair<std::size_t, std::size_t>> parents;
+                    const std::size_t had = kids.size();
+                    breed(isles[i], gens[i], parents, kids);
+                    made.push_back(kids.size() - had);
+                }
+                const std::vector<search::Found> Y = run_round(kids);
+                ++generations;
+                bool all = Y.size() == kids.size();
+                std::size_t at = 0;
+                for (std::size_t i = 0; i < isles.size(); ++i) {
+                    const std::size_t from = std::min(at, Y.size()), to = std::min(at + made[i], Y.size());
+                    const std::vector<search::Found> Yi(Y.begin() + static_cast<std::ptrdiff_t>(from),
+                                                        Y.begin() + static_cast<std::ptrdiff_t>(to));
+                    all = place(isles[i], Yi, first_kid + static_cast<long long>(at)) && all;
+                    at += made[i];
+                }
+                gather();
+                if (!all) break;
+                if (generations % mig_every == 0) {                                  // the ring
+                    std::vector<std::vector<search::Found>> best(isles.size());
+                    for (std::size_t i = 0; i < isles.size(); ++i) {
+                        best[i] = isles[i];
+                        std::stable_sort(best[i].begin(), best[i].end(),
+                                         [](const search::Found& u, const search::Found& v) { return search::better(u, v); });
+                        best[i].resize(static_cast<std::size_t>(migrants));
+                    }
+                    for (std::size_t i = 0; i < isles.size(); ++i)
+                        for (const search::Found& c : best[(i + isles.size() - 1) % isles.size()])
+                            if (settle(isles[i], c)) ++migrated;
+                    gather();
+                }
+                idle = ev.used() == before ? idle + 1 : 0;
+            }
+        } else {
+            std::vector<StartSpec> init{spec(head)};
+            for (long long p = 1; p < K; ++p) init.push_back(spec(search::at(member(rng))));
+            const long long first = searches - K;
+            pop = run_round(init);
+            for (std::size_t p = 0; p < pop.size(); ++p)
+                if (pop[p].ok) log.add(pop[p].x, pop[p].f, first + static_cast<long long>(p));
+            if (static_cast<long long>(pop.size()) < K) throw BudgetSpent();
+            for (const auto& m : pop)
+                if (!m.ok) throw BudgetSpent();
+            age.assign(pop.size(), 1);
+            if (md) {
+                double G = std::sqrt(static_cast<double>(n));
+                if (md_aligned) {
+                    G = 0.0;
+                    for (std::size_t a = 0; a < pop.size(); ++a)
+                        for (std::size_t b = a + 1; b < pop.size(); ++b) G = std::max(G, dist(pop[a].x, pop[b].x));
+                }
+                D_I = md_di * G;
+            }
+            long long idle = 0;
+            while (search::left(ev) > 0 && idle < 100 && (maxgen == 0 || generations < maxgen)) {   // SRCH-10
+                const double before = ev.used();
+                // 1. the children (CGA-2, CGA-3)
+                std::vector<std::pair<std::size_t, std::size_t>> parents;
+                std::vector<StartSpec> kids;
+                const long long first_kid = searches;
+                breed(pop, rng, parents, kids);
+                if (afpo) {                                                              // AF-1: the newcomer
+                    Vec x(n);
+                    for (std::size_t j = 0; j < n; ++j) x[j] = P.lo[j] + rnd::uniform01(rng) * search::width(P, j);
+                    kids.push_back(spec(search::at(x)));
+                }
+                const std::vector<search::Found> Y = run_round(kids);
+                ++generations;
+                // 3. placed one after the other
+                bool all = Y.size() == kids.size();
+                if (md || afpo) {
+                    std::vector<search::Found> U = pop;
+                    std::vector<long long> A = age;
+                    for (std::size_t p = 0; p < Y.size(); ++p) {
+                        if (!Y[p].ok) {
+                            all = false;
+                            continue;
+                        }
+                        log.add(Y[p].x, Y[p].f, first_kid + static_cast<long long>(p));
+                        U.push_back(Y[p]);
+                        A.push_back(p < parents.size() ? std::max(age[parents[p].first], age[parents[p].second]) : 1);
+                    }
+                    if (md) {                                                            // Segura, Algorithm 2
+                        const double frac = std::max(0.0, 1.0 - ev.used() / (md_end * static_cast<double>(budget)));
+                        const double D = D_I * frac;
+                        std::vector<char> taken(U.size(), 0);
+                        std::vector<search::Found> next;
+                        std::size_t best = 0;
+                        for (std::size_t q = 1; q < U.size(); ++q)
+                            if (search::better(U[q], U[best])) best = q;
+                        taken[best] = 1;
+                        next.push_back(U[best]);
+                        while (static_cast<long long>(next.size()) < K) {
+                            std::vector<std::size_t> cand;
+                            std::vector<double> fv, dcn;
+                            for (std::size_t q = 0; q < U.size(); ++q) {
+                                if (taken[q]) continue;
+                                double dmin = std::numeric_limits<double>::infinity();
+                                for (const auto& m : next) dmin = std::min(dmin, dist(U[q].x, m.x));
+                                cand.push_back(q);
+                                dcn.push_back(dmin);
+                                const bool feasible = U[q].cv <= 0.0;
+                                fv.push_back(dmin < D ? std::numeric_limits<double>::infinity()
+                                                      : (feasible ? U[q].f : std::numeric_limits<double>::infinity()));
+                            }
+                            if (cand.empty()) break;
+                            std::vector<std::size_t> front;                              // (f min, DCN max), MD-2
+                            for (std::size_t a = 0; a < cand.size(); ++a) {
+                                bool dominated = false, repeat = false;
+                                for (std::size_t b = 0; b < cand.size() && !dominated; ++b)
+                                    dominated = (fv[b] <= fv[a] && dcn[b] >= dcn[a]) && (fv[b] < fv[a] || dcn[b] > dcn[a]);
+                                for (std::size_t f : front) repeat = repeat || (fv[f] == fv[a] && dcn[f] == dcn[a]);
+                                if (!dominated && !repeat) front.push_back(a);
+                            }
+                            const std::size_t pick = front[std::min(front.size() - 1,
+                                                                    static_cast<std::size_t>(rnd::uniform01(rng) *
+                                                                                             static_cast<double>(front.size())))];
+                            taken[cand[pick]] = 1;
+                            next.push_back(U[cand[pick]]);
+                        }
+                        accepted += static_cast<long long>(next.size());
+                        pop = next;
+                        age.assign(pop.size(), 1);
+                    } else {                                                             // AFPO, AF-2
+                        auto dominates = [&](std::size_t a, std::size_t b) {
+                            const bool fa = search::better(U[a], U[b]) || (!search::better(U[b], U[a]));
+                            return fa && A[a] <= A[b] && (search::better(U[a], U[b]) || A[a] < A[b]);
+                        };
+                        std::vector<std::size_t> live(U.size());
+                        for (std::size_t q = 0; q < U.size(); ++q) live[q] = q;
+                        while (static_cast<long long>(live.size()) > K) {
+                            bool any_dominated = false;
+                            for (std::size_t a = 0; a < live.size() && !any_dominated; ++a)
+                                for (std::size_t b = 0; b < live.size() && !any_dominated; ++b)
+                                    any_dominated = a != b && dominates(live[b], live[a]);
+                            if (!any_dominated) break;
+                            const std::size_t t = std::min<std::size_t>(static_cast<std::size_t>(tour), live.size());
+                            std::vector<std::size_t> group(live);
+                            for (std::size_t g = 0; g < t; ++g) {                        // a partial Fisher-Yates draw
+                                const std::size_t r = g + std::min(group.size() - g - 1,
+                                                                   static_cast<std::size_t>(rnd::uniform01(rng) *
+                                                                                            static_cast<double>(group.size() - g)));
+                                std::swap(group[g], group[r]);
+                            }
+                            std::vector<std::size_t> out;
+                            for (std::size_t a = 0; a < t; ++a)
+                                for (std::size_t b = 0; b < t; ++b)
+                                    if (a != b && dominates(group[b], group[a])) {
+                                        out.push_back(group[a]);
+                                        break;
+                                    }
+                            for (std::size_t o : out) {
+                                if (static_cast<long long>(live.size()) <= K) break;
+                                live.erase(std::find(live.begin(), live.end(), o));
+                            }
+                        }
+                        std::vector<search::Found> next;
+                        std::vector<long long> nage;
+                        for (std::size_t q : live) {
+                            next.push_back(U[q]);
+                            nage.push_back(A[q] + 1);                                    // AF-1
+                        }
+                        accepted += static_cast<long long>(live.size());
+                        pop = next;
+                        age = nage;
+                    }
+                    if (!all) break;
+                    idle = ev.used() == before ? idle + 1 : 0;
                     continue;
                 }
-                log.add(c.x, c.f, first_kid + static_cast<long long>(p));
-                std::size_t worst = 0;
-                bool near = false;
-                for (std::size_t q = 0; q < pop.size(); ++q) {
-                    if (search::better(pop[worst], pop[q])) worst = q;
-                    if (std::fabs(pop[q].f - c.f) < de) near = true;
-                }
-                if (!near && search::better(c, pop[worst])) {
-                    pop[worst] = c;
-                    ++accepted;
-                }
+                all = place(pop, Y, first_kid) && all;
+                if (!all) break;
+                idle = ev.used() == before ? idle + 1 : 0;
             }
-            if (!all) break;
-            idle = ev.used() == before ? idle + 1 : 0;
         }
     } catch (const BudgetSpent&) {
     }
@@ -497,7 +642,13 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
         extra.push_back({"ages", ages});
     }
     if (md) extra.push_back({"md_d_initial", detail::g_format(D_I)});
-    return search::finish(ev, k, log, extra);
+    if (init_mode == "around_x0") extra.push_back({"init_moves", std::to_string(init_shifts)});      // CGA-5
+    if (init_mode == "seed_points") extra.push_back({"init_seeded", std::to_string(init_seeded)});
+    if (I > 1) extra.push_back({"migrated", std::to_string(migrated)});                       // CGA-6
+    Result r = search::finish(ev, k, log, extra);
+    for (const auto& m : pop)                                                        // param.hpp PARAM-9
+        if (m.ok) r.population.push_back(m.x);
+    return r;
 }
 
 }   // namespace mootation::scalar

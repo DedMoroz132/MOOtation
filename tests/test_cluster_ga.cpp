@@ -16,6 +16,12 @@
 //     for bit (kOld*); target leaves them out, the result bit for bit;
 //     several threads run them all, the same result; the default is
 //     kDefaultStop;
+//   * cga_init (task 30, §30.5; CGA-5): uniform is the default run bit for
+//     bit; around_x0 calls the mutate hook (K - 1) times cga_init_moves in
+//     the first round; seed_points starts members 2 ... from the seeds;
+//   * cga_islands (task 30, §30.8; CGA-6): one island is the default run
+//     bit for bit; three islands on 1 thread and on 3 give the same run,
+//     every island's members in Result::population, migrants placed;
 //   * a short check on the 7-atom Lennard-Jones cluster: the global minimum
 //     -16.505384 (Wales & Doye 1997, Table I).
 
@@ -322,6 +328,60 @@ int main()
         check(c_off == kOldCalls && off.evaluations == kOldEvaluations,
               "round_stop = off: the baseline's calls and evaluations, " + std::to_string(c_off) + " and " +
                   std::to_string(off.evaluations));
+    }
+
+    // ── cga_init (task 30, §30.5; CGA-5) ────────────────────────────────────
+    {
+        const sc::Problem R = rastrigin(4);
+        const sc::Knobs base{{"cga_pop", number(6)}};
+        const sc::Result d = run("cluster_ga", R, base, 6000, from);
+        sc::Knobs ku = base;
+        ku.push_back({"cga_init", word("uniform")});
+        check(same(d, run("cluster_ga", R, ku, 6000, from)), "cga_init = uniform: the default run, bit for bit");
+        sc::Problem M = rastrigin(4);
+        long long moves = 0;
+        M.mutate = [&moves](Vec& y, std::mt19937& g) {
+            ++moves;
+            for (double& v : y) v += 0.2 * (2.0 * mootation::rnd::uniform01(g) - 1.0);
+        };
+        const sc::Knobs ka{{"cga_pop", number(6)}, {"cga_init", word("around_x0")}, {"cga_init_moves", number(3)},
+                           {"mutation", word("user")}, {"cga_mut_rate", number(0)}};
+        const sc::Result a = run("cluster_ga", M, ka, 6000, from);
+        check(moves == 15 && setting(a, "init_moves") == "15" && setting(a, "mutations") == "0",
+              "cga_init = around_x0: the mutate hook (6 - 1) x 3 times in the first round, " + std::to_string(moves));
+        bool threw = false;
+        try { run("cluster_ga", R, {{"cga_init", word("around_x0")}}, 1000, {}); } catch (const std::invalid_argument&) { threw = true; }
+        check(threw, "cga_init = around_x0 without x0 refused");
+        sc::Start seeded = from;
+        seeded.has_seed_points = true;
+        seeded.seed_points.push_back(sc::Point{{0.0, 0.0, 0.0, 0.0}, {}, {}});
+        seeded.seed_points.push_back(sc::Point{{1.0, 1.0, 1.0, 1.0}, {}, {}});
+        const sc::Knobs ks{{"cga_pop", number(6)}, {"cga_init", word("seed_points")}};
+        const sc::Result s1 = run("cluster_ga", R, ks, 6000, seeded), s2 = run("cluster_ga", R, ks, 6000, seeded);
+        check(same(s1, s2) && setting(s1, "init_seeded") == "2" && !s1.objectives.empty() && s1.objectives[0][0] < 1e-6,
+              "cga_init = seed_points: two members from the seeds (one at the minimum), the rest uniform");
+    }
+
+    // ── cga_islands (task 30, §30.8; CGA-6) ─────────────────────────────────
+    {
+        const sc::Problem R = rastrigin(4);
+        const sc::Result d = run("cluster_ga", R, {{"cga_pop", number(4)}}, 8000, from);
+        const sc::Result one = run("cluster_ga", R, {{"cga_pop", number(4)}, {"cga_islands", number(1)}}, 8000, from);
+        check(same(d, one) && d.population.size() == 4, "cga_islands = 1: the default run, bit for bit");
+        auto isl = [&](int threads) {
+            return run("cluster_ga", R,
+                       {{"cga_pop", number(4)}, {"cga_islands", number(3)}, {"cga_migrate_every", number(2)},
+                        {"threads", number(threads)}},
+                       8000, from);
+        };
+        const sc::Result t1 = isl(1), t3 = isl(3);
+        check(same(t1, t3) && t1.population == t3.population && t1.population.size() == 12 &&
+                  setting(t1, "migrated") == setting(t3, "migrated") && !setting(t1, "migrated").empty(),
+              "cga_islands = 3: 1 thread = 3 threads, 12 members, migrated " + setting(t1, "migrated"));
+        bool threw = false;
+        try { run("cluster_ga", R, {{"cga_islands", number(2)}, {"cga_replace", word("afpo")}}, 1000, from); }
+        catch (const std::invalid_argument&) { threw = true; }
+        check(threw, "cga_islands > 1 with afpo refused");
     }
 
     // ── LJ7 (short) ─────────────────────────────────────────────────────────
