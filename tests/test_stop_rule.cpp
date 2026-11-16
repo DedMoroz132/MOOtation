@@ -395,8 +395,8 @@ int main(int argc, char** argv)
     // the clocks (30.12)
     {
         const double c0 = sc::cpu_seconds(), u0 = sc::unbiased_seconds();
-        busy(20000.0);
-        check(sc::cpu_seconds() - c0 >= 0.02 && sc::unbiased_seconds() - u0 >= 0.015,
+        busy(40000.0);                                  // Windows' processor time moves by ticks of ~15.6 ms
+        check(sc::cpu_seconds() - c0 >= 0.015 && sc::unbiased_seconds() - u0 >= 0.03,
               "cpu and unbiased clocks go on with work");
         check(sc::clock_of("cpu") == sc::Clock::cpu && std::string(sc::clock_name(sc::Clock::unbiased)) == "unbiased",
               "time_clock's words");

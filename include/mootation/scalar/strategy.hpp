@@ -422,7 +422,7 @@ public:
     long long cache_hits() const { return cache_hits_; }
 
 private:
-    std::unordered_map<std::string, std::size_t> where_;
+    std::unordered_map<std::string, std::size_t, KeyHash> where_;
     std::vector<Event> events_;
     double fresh_, spent_ = 0.0;
 
@@ -512,13 +512,13 @@ private:
 
     const Known& get(const Vec& x, Call call)
     {
-        const std::string key = key_of(x);
-        auto it = where_.find(key);
-        if (it == where_.end()) {
+        // one hash of x here (its slot, new or not) and one in the run's archive (task 31; 30.11)
+        const auto slot = where_.try_emplace(key_of(x), own.size());
+        if (slot.second) try {
             Known k;
             k.x = x;
-            if (parent_.known(x)) {                        // the archive's, free
-                const std::size_t i = parent_.find(x);
+            const std::size_t i = parent_.lookup(slot.first->first);
+            if (i != Evaluator::npos) {                    // the archive's, free
                 k.f = parent_.F[i];
                 k.g = parent_.G[i];
                 k.r = parent_.R[i];
@@ -540,11 +540,14 @@ private:
                 if (P_.cache == Problem::Cache::canon)
                     own_canon_.emplace(canon_key_of(P_, x), Evaluator::Cached{k.f, k.g, k.r, k.bad});
             }
-            it = where_.emplace(key, own.size()).first;
             own.push_back(std::move(k));
+        } catch (...) {
+            where_.erase(slot.first);                      // not a point of this start (the budget's end)
+            throw;
         }
-        Known& k = own[it->second];
-        if (call != Call::values && !k.has_grad) gradient(k, it->second);
+        const std::size_t at = slot.first->second;
+        Known& k = own[at];
+        if (call != Call::values && !k.has_grad) gradient(k, at);
         return k;
     }
 };

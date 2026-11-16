@@ -153,6 +153,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -380,6 +381,33 @@ inline std::string canon_key_of(const Problem& P, const std::vector<double>& x)
     if (!y.empty()) std::memcpy(&k[0], y.data(), k.size());
     return k;
 }
+
+// THE ARCHIVE's key (x's bytes) hashed by 8-byte words, not byte by byte
+// (task 31, from 30.11's profile: the standard library's string hash may go
+// byte by byte, MSVC's FNV-1a, 42 us a key of n = 3000). A word is mixed in
+// by a multiply and a shift, the result by splitmix64's finalizer. The maps
+// it hashes for are looked up by key only, never walked in their order, so a
+// run is the same with any hash.
+struct KeyHash {
+    std::size_t operator()(const std::string& k) const noexcept
+    {
+        std::uint64_t h = 0x9E3779B97F4A7C15ULL ^ static_cast<std::uint64_t>(k.size());
+        std::size_t i = 0;
+        for (; i + 8 <= k.size(); i += 8) {
+            std::uint64_t w;
+            std::memcpy(&w, k.data() + i, 8);
+            h = (h ^ w) * 0xBF58476D1CE4E5B9ULL;
+            h ^= h >> 31;
+        }
+        for (; i < k.size(); ++i) h = (h ^ static_cast<unsigned char>(k[i])) * 0x94D049BB133111EBULL;
+        h ^= h >> 30;
+        h *= 0xBF58476D1CE4E5B9ULL;
+        h ^= h >> 27;
+        h *= 0x94D049BB133111EBULL;
+        h ^= h >> 31;
+        return static_cast<std::size_t>(h);
+    }
+};
 
 // A point whose values are known (a seed population, an algorithm's evaluations).
 struct Point {
@@ -673,6 +701,14 @@ public:
 
     bool known(const std::vector<double>& x) const { return where_.count(key_of(x)) != 0; }
 
+    // the archive index of the point whose key (bytes) is given, else npos: one lookup
+    static constexpr std::size_t npos = static_cast<std::size_t>(-1);
+    std::size_t lookup(const std::string& key) const
+    {
+        const auto it = where_.find(key);
+        return it == where_.end() ? npos : it->second;
+    }
+
     std::size_t find(const std::vector<double>& x) const { return where_.at(key_of(x)); }
 
     bool has_grad(std::size_t i) const { return gf_.count(i) != 0; }
@@ -790,7 +826,7 @@ public:
     }
 
 private:
-    std::unordered_map<std::string, std::size_t> where_;   // x's bytes -> archive index
+    std::unordered_map<std::string, std::size_t, KeyHash> where_;   // x's bytes -> archive index
     std::unordered_map<std::string, Cached> canon_;          // THE CACHE: a structure's key -> its values
     long long free_run_ = 0;                                 // CACHE-5: cache hits since the last evaluation
 

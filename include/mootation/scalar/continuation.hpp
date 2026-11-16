@@ -139,7 +139,7 @@ struct Raw {
 
 struct Seen {
     std::vector<Raw> own;
-    std::unordered_map<std::string, std::size_t> where;
+    std::unordered_map<std::string, std::size_t, KeyHash> where;
 };
 
 // A stage's road to the problem (DC-4): the problem with the stage's weights,
