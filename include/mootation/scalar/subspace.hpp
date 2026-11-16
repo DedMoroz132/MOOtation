@@ -118,6 +118,10 @@ inline search::Found sub_run(Evaluator& ev, const Inner& inner, const Vec& conte
     }
     --strategy::start_depth();
     view.merge_into(ev);
+    if (view.problem.restrict_to)                     // STOP-6: the user's subproblem evaluated outside the view
+        ev.spend_outside(r.evaluations, r.grad_calls);
+    else
+        ev.spend_outside(r.outside_evals, r.outside_grads);
     ev.hook_calls += r.hook_calls;
     ev.hook_spent += r.hook_spent;
     ev.hook_seconds += r.hook_seconds;
@@ -195,6 +199,8 @@ inline Result run_coevolution(const Problem& P, double eq_tol, bool has_tol0, do
     search::finite_box("coevolution", P);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     ev.lean = lean_of(k);                                                            // STRAT-12
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step a cycle
+    std::string own = "rule";
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     group_by_symmetry(k, P, log);
     std::mt19937 rng(start_seed(seed, 0xC0E0u));
@@ -202,7 +208,7 @@ inline Result run_coevolution(const Problem& P, double eq_tol, bool has_tol0, do
     search::Found cur;
     long long runs = 0, done_cycles = 0, accepted = 0, groups_n = 0;
     try {
-        while (search::left(ev) > 0 && (cycles == 0 || done_cycles < cycles)) {
+        while ((cycles == 0 || done_cycles < cycles) && stop.go(ev)) {
             const double before = ev.used();
             const subspace::Groups G =
                 by_nb ? subspace::by_neighbors(P, context)
@@ -225,12 +231,17 @@ inline Result run_coevolution(const Problem& P, double eq_tol, bool has_tol0, do
                 }
             }
             ++done_cycles;
-            if (ev.used() == before) break;                                          // COEV-4
+            stop.step(ev);
+            if (ev.used() == before) {                                               // COEV-4
+                own = "idle";
+                break;
+            }
         }
     } catch (const BudgetSpent&) {
     }
     return search::finish(ev, k, log, {{"cycles", std::to_string(done_cycles)}, {"runs", std::to_string(runs)},
-                                       {"accepted", std::to_string(accepted)}, {"groups", std::to_string(groups_n)}});
+                                       {"accepted", std::to_string(accepted)}, {"groups", std::to_string(groups_n)}},
+                          stop.stopped_by(ev, own));
 }
 
 inline Result run_lns(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size, long long budget,
@@ -249,6 +260,8 @@ inline Result run_lns(const Problem& P, double eq_tol, bool has_tol0, double eq_
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     ev.lean = lean_of(k);
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step a move
+    long long idle = 0;
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     group_by_symmetry(k, P, log);
     std::mt19937 rng(start_seed(seed, 0x1A5u));                                      // LNS-3
@@ -280,8 +293,8 @@ inline Result run_lns(const Problem& P, double eq_tol, bool has_tol0, double eq_
         if (cur.ok) log.add(cur.x, cur.f, 0);
         runs = 1;
         if (!cur.ok) throw BudgetSpent();
-        long long idle = 0;
-        while (search::left(ev) > 0 && idle < 100 && (steps == 0 || done < steps)) {    // SRCH-10
+        stop.mark(ev);
+        while (idle < 100 && (steps == 0 || done < steps) && stop.go(ev)) {            // SRCH-10
             const double before = ev.used();
             std::size_t j = 0;
             if (worst) {                                                             // LNS-2
@@ -307,11 +320,13 @@ inline Result run_lns(const Problem& P, double eq_tol, bool has_tol0, double eq_
                 ++accepted;
             }
             idle = ev.used() == before ? idle + 1 : 0;
+            stop.step(ev);
         }
     } catch (const BudgetSpent&) {
     }
     return search::finish(ev, k, log, {{"steps", std::to_string(done)}, {"runs", std::to_string(runs)},
-                                       {"accepted", std::to_string(accepted)}});
+                                       {"accepted", std::to_string(accepted)}},
+                          stop.stopped_by(ev, idle >= 100 ? "idle" : "rule"));
 }
 
 }   // namespace mootation::scalar

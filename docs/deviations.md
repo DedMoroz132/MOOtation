@@ -423,7 +423,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-495 items: 412 yes, 80 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+504 items: 414 yes, 87 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -478,6 +478,9 @@ Their readings, from every comment of each file (the first column the file's nam
 | `chc` | CHC-5 | A child is accepted when it is among the M best of parents and children (stably by the comparison of evo.hpp, parents first); | yes | `chc.hpp` |
 | `chc` | CHC-6 | BLX-0.5 children outside the box are repaired by the operator, ops::BoundRepair `reflect` by default (real_crossover.hpp). | yes | `chc.hpp` |
 | `chc` | CHC-7 | Constraints g <= 0: NSGA-II's constrained-domination at M = 1 (evo.hpp) in the selection; not in the papers. | yes | `chc.hpp` |
+| `clocks` | CLOCK-1 | Off by default (wall: the steady clock of before, the same call). | no: option | `clocks.hpp` |
+| `clocks` | CLOCK-2 | Off by default (time_clock = cpu only). cpu counts every thread of the process: a strategy on threads > 1 spends it faster than the wall clock, and work of the process outside the run (another job of a campaign in ano... | no: option | `clocks.hpp` |
+| `clocks` | CLOCK-3 | Off by default (time_clock = unbiased or cpu only). | no: option | `clocks.hpp` |
 | `cluster_ga` | CGA-1 | The built-in cut and splice (DH95) needs the problem's first symmetry group to be of points (blocks of 2 or 3 coordinates): a random direction (uniform in the ball [-1, 1]^d, by rejection), each parent's points about... | yes | `cluster_ga.hpp` |
 | `cluster_ga` | CGA-2 | With one member there is no pair: every child is the member mutated (cga_mut_rate is not drawn). | yes | `cluster_ga.hpp` |
 | `cluster_ga` | CGA-3 | The draws per child: the parents (boltzmann: two uniforms; a parent drawn twice is kept, a child of one parent and itself), the crossover's, one uniform for the mutation's choice (not with one member), the mutation's... | yes | `cluster_ga.hpp` |
@@ -805,9 +808,9 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | POP-10 | keep_points = best (task 24, §24.3.3; off by default: all) keeps the best point and the last (evaluator.hpp THE LEAN MODE): a point asked for again is evaluated again and counted (POP-2 does not hold), so a method tha... | no: option | `scalar.hpp` |
 | `scalar` | POP-8 | lshade's MAX_NFE is the run's budget unless lshade_max_nfe is set: §III's MAX_NFE is the budget the run is given. | yes | `scalar.hpp` |
 | `scalar` | POP-9 | sym = off \| canon \| align (task 19, §19.2.2; symmetry.hpp SYM-7 ... | yes | `scalar.hpp` |
-| `scalar` | TIME-1 (only when asked: max_seconds) | The deadline is absolute and goes with the problem: a strategy's starts (their views, their threads) and its inner runs keep the one deadline of the run; a run inside a run with its own max_seconds sets its own (it ne... | no: option | `scalar.hpp` |
+| `scalar` | TIME-1 (only when asked: max_seconds) | The deadline is absolute and goes with the problem: a strategy's starts (their views, their threads) and its inner runs keep the one deadline of the run, on its clock; a run inside a run with its own max_seconds sets... | no: option | `scalar.hpp` |
 | `scalar` | TIME-2 (only when asked: max_seconds) | It is checked before every call the budget pays for — an evaluation, a gradient, a part of the residual blocks — and before the user's local_search and delta hooks: past it, the call ends the run as the budget's end w... | no: option | `scalar.hpp` |
-| `scalar` | TIME-3 (only when asked: max_seconds) | Result::seconds is every run's wall-clock time (steady clock); with max_seconds the settings say max_seconds and time_up (yes where the deadline passed before the run ended). | no: option | `scalar.hpp` |
+| `scalar` | TIME-3 (only when asked: max_seconds) | Result::seconds is every run's wall-clock time (steady clock); with max_seconds the settings say max_seconds and time_up (yes where the deadline passed before the run ended); with time_clock they say time_clock, wall_... | no: option | `scalar.hpp` |
 | `scalar` | TIME-4 (only when asked: max_seconds) | The deadline makes a run depend on the machine's speed: two runs of one seed agree only while the deadline does not end them. | no: option | `scalar.hpp` |
 | `search` | SRCH-1 | MLSL's r_k: part II's (2) prints it without Γ; it refers to part I's Single Linkage analysis, whose (35) has Γ(1 + n/2) (the volume of the unit ball): taken with Γ. m(S) = 1, distances in the box normalized to [0, 1]^n. | yes | `search.hpp` |
 | `search` | SRCH-2 | MLSL as part II's experiments (§4): τ = ν = 0 by default (no boundary set Q_τ, no neighbourhood X*_ν of the minima found), σ = 4, γ = 0.2. | yes | `search.hpp` |
@@ -864,6 +867,12 @@ Their readings, from every comment of each file (the first column the file's nam
 | `stacking` | STK-2 | sum_to_one with Yhat not of full column rank (two members alike; a diagonal of its QR within max(m, K) eps \|R_00\|, lsq.hpp's LSQ-6, or lsei refusing it: LSI needs E of full column rank): then NNLS on Yhat with the row... | yes | `stacking.hpp` |
 | `stacking` | STK-3 | A member whose column is all zero has weight 0 (NNLS leaves it out). | yes | `stacking.hpp` |
 | `stacking` | STK-4 | Refused: K = 0, m = 0, rows of unequal length, y not m long, a weight < 0 or not finite, a value not finite. | yes | `stacking.hpp` |
+| `stop_rule` | STOP-1 | A strategy's budget is checked by Evaluator::left(): the budget less counted(), rounded up — the evaluations, the gradient calls at grad_cost each (STOP-2), the hooks' declared costs and the derived runs' evaluations:... | yes | `stop_rule.hpp` |
+| `stop_rule` | STOP-2 | budget_units = budget \| evaluations (budget by default since the owner's choice of 17.11, method version 6; evaluations: the runs before, the hooks' declared costs still counted). budget: the gradient calls are in wha... | yes | `stop_rule.hpp` |
+| `stop_rule` | STOP-3 | Off by default (stall = 0). A better best is a new record of the run's best point (improvements.hpp: feasible first, then f); a strategy without an evaluator of its own (shrink, replica_ladder, reformulation) looks at... | no: option | `stop_rule.hpp` |
+| `stop_rule` | STOP-4 | Off by default (where none of stall, max_steps, budget_units, max_seconds, time_clock is given and no hook declared a cost: then the settings are as before). | no: option | `stop_rule.hpp` |
+| `stop_rule` | STOP-5 | Off by default (with a hook's declared cost only). | no: option | `stop_rule.hpp` |
+| `stop_rule` | STOP-6 | Off by default (a derived problem only). A problem made from the run's for a run of its own (evaluator.hpp derived: a level of at_param, a formulation, the user's restrict_to) keeps the run's deadline and clock; its r... | no: option | `stop_rule.hpp` |
 | `strategy` | STRAT-1 | A start's generator: the run's seed for start 0, else a 32-bit word of std::seed_seq{seed, k} (the standard defines its words), so one start is the inner solver's own run, bit for bit (§3.1's test). | yes | `strategy.hpp` |
 | `strategy` | STRAT-2 | The inner solver counts what it asks for against its allowance, the points it gets free from the archive included; the strategy's budget counts only what is new. | yes | `strategy.hpp` |
 | `strategy` | STRAT-3 | The budget shared evenly: start k's allowance is budget / n, the first budget mod n starts one more. | yes | `strategy.hpp` |

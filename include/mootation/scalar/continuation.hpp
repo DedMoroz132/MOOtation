@@ -271,6 +271,7 @@ inline Result run_data_continuation(const Problem& P, double eq_tol, bool has_to
     if (!(share >= 0.0 && share < 1.0)) throw std::invalid_argument("data_continuation: dc_share in [0, 1)");
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step a stage
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
     long long done = 0;
@@ -284,7 +285,7 @@ inline Result run_data_continuation(const Problem& P, double eq_tol, bool has_to
         const long long early = static_cast<long long>(share * static_cast<double>(budget));            // DC-3
         Start from = start;
         continuation::Seen seen;                                                                       // DC-4
-        for (long long s = 0; s <= before; ++s) {
+        for (long long s = 0; s <= before && stop.go(ev); ++s) {
             const long long rest = search::left(ev);
             if (rest <= 0) break;
             const long long allowance =
@@ -297,7 +298,14 @@ inline Result run_data_continuation(const Problem& P, double eq_tol, bool has_to
             } catch (const BudgetSpent&) {
             }
             view.merge_into(ev);
+            ev.hook_calls += r.hook_calls;                    // the stage's hooks into the ledger (STOP-1)
+            ev.hook_spent += r.hook_spent;
+            ev.hook_seconds += r.hook_seconds;
+            ev.delta_calls += r.delta_calls;
+            ev.delta_spent += r.delta_spent;
+            ev.spend_outside(r.outside_evals, r.outside_grads);
             ++done;
+            stop.step(ev);
             const search::Found b = search::found(r);
             if (!b.ok) continue;
             log.add(b.x, b.f, s);
@@ -305,7 +313,7 @@ inline Result run_data_continuation(const Problem& P, double eq_tol, bool has_to
         }
     } catch (const BudgetSpent&) {
     }
-    return search::finish(ev, k, log, {{"stages", std::to_string(done)}});
+    return search::finish(ev, k, log, {{"stages", std::to_string(done)}}, stop.stopped_by(ev, "rule"));
 }
 
 }   // namespace mootation::scalar

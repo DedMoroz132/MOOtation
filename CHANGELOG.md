@@ -10,6 +10,38 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Fixed (task 31, layer 1; §30.10): a strategy's loops checked its budget
+  by the evaluations alone, so the declared cost of a `local_search` hook
+  (and of the success and delta hooks) never ended a run — `cluster_ga` with
+  such a hook and no `cga_maxgen` went on without end. Every strategy now
+  checks `Evaluator::left()`, the budget less the evaluations, the hooks'
+  declared costs and the evaluations of derived runs; a round's merge stops
+  at the start that spends the budget (stop_rule.hpp STOP-1, STOP-5).
+  Without hooks and gradients the runs are the same, bit for bit.
+- Changed (task 31, layer 1; the owner's choice of 17.11, method version 6):
+  a strategy's budget counts the gradient calls too, at `grad_cost` each
+  (`budget_units = budget`, the default; STOP-2), so a strategy of several
+  rounds on a problem with a gradient no longer spends past its budget in
+  the units of `used()`; `budget_units = evaluations` gives the runs before
+  (the hooks' declared costs still count in it).
+- Fixed (task 31, layer 1): `coevolution` and `lns` on a problem with its
+  own `restrict_to` did not count the subproblem's evaluations (they bypass
+  the run's archive); they are now in the ledger (`Result::outside_evals`,
+  `outside_grads`). A formulation of `reformulation` and the user's
+  subproblem keep the run's deadline (`derived`, STOP-6).
+- Added (task 31, layer 1; off by default, bit for bit): one stop rule for
+  every strategy — `stall` (steps in a row without a better best; for
+  `cluster_ga` a generation, §30.13's `cga_stall`) and `max_steps`; with
+  any of them, or `budget_units`, or
+  `max_seconds`, or a hook's declared cost, the settings say `stopped_by` and
+  `spend` (the breakdown: evaluations, gradient calls, hook cost, success
+  and delta costs, outside, used). `Result::used`, `Result::stopped_by`.
+- Added (task 31, layer 1, §30.12; off by default): `time_clock = wall |
+  unbiased | cpu` for `max_seconds` — the steady clock as before, the time
+  the machine was awake, or the processor time of the process
+  (scalar/clocks.hpp); with it the settings have `wall_seconds` and
+  `cpu_seconds` (`Result::cpu_seconds`).
+
 - Changed (task 29, tests only): `test_hvc` and `test_dss` check a part of
   their random sets on every push and all of them nightly (`--full`, ctest
   `test_hvc_full` and `test_dss_full`, labelled `nightly;full`); `test_search`

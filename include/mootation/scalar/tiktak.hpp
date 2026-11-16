@@ -90,6 +90,7 @@ inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double 
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     strategy::round_stop_of(k, ev);                                                  // STRAT-16
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step a search
     ev.lean = lean_of(k);                                                            // strategy.hpp STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
@@ -113,7 +114,8 @@ inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double 
 
         // Steps 1-2: the searches, one a round (TT-5)
         search::Found low;
-        for (long long i = 1; i <= n_star; ++i) {
+        stop.mark(ev);
+        for (long long i = 1; i <= n_star && stop.go(ev); ++i) {
             const Vec& s = S[order[static_cast<std::size_t>(i - 1)]];
             Vec x = s;                                                                            // TT-2
             if (low.ok) {
@@ -128,6 +130,7 @@ inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double 
             sp.allowance = cap > 0 ? std::min(cap, rest) : std::max(1LL, rest / (n_star - i + 1));        // TT-6
             const std::vector<Result> res = strategy::round(ev, inner, {sp}, 1, pop_size);
             ++searches;
+            stop.step(ev);
             const search::Found b = search::found(res[0]);
             if (!b.ok) continue;
             log.add(b.x, b.f, i);
@@ -139,7 +142,7 @@ inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double 
                                                            {"local_searches", std::to_string(searches)}};
     if (bayes_of(k))                                                                              // STRAT-13
         for (auto& e : bayes_estimates(static_cast<long long>(log.list().size()), searches)) extra.push_back(e);
-    return search::finish(ev, k, log, extra);
+    return search::finish(ev, k, log, extra, stop.stopped_by(ev, "rule"));
 }
 
 }   // namespace mootation::scalar

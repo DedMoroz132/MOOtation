@@ -217,6 +217,8 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
         width = std::max(width, P.hi[j] - P.lo[j]);
     }
     const bool warm = k.find("warm_start") && k.word("warm_start", "off", {"off", "on"}) == "on";   // RST-9
+    strategy::StopRule stop = strategy::stop_of(k);                                  // stop_rule.hpp: a step a run of CMA-ES
+    const bool count_grads = strategy::budget_grads_of(k);
     std::vector<std::string> ignored = k.ignored();
     if (start.has_x0 && !warm) ignored.push_back("x0");
     std::sort(ignored.begin(), ignored.end());
@@ -231,6 +233,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     ev.lean = lean;
+    ev.budget_grads = count_grads;
     const std::size_t lam_def = 4 + static_cast<std::size_t>(std::floor(3.0 * dm::log(static_cast<double>(n))));
     const double sigma_large = sigma_share * width;
     std::vector<Run> runs;
@@ -244,9 +247,10 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
     };
     for (unsigned long long q = 0;; ++q) {
         std::mt19937 rng(start_seed(seed, q));                                          // RST-7
-        if (ev.spent >= ev.budget) break;                        // ev.budget: THE TARGET shortens it
+        if (!stop.go(ev)) break;                                 // ev.budget: THE TARGET shortens it (STOP-1)
         if (!bipop) {
             const Run r = one(0, lam_def << q, sigma_large, 0, rng);
+            stop.step(ev);
             if (r.budget_out || r.evaluations == 0) break;                                    // RST-8
             continue;
         }
@@ -273,8 +277,9 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
             const double ratio = 0.5 * static_cast<double>(lam_last) / static_cast<double>(lam_def);
             const auto lam_s = static_cast<std::size_t>(std::floor(static_cast<double>(lam_def) * dm::pow(ratio, u * u)));
             r = one(2, std::max(lam_s, lam_def), sigma_large * dm::pow(10.0, -2.0 * u2), std::max(1LL, last_large / 2), rng);
-            if (r.budget_out && ev.spent < ev.budget) r.budget_out = false;               // its own allowance ended
+            if (r.budget_out && ev.left() > 0) r.budget_out = false;                     // its own allowance ended
         }
+        stop.step(ev);
         if (r.budget_out || r.evaluations == 0) break;                                    // RST-8
     }
     if (!ev.recorded) ev.record();
@@ -301,6 +306,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
     res.settings.push_back({"restarts", json::dump(list, -1, ",", ":")});
     if (log.on()) res.settings.push_back({"minima", log.json_text()});              // STRAT-15
     res.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
+    res.stopped_by = stop.stopped_by(ev, "rule");                                    // STOP-4
     return res;
 }
 

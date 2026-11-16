@@ -49,7 +49,9 @@
 //                  best tenth), together local_share of the budget.
 //
 // Common knobs: start_budget (a local search's allowance; 0 what is left,
-// shared among the round's starts), min_dist, min_df (the minima log).
+// shared among the round's starts), min_dist, min_df (the minima log), and
+// the stop rule's stall, max_steps, budget_units (stop_rule.hpp; what is
+// left is Evaluator::left(), STOP-1).
 //
 // READINGS (declared):
 //   SRCH-1. MLSL's r_k: part II's (2) prints it without Γ; it refers to part
@@ -219,7 +221,8 @@ inline bool better(const Found& a, const Found& b)
     return a.f < b.f;
 }
 
-inline long long left(const Evaluator& ev) { return ev.budget - ev.spent; }
+// what the strategy may still spend (stop_rule.hpp STOP-1)
+inline long long left(const Evaluator& ev) { return ev.left(); }
 
 // Γ(1 + n/2): (n/2)! for n even, (n/2)(n/2 - 1) ... (1/2) √π for n odd
 inline double gamma_one_plus_half(std::size_t n)
@@ -264,7 +267,7 @@ inline void finite_box(const std::string& name, const Problem& P)
 }
 
 inline Result finish(Evaluator& ev, strategy::StrategyKnobs& k, const strategy::MinimaLog& log,
-                     std::vector<std::pair<std::string, std::string>> extra = {})
+                     std::vector<std::pair<std::string, std::string>> extra = {}, const std::string& stopped_by = "")
 {
     if (!ev.recorded) ev.record();
     ev.over = true;
@@ -277,6 +280,7 @@ inline Result finish(Evaluator& ev, strategy::StrategyKnobs& k, const strategy::
     if (k.find("round_stop")) r.settings.push_back({"round_skipped", std::to_string(ev.round_skipped)});   // STRAT-16
     if (log.on()) r.settings.push_back({"minima", log.json_text()});                // STRAT-15
     r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
+    r.stopped_by = stopped_by;                                                      // stop_rule.hpp STOP-4
     return r;
 }
 
@@ -309,6 +313,8 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
     const double dn = static_cast<double>(n);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     strategy::round_stop_of(k, ev);                                                  // STRAT-16
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step an iteration
+    std::string own = "rule";
     ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
@@ -426,7 +432,12 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
                 const double w = static_cast<double>(log.list().size()), gN = static_cast<double>(reduced);
                 if (w >= 1.0 && gN > w + 2.0 && w * (gN - 1.0) / (gN - w - 2.0) <= w + 0.5) break;
             }
-            if (search::left(ev) <= 0 || ev.used() == before) break;                             // SRCH-10
+            stop.step(ev);
+            if (ev.used() == before) {                                                           // SRCH-10
+                own = "idle";
+                break;
+            }
+            if (!stop.go(ev)) break;
         }
     } catch (const BudgetSpent&) {
     }
@@ -434,7 +445,7 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
                                                            {"local_searches", std::to_string(searches)}};
     if (bayes)                                                                                    // STRAT-13
         for (auto& e : bayes_estimates(static_cast<long long>(log.list().size()), reduced_last)) extra.push_back(e);
-    return search::finish(ev, k, log, extra);
+    return search::finish(ev, k, log, extra, stop.stopped_by(ev, own));
 }
 
 // ── ils, basin_hopping ──────────────────────────────────────────────────────
@@ -498,6 +509,8 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     strategy::round_stop_of(k, ev);                                                  // STRAT-16
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step of the walk
+    long long idle = 0;
     ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
@@ -517,8 +530,9 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     double T_rel = 0.0;
     try {
         search::Found cur = local(start, 0), best = cur;
-        long long since = 0, accepted = 0, tried = 0, idle = 0;
-        for (long long s = 1; cur.ok && search::left(ev) > 0 && idle < 100; ++s) {                  // SRCH-10
+        stop.mark(ev);
+        long long since = 0, accepted = 0, tried = 0;
+        for (long long s = 1; cur.ok && idle < 100 && stop.go(ev); ++s) {                          // SRCH-10
             const double before = ev.used();
             Vec y = cur.x;
             if (user_move) {                                                                     // SRCH-19
@@ -589,6 +603,7 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
                 accepted = tried = 0;
             }
             idle = ev.used() == before ? idle + 1 : 0;
+            stop.step(ev);
         }
     } catch (const BudgetSpent&) {
     }
@@ -597,7 +612,7 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     if (bh) extra.push_back({"bh_step_end", detail::g_format(step)});
     if (accept == "threshold") extra.push_back({"walk_th_end", detail::g_format(th)});
     if (accept == "lsmc_rel") extra.push_back({"walk_t_rel_end", detail::g_format(T_rel)});
-    return search::finish(ev, k, log, extra);
+    return search::finish(ev, k, log, extra, stop.stopped_by(ev, idle >= 100 ? "idle" : "rule"));
 }
 
 // ── halving ─────────────────────────────────────────────────────────────────
@@ -620,6 +635,7 @@ inline Result run_halving(const Problem& P, double eq_tol, bool has_tol0, double
     if (n_arms > 1) search::finite_box("halving", P);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     strategy::round_stop_of(k, ev);                                                  // STRAT-16
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step a round
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
     const std::vector<double> D =
@@ -646,7 +662,7 @@ inline Result run_halving(const Problem& P, double eq_tol, bool has_tol0, double
     while ((1LL << rounds) < n_arms) ++rounds;                       // ⌈log2 n⌉, at least 1
     json::Value plan = json::Value::array();
     try {
-        for (long long r = 0; r < rounds && !arms.empty(); ++r) {
+        for (long long r = 0; r < rounds && !arms.empty() && stop.go(ev); ++r) {
             const long long more = budget / (static_cast<long long>(arms.size()) * rounds);
             if (more <= 0) break;
             std::vector<StartSpec> specs;
@@ -663,6 +679,7 @@ inline Result run_halving(const Problem& P, double eq_tol, bool has_tol0, double
             row.items.push_back(json::Value::integer(static_cast<std::int64_t>(arms.size())));
             row.items.push_back(json::Value::integer(arms[0].spec.allowance));
             plan.items.push_back(row);
+            stop.step(ev);
             if (r + 1 == rounds) break;
             std::stable_sort(arms.begin(), arms.end(),
                              [](const Arm& x, const Arm& y) { return search::better(x.best, y.best); });
@@ -672,7 +689,7 @@ inline Result run_halving(const Problem& P, double eq_tol, bool has_tol0, double
     }
     for (const Arm& a : arms)
         if (a.best.ok) log.add(a.best.x, a.best.f, a.index);
-    return search::finish(ev, k, log, {{"rounds", json::dump(plan, -1, ",", ":")}});
+    return search::finish(ev, k, log, {{"rounds", json::dump(plan, -1, ",", ":")}}, stop.stopped_by(ev, "rule"));
 }
 
 // ── memetic ─────────────────────────────────────────────────────────────────
@@ -708,6 +725,8 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     strategy::round_stop_of(k, ev);                                                  // STRAT-16
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step a phase
+    std::string own = "rule";
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
     StartSpec g;
@@ -720,7 +739,7 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
         return std::isfinite(w) && w > 0.0 ? w : 1.0;
     };
     try {
-        while (search::left(ev) > 0) {
+        while (stop.go(ev)) {
             const double before = ev.used();
             g.fresh = std::min(every, search::left(ev));                                          // SRCH-7
             g.allowance += g.fresh;
@@ -798,11 +817,16 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
                 written.insert(written.begin(), Point{ev.X[i], ev.F[i], ev.G[i]});
             }
             searches += static_cast<long long>(res.size());
-            if (global_done) break;                                                               // SRCH-9
+            stop.step(ev);
+            if (global_done) {                                                                    // SRCH-9
+                own = "idle";
+                break;
+            }
         }
     } catch (const BudgetSpent&) {
     }
-    return search::finish(ev, k, log, {{"phases", std::to_string(phases)}, {"local_searches", std::to_string(searches)}});
+    return search::finish(ev, k, log, {{"phases", std::to_string(phases)}, {"local_searches", std::to_string(searches)}},
+                          stop.stopped_by(ev, own));
 }
 
 }   // namespace mootation::scalar

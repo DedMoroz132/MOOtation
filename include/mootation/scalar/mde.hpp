@@ -137,6 +137,7 @@ inline Result run_mde(const Problem& P, double eq_tol, bool has_tol0, double eq_
     search::finite_box("mde", P);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     strategy::round_stop_of(k, ev);                                                  // STRAT-16
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step a sweep
     ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
@@ -183,7 +184,8 @@ inline Result run_mde(const Problem& P, double eq_tol, bool has_tol0, double eq_
         };
         search::Found best = pop[best_of()];
         long long no_imp = 0, unchanged = 0;
-        while (search::left(ev) > 0) {
+        stop.mark(ev);
+        while (stop.go(ev)) {
             // MDE-3: the members relabelled to the record
             if (match != "off") {
                 const Vec& ref = pop[best_of()].x;
@@ -240,6 +242,7 @@ inline Result run_mde(const Problem& P, double eq_tol, bool has_tol0, double eq_
                 }
             }
             ++sweeps;
+            stop.step(ev);
             // CL16 Algorithm 3
             const search::Found& now = pop[best_of()];
             if (search::better(now, best)) {
@@ -260,7 +263,8 @@ inline Result run_mde(const Problem& P, double eq_tol, bool has_tol0, double eq_
     }
     return search::finish(ev, k, log,
                           {{"sweeps", std::to_string(sweeps)}, {"local_searches", std::to_string(searches)},
-                           {"replaced", std::to_string(replaced)}});
+                           {"replaced", std::to_string(replaced)}},
+                          stop.stopped_by(ev, "rule"));
 }
 
 }   // namespace mootation::scalar

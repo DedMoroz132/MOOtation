@@ -36,7 +36,8 @@
 //     is dropped); not canon or align (they are the whole problem's), gauge
 //     directions, start or hooks of task 24 (perturb, distance, canon_key,
 //     local_search, the genome's): a subproblem with those is the user's
-//     restrict_to.
+//     restrict_to. Either keeps the problem's deadline and clock
+//     (evaluator.hpp derived; task 31, stop_rule.hpp STOP-6).
 // ============================================================================
 
 #include <cmath>
@@ -103,7 +104,7 @@ inline std::vector<double> embed(const std::vector<double>& x_frozen, const std:
 inline Problem restricted(const Problem& P, const std::vector<double>& x_frozen, const std::vector<std::size_t>& idx)
 {
     using Values = std::vector<double>;   // not Vec: it would shadow subproblems.hpp's (-Wshadow)
-    if (P.restrict_to) return P.restrict_to(x_frozen, idx);
+    if (P.restrict_to) return derived(P, P.restrict_to(x_frozen, idx));            // stop_rule.hpp STOP-6
     const std::size_t n = P.lo.size();
     if (x_frozen.size() != n)
         throw std::invalid_argument("restricted: x_frozen has " + std::to_string(x_frozen.size()) + " values for " +
@@ -188,7 +189,7 @@ inline Problem restricted(const Problem& P, const std::vector<double>& x_frozen,
         };
     if (P.accept_success)
         Q.accept_success = [whole, full](const Values& z) { return whole->accept_success(full(z)); };
-    return Q;
+    return derived(P, Q);                                                            // STOP-6: the deadline, the clock
 }
 
 }   // namespace mootation::scalar

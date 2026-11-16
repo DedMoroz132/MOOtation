@@ -151,7 +151,11 @@
 // task 30: shrink charges a level its whole spending (shrink_count =
 // budget, param.hpp PARAM-8) and a round on one thread stops at the target
 // (round_stop = target, strategy.hpp STRAT-16); the methods of 4 run as in
-// 4, the strategies' results only shrink's with gradients or hook costs.
+// 4, the strategies' results only shrink's with gradients or hook costs; 6 —
+// task 31, layer 1: every strategy checks its budget by what it is spent by,
+// the gradient calls included (budget_units = budget, stop_rule.hpp STOP-1,
+// STOP-2; the owner's choice of 17.11): the strategies of several rounds on
+// a problem with a gradient change, the methods and the rest as in 5.
 // ============================================================================
 
 #include <algorithm>
@@ -193,7 +197,7 @@
 
 namespace mootation::scalar {
 
-inline constexpr int METHOD_VERSION = 5;
+inline constexpr int METHOD_VERSION = 6;
 
 // A knob as the caller gives it: a word or a number.
 struct Knob {
@@ -239,6 +243,15 @@ struct Result {
     bool cache_capped = false;       // ... or on their cap (CACHE-6)
     long long delta_calls = 0;       // THE DELTA (task 24, §24.1.6): the hook's calls, their declared cost
     double delta_spent = 0.0;
+    // THE LEDGER (task 31, layer 1; stop_rule.hpp): what the budget was
+    // spent by (evaluator.hpp used()), the evaluations and gradient calls of
+    // derived runs outside the archive (STOP-6), what ended a strategy's run
+    // (STOP-4; empty for a solver), and the run's processor time (with
+    // time_clock; clocks.hpp)
+    double used = 0.0;
+    long long outside_evals = 0, outside_grads = 0;
+    std::string stopped_by;
+    double cpu_seconds = 0.0;
 };
 
 // How the first points come: seed points (planted), rows of a design
@@ -540,6 +553,9 @@ inline Result result_of(Evaluator& ev, const std::vector<std::size_t>& idx)
     r.cache_capped = ev.cache_capped;
     r.delta_calls = ev.delta_calls;
     r.delta_spent = ev.delta_spent;
+    r.used = ev.used();
+    r.outside_evals = ev.outside_evals;
+    r.outside_grads = ev.outside_grads;
     r.improvements = ev.improvements.records();
     for (char f : ev.failed) r.n_failed += f ? 1 : 0;
     return r;
@@ -2539,21 +2555,56 @@ inline Result run_named(const std::string& name, const Problem& P, double eq_tol
 // without.
 // THE TIME (task 28, §28.6.1; off by default): max_seconds = s > 0, a knob of
 // every method and strategy here, sets the run's deadline (Problem::
-// deadline) at s seconds of a steady clock after the run's start.
+// deadline) at s seconds of the run's clock after the run's start;
+// time_clock = wall | unbiased | cpu (task 31, layer 1; clocks.hpp; wall by
+// default, the steady clock of before) is that clock.
 //   TIME-1 (only when asked: max_seconds). The deadline is absolute and goes with the problem: a strategy's
 //     starts (their views, their threads) and its inner runs keep the one
-//     deadline of the run; a run inside a run with its own max_seconds sets
-//     its own (it never extends an earlier one: the earlier of the two).
+//     deadline of the run, on its clock; a run inside a run with its own
+//     max_seconds sets its own (it never extends an earlier one: the
+//     earlier of the two), on the outer run's clock — a time_clock of its
+//     own, other than the outer deadline's, is refused.
 //   TIME-2 (only when asked: max_seconds). It is checked before every call the budget pays for — an
 //     evaluation, a gradient, a part of the residual blocks — and before the
 //     user's local_search and delta hooks: past it, the call ends the run as
 //     the budget's end would (BudgetSpent), the answer the points evaluated.
 //     A call under way is not interrupted (the problem's own time is its).
+//     A strategy checks it before each of its steps too (stop_rule.hpp).
 //   TIME-3 (only when asked: max_seconds). Result::seconds is every run's wall-clock time (steady clock);
 //     with max_seconds the settings say max_seconds and time_up (yes where
-//     the deadline passed before the run ended).
+//     the deadline passed before the run ended); with time_clock they say
+//     time_clock, wall_seconds and cpu_seconds (Result::cpu_seconds, the
+//     process's processor time over the run).
 //   TIME-4 (only when asked: max_seconds). The deadline makes a run depend on the machine's speed: two runs
 //     of one seed agree only while the deadline does not end them.
+// A strategy's settings say stopped_by and spend where a knob of the stop
+// rule or of the time is given, or a hook declared a cost (stop_rule.hpp
+// STOP-4).
+namespace detail {
+
+// the rows stopped_by and spend of a strategy (stop_rule.hpp STOP-4)
+inline void ledger_settings(Result& r)
+{
+    bool has = false;
+    for (const auto& kv : r.settings) has = has || kv.first == "stopped_by";
+    if (!has && !r.stopped_by.empty()) r.settings.push_back({"stopped_by", r.stopped_by});
+    json::Value o = json::Value::object();
+    auto put = [&](const char* key, json::Value v) {
+        o.keys.push_back(key);
+        o.items.push_back(std::move(v));
+    };
+    put("evaluations", json::Value::integer(r.evaluations));
+    put("grad_calls", json::Value::integer(r.grad_calls));
+    put("hook_cost", json::Value::number(r.hook_spent));
+    put("success_spent", json::Value::number(r.success_spent));
+    put("delta_spent", json::Value::number(r.delta_spent));
+    put("outside", json::Value::integer(r.outside_evals + r.outside_grads));
+    put("used", json::Value::number(r.used));
+    r.settings.push_back({"spend", json::dump(o, -1, ",", ":")});
+}
+
+}   // namespace detail
+
 inline Result run(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
                   double eq_tol0, int pop_size, long long budget, unsigned seed, const Knobs& knobs,
                   Observer observer, int record_every, const Start& start)
@@ -2561,8 +2612,17 @@ inline Result run(const std::string& name, const Problem& P, double eq_tol, bool
     const ops::RepairCounts before = ops::repair_counts();
     const double t0 = clock_seconds();
     double max_seconds = 0.0;
+    bool has_clock = false, asked = false;
+    Clock chosen = Clock::wall;
     Knobs rest;
     for (const auto& kv : knobs) {
+        asked = asked || kv.first == "stall" || kv.first == "max_steps" || kv.first == "budget_units";
+        if (kv.first == "time_clock") {                                             // clocks.hpp
+            if (!kv.second.is_word) throw std::invalid_argument("time_clock must be a word: wall, unbiased, cpu");
+            chosen = clock_of(kv.second.word);
+            has_clock = true;
+            continue;
+        }
         if (kv.first != "max_seconds") {
             rest.push_back(kv);
             continue;
@@ -2571,21 +2631,43 @@ inline Result run(const std::string& name, const Problem& P, double eq_tol, bool
             throw std::invalid_argument("max_seconds must be a number of seconds > 0");
         max_seconds = kv.second.number;
     }
+    const double cpu0 = has_clock ? cpu_seconds() : 0.0;
     Result r;
-    if (max_seconds > 0.0) {                          // TIME-1
+    if (max_seconds > 0.0 || has_clock) {             // TIME-1
         Problem Q = P;
-        Q.deadline = std::min(P.deadline, t0 + max_seconds);
+        if (has_clock) {
+            if (P.deadline < std::numeric_limits<double>::infinity() && P.time_clock != chosen)
+                throw std::invalid_argument(std::string("time_clock = ") + clock_name(chosen) +
+                                            ": a run within a run with a deadline keeps its clock, " +
+                                            clock_name(P.time_clock) + " (TIME-1)");
+            Q.time_clock = chosen;
+        }
+        if (max_seconds > 0.0)
+            Q.deadline = std::min(P.deadline,
+                                  (Q.time_clock == Clock::wall ? t0 : clock_seconds(Q.time_clock)) + max_seconds);
         r = detail::run_named(name, Q, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, rest,
                               std::move(observer), record_every, start);
-        r.time_up = clock_seconds() >= Q.deadline;
-        r.settings.insert(r.settings.end(), {{"max_seconds", detail::g_format(max_seconds)},
-                                             {"time_up", r.time_up ? "yes" : "no"}});
+        if (max_seconds > 0.0) {
+            r.time_up = clock_seconds(Q.time_clock) >= Q.deadline;
+            r.settings.insert(r.settings.end(), {{"max_seconds", detail::g_format(max_seconds)},
+                                                 {"time_up", r.time_up ? "yes" : "no"}});
+        }
     } else {
         r = detail::run_named(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,
                               std::move(observer), record_every, start);
     }
     r.seconds = clock_seconds() - t0;                 // TIME-3
     r.repairs = ops::repair_counts() - before;
+    if (has_clock) {
+        r.cpu_seconds = cpu_seconds() - cpu0;
+        r.settings.insert(r.settings.end(), {{"time_clock", clock_name(chosen)},
+                                             {"wall_seconds", detail::g_format(r.seconds)},
+                                             {"cpu_seconds", detail::g_format(r.cpu_seconds)}});
+    }
+    const bool costs = r.hook_spent > 0.0 || r.success_spent > 0.0 || r.delta_spent > 0.0 || r.outside_evals > 0 ||
+                       r.outside_grads > 0;
+    if ((asked || costs || max_seconds > 0.0 || has_clock) && detail::listed(strategy_names(), name))
+        detail::ledger_settings(r);                   // stop_rule.hpp STOP-4
     return r;
 }
 

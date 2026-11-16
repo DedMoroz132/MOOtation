@@ -317,6 +317,8 @@ inline Result run_pap(const Problem& P, double eq_tol, bool has_tol0, double eq_
     for (const pap::Spec& s : specs) total += s.np;
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step a generation
+    std::string own = "rule";
     std::vector<std::unique_ptr<pap::Member>> m;
     for (std::size_t i = 0; i < specs.size(); ++i)
         m.push_back(pap::member(specs[i], start_seed(seed, i), P.lo, P.hi,
@@ -326,7 +328,8 @@ inline Result run_pap(const Problem& P, double eq_tol, bool has_tol0, double eq_
         int idle = 0;
         bool first = true;
         long long per_generation = 0;
-        while (true) {
+        // the budget: the evaluator's own check (charge), as before; the rule's other ends here
+        while (stop.go(std::numeric_limits<long long>::max(), ev.P)) {
             bool fresh = false, any = false;
             long long asked = 0;
             for (auto& a : m) {
@@ -342,13 +345,17 @@ inline Result run_pap(const Problem& P, double eq_tol, bool has_tol0, double eq_
             first = false;
             if (!any) break;
             ++generations;
+            stop.step(ev);
             if (generations == 1) {                                                            // PAP-1
                 per_generation = std::max(1LL, asked);
                 const long long max_gen = std::max(1LL, budget / per_generation);
                 if (interval == 0) interval = std::max(1LL, max_gen / 20);
             }
             idle = fresh ? 0 : idle + 1;
-            if (idle >= population::kIdleGenerations) break;                                  // POP-2
+            if (idle >= population::kIdleGenerations) {                                       // POP-2
+                own = "idle";
+                break;
+            }
             if (m.size() > 1 && generations > 1 && generations % interval == 0) {             // PAP-2
                 std::vector<std::vector<pap::Individual>> out;
                 for (auto& a : m) out.push_back(a->best(static_cast<std::size_t>(size)));
@@ -371,7 +378,8 @@ inline Result run_pap(const Problem& P, double eq_tol, bool has_tol0, double eq_
     group_by_symmetry(k, P, log);
     return search::finish(ev, k, log,
                           {{"migration_interval", std::to_string(interval)}, {"generations", std::to_string(generations)},
-                           {"migrations", std::to_string(migrations)}});
+                           {"migrations", std::to_string(migrations)}},
+                          stop.stopped_by(ev, own));
 }
 
 }   // namespace mootation::scalar

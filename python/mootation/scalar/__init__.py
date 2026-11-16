@@ -98,7 +98,9 @@ points from the seed, the rows of the design `init` (designs.py), or the seed
 population.
 
 THE VERSION of these methods' trajectories is in every result's settings,
-method_version (_core.scalar.METHOD_VERSION): 5 since task 30 (16.11: shrink's
+method_version (_core.scalar.METHOD_VERSION): 6 since task 31 (17.11: every
+strategy's budget_units = budget, the gradient calls in its budget; these methods
+as in 5), 5 since task 30 (16.11: shrink's
 shrink_count = budget, the strategies' round_stop = target; these methods as in
 4), 4 since sqp_line_search =
 powell became the default (26.10), 3 since accept did (25.10); 2 since task 17, stage 6 (the library's

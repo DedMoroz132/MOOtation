@@ -127,7 +127,12 @@
 // Jacobian; a joint call is one of each. What the budget is spent by is
 // evaluations + grad_cost * grad_calls (grad_cost a knob, 1 by default);
 // finite differences are evaluations. Without a gradient both are the one
-// count of before, bit for bit.
+// count of before, bit for bit. used() adds the hooks' declared costs and the
+// evaluations of derived runs outside the archive (outside_evals,
+// outside_grads); a strategy checks its budget by left(), the budget less
+// counted() — used() without the gradients' share unless budget_grads
+// (task 31, layer 1; stop_rule.hpp STOP-1, STOP-2) — and the call that
+// ends a run says why (ended: budget, deadline, target).
 //
 // READINGS:
 //   SO-1. A problem with residuals takes its objective from them: evaluate,
@@ -162,6 +167,7 @@
 #include "../dss.hpp"
 #include "../fp_contract.hpp"
 #include "../warn.hpp"
+#include "clocks.hpp"
 #include "genome.hpp"
 #include "periodic.hpp"
 #include "improvements.hpp"
@@ -333,21 +339,32 @@ struct Problem {
     bool has_gradient() const { return gradient || value_grad || jacobian || residuals_jac; }
 
     // THE TIME (task 28, §28.6.1; scalar.hpp TIME-1 ... TIME-4): the run's
-    // deadline on clock_seconds(), set by scalar::run from max_seconds;
-    // infinite (the default): none
+    // deadline on clock_seconds(time_clock), set by scalar::run from
+    // max_seconds; infinite (the default): none. time_clock (task 31, layer
+    // 1; clocks.hpp CLOCK-1 ... CLOCK-3): the clock the deadline is on, wall
+    // by default
     double deadline = std::numeric_limits<double>::infinity();
+    Clock time_clock = Clock::wall;
 };
 
-// a steady clock's seconds (THE TIME)
-inline double clock_seconds()
-{
-    return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-}
-
-// THE TIME: the run's deadline has passed
+// THE TIME: the run's deadline has passed (on the problem's clock)
 inline bool past_deadline(const Problem& P)
 {
-    return P.deadline < std::numeric_limits<double>::infinity() && clock_seconds() >= P.deadline;
+    return P.deadline < std::numeric_limits<double>::infinity() && clock_seconds(P.time_clock) >= P.deadline;
+}
+
+// A problem made from another for a run of its own (task 31, layer 1; STOP-6
+// of stop_rule.hpp): a level of the problem's parameter (param.hpp), a
+// formulation (reformulation.hpp), the user's subproblem (hooks.hpp
+// restricted). It keeps the earlier of its own deadline and the source's,
+// on the source's clock; what its run spends goes to the run's ledger
+// (Evaluator::spend_outside, or strategy::Ledger where the strategy has no
+// evaluator of its own).
+inline Problem derived(const Problem& from, Problem to)
+{
+    to.deadline = std::min(to.deadline, from.deadline);
+    to.time_clock = from.time_clock;
+    return to;
 }
 
 // THE CACHE's key (task 24, §24.1.4): the problem's canon_key, else the bytes
@@ -421,6 +438,13 @@ public:
     double delta_spent = 0.0;          // ... their declared cost in the budget
     long long block_calls = 0;         // residuals_blocks' calls (scalar.hpp BS-6),
     double block_spent = 0.0;          // ... their shares of n_res in the budget
+    // THE LEDGER (task 31, layer 1; stop_rule.hpp STOP-1 ... STOP-3): the
+    // evaluations and gradient calls of runs on a derived problem that
+    // evaluates outside this archive (the user's subproblem, STOP-6)
+    long long outside_evals = 0, outside_grads = 0;
+    bool budget_grads = false;         // STOP-2: a strategy's budget counts the gradient calls too (its default)
+    bool target_reached = false;       // THE TARGET ended the run
+    mutable std::string ended;         // what ended the run here: budget, deadline or target (STOP-4)
 
     Evaluator(const Problem& p, double eq_tol, bool has_eq_tol0, double eq_tol0_, long long budget_,
               int pop_size_, Observer obs, int record_every)
@@ -501,10 +525,12 @@ public:
     {
         if (static_cast<double>(cache_hits) >= P.cache_hit_cap * static_cast<double>(budget)) {
             cache_capped = true;
+            ended = "budget";
             throw BudgetSpent{};
         }
         if (free_run_ + 1 >= budget) {
             cache_ended = true;
+            ended = "budget";
             throw BudgetSpent{};
         }
         ++cache_hits;
@@ -524,7 +550,10 @@ public:
         if (P.delta) {
             ++delta_calls;
             delta_spent += P.delta_cost;
-            if (past_deadline(P)) throw BudgetSpent{};                          // TIME-2
+            if (past_deadline(P)) {                                             // TIME-2
+                ended = "deadline";
+                throw BudgetSpent{};
+            }
             const double d = P.delta(x, block, values);
             if (!std::isfinite(d)) throw std::runtime_error("delta: the hook gave a value not finite (DELTA-2)");
             return d;
@@ -548,7 +577,35 @@ public:
     double used() const
     {
         return static_cast<double>(spent) + grad_cost * static_cast<double>(grad_calls) + success_spent + hook_spent +
-               delta_spent + block_spent;
+               delta_spent + block_spent + outside();
+    }
+
+    // What a strategy's budget is checked by (stop_rule.hpp STOP-1, STOP-2):
+    // used(), the gradient calls' share only with budget_grads. Without
+    // gradients, hooks and derived runs it is the evaluations, the count of
+    // before, bit for bit.
+    double counted() const
+    {
+        const double grads = static_cast<double>(grad_calls) + static_cast<double>(outside_grads);
+        return static_cast<double>(spent) + (budget_grads ? grad_cost * grads : 0.0) + success_spent + hook_spent +
+               delta_spent + block_spent + static_cast<double>(outside_evals);
+    }
+
+    // what a strategy may still spend (STOP-1)
+    long long left() const { return budget - static_cast<long long>(std::ceil(counted())); }
+
+    // a run on a derived problem that evaluated outside this archive (STOP-6):
+    // its evaluations and gradient calls into the ledger
+    void spend_outside(long long evaluations, long long gradients)
+    {
+        outside_evals += evaluations;
+        outside_grads += gradients;
+    }
+
+    double outside() const
+    {
+        if (outside_evals == 0 && outside_grads == 0) return 0.0;
+        return static_cast<double>(outside_evals) + grad_cost * static_cast<double>(outside_grads);
     }
 
     // ── gradients (SO-2) ────────────────────────────────────────────────────
@@ -768,9 +825,15 @@ private:
     // allowance (for one evaluation and no gradient: spent >= budget, as before).
     void charge(double cost) const
     {
-        if (past_deadline(P)) throw BudgetSpent{};                           // THE TIME (TIME-2)
+        if (past_deadline(P)) {                                               // THE TIME (TIME-2)
+            ended = "deadline";
+            throw BudgetSpent{};
+        }
         const double after = used() + cost;
-        if (after > static_cast<double>(budget)) throw BudgetSpent{};
+        if (after > static_cast<double>(budget)) {
+            ended = "budget";
+            throw BudgetSpent{};
+        }
         if (after > static_cast<double>(limit)) throw SubBudgetSpent{};
     }
 
@@ -895,6 +958,8 @@ private:
         if (m == 1 && count && !bad && reached(x, f[0], i, verdict)) {          // THE TARGET
             budget = spent;
             limit = std::min(limit, spent);
+            target_reached = true;
+            ended = "target";
             throw BudgetSpent{};
         }
         return i;
@@ -986,6 +1051,8 @@ private:
         if (count && !bad && reached(x, f[0], i, verdict)) {                    // THE TARGET
             budget = spent;
             limit = std::min(limit, spent);
+            target_reached = true;
+            ended = "target";
             throw BudgetSpent{};
         }
         return i;

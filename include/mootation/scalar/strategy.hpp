@@ -33,6 +33,13 @@
 // call (the earlier starts' totals, then this one's so far) when it runs it,
 // and leaves it at every start's total (SCALAR-15).
 //
+// THE STOP RULE AND THE LEDGER (stop_rule.hpp; task 31, layer 1): every
+// strategy checks its budget by Evaluator::left() (the evaluations, the
+// hooks' declared costs, the derived runs'), asks one stop rule before each
+// of its steps (budget, deadline, stall, max_steps) and says what ended it
+// (Result::stopped_by); a round's merge stops at the start that spends the
+// budget (STOP-5).
+//
 // THE ANSWER is every algorithm's (evaluator.hpp): at one objective the best
 // point of the archive. Each start's own answer goes to the minima log, which
 // groups the starts that found the same minimum (min_dist, min_df).
@@ -216,6 +223,7 @@
 #include "../designs.hpp"
 #include "../json.hpp"
 #include "scalar.hpp"
+#include "stop_rule.hpp"
 
 namespace mootation::scalar {
 
@@ -657,9 +665,16 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
     const std::size_t T = start_depth() > 0 ? 1                                       // STRAT-7
                                             : std::min<std::size_t>(n, static_cast<std::size_t>(std::max(1, threads)));
     if (T <= 1) {
+        double declared = ev.counted();               // STOP-5: the merge's least spending so far
         for (std::size_t k = 0; k < n; ++k) {
             one(k);
             if (ev.round_stop && k + 1 < n && !error[k] && views[k]->reaches_target(ev)) {   // STRAT-16
+                ev.round_skipped += static_cast<long long>(n - k - 1);
+                break;
+            }
+            declared += out[k].hook_spent + out[k].delta_spent + static_cast<double>(out[k].outside_evals) +
+                        (ev.budget_grads ? ev.grad_cost * static_cast<double>(out[k].outside_grads) : 0.0);
+            if (k + 1 < n && !error[k] && declared >= static_cast<double>(ev.budget)) {      // STOP-5
                 ev.round_skipped += static_cast<long long>(n - k - 1);
                 break;
             }
@@ -695,6 +710,10 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
     for (std::size_t k = 0; k < n; ++k)
         if (error[k]) std::rethrow_exception(error[k]);
     for (std::size_t k = 0; k < n; ++k) {
+        if (ev.left() <= 0) {                         // STOP-5: nothing of the budget is left for start k
+            for (std::size_t q = k; q < n; ++q) out[q] = Result();
+            break;
+        }
         views[k]->merge_into(ev);
         ev.hook_calls += out[k].hook_calls;           // the user's local search (scalar.hpp ULS-5)
         ev.hook_spent += out[k].hook_spent;
@@ -702,6 +721,7 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
         ev.cache_hits += views[k]->cache_hits();          // THE CACHE (evaluator.hpp CACHE-4)
         ev.delta_calls += out[k].delta_calls;             // THE DELTA
         ev.delta_spent += out[k].delta_spent;
+        ev.spend_outside(out[k].outside_evals, out[k].outside_grads);   // STOP-6
     }
     return out;
 }
@@ -966,6 +986,37 @@ inline void round_stop_of(StrategyKnobs& k, Evaluator& ev)
     if (k.find("round_stop")) ev.round_stop = k.word("round_stop", "target", {"off", "target"}) == "target";
 }
 
+// THE STOP RULE's knobs where given (stop_rule.hpp): stall, max_steps (STOP-3)
+// and budget_units (STOP-2), the last into the run's evaluator
+inline StopRule stop_of(StrategyKnobs& k)
+{
+    k.allow("stall");
+    k.allow("max_steps");
+    k.allow("budget_units");
+    StopRule s;
+    if (k.find("stall")) s.stall = k.whole("stall", 0, 0);
+    if (k.find("max_steps")) s.max_steps = k.whole("max_steps", 0, 0);
+    s.asked = k.find("stall") || k.find("max_steps") || k.find("budget_units");
+    return s;
+}
+
+// budget_units = budget | evaluations (STOP-2): true for budget. evaluations
+// leaves the gradient calls out of the strategy's budget (method version 5's
+// count); the hooks' declared costs count in both (STOP-1)
+inline bool budget_grads_of(StrategyKnobs& k)
+{
+    const std::string count_default = "budget";                                   // STOP-2: the default's one line
+    return (k.find("budget_units") ? k.word("budget_units", count_default, {"budget", "evaluations"})
+                                   : count_default) == "budget";
+}
+
+inline StopRule stop_of(StrategyKnobs& k, Evaluator& ev)
+{
+    StopRule s = stop_of(k);
+    ev.budget_grads = budget_grads_of(k);
+    return s;
+}
+
 inline bool lean_of(StrategyKnobs& k)
 {
     return k.find("keep_points") && k.word("keep_points", "all", {"all", "best"}) == "best";
@@ -1119,6 +1170,7 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     round_stop_of(k, ev);                                                            // STRAT-16
+    StopRule stop = stop_of(k, ev);              // stop_rule.hpp: a step the round, or a start (sequential, oqnlp)
     ev.lean = lean_of(k);                                                            // STRAT-12
     std::vector<StartSpec> starts(static_cast<std::size_t>(n_starts));
     const std::vector<double> U =
@@ -1165,8 +1217,10 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
             auto run_from = [&](StartSpec sp, const Vec& from) {
                 const double left = static_cast<double>(ev.budget) - ev.used();
                 if (left < 1.0) throw BudgetSpent{};
+                if (!stop.go(std::numeric_limits<long long>::max(), P)) throw BudgetSpent{};   // the budget: above
                 sp.allowance = static_cast<long long>(left);
                 const Result r = round(ev, inner, {sp}, 1, pop_size).at(0);
+                stop.step(ev);
                 runs.push_back(r);
                 ++oq_starts;
                 if (P.m != 1 || r.objectives.empty() || !(r.cv.empty() || r.cv[0] <= 0.0)) return;   // OQ-5
@@ -1243,12 +1297,15 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
             }
         } else if (!sequential) {
             runs = round(ev, inner, starts, static_cast<int>(threads), pop_size);
+            stop.step(ev);
         } else {                                                                      // STRAT-11
             for (StartSpec& sp : starts) {
                 const double left = static_cast<double>(ev.budget) - ev.used();
                 if (left < 1.0) break;
+                if (!stop.go(std::numeric_limits<long long>::max(), P)) break;     // the budget: above
                 sp.allowance = static_cast<long long>(left);
                 runs.push_back(round(ev, inner, {sp}, 1, pop_size).at(0));
+                stop.step(ev);
             }
         }
     } catch (const BudgetSpent&) {
@@ -1276,6 +1333,7 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
         for (auto& e : bayes_estimates(static_cast<long long>(log.list().size()), answered)) r.settings.push_back(e);
     if (k.find("round_stop")) r.settings.push_back({"round_skipped", std::to_string(ev.round_skipped)});   // STRAT-16
     if (log.on()) r.settings.push_back({"minima", log.json_text()});                // STRAT-15
+    r.stopped_by = stop.stopped_by(ev, "rule");                                      // stop_rule.hpp STOP-4
     r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
     return r;
 }

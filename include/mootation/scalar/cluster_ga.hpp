@@ -27,7 +27,9 @@
 //      is lower and no member is within cga_de of it in energy (DTMH96:
 //      "children successively replace higher ones"; DH95's δE).
 //   4. Again from 1 until the budget, cga_maxgen generations, or 100 in a
-//      row that spend nothing (SRCH-10).
+//      row that spend nothing (SRCH-10), or the stop rule's stall (task 30,
+//      §30.13's cga_stall: generations in a row without a better best) or
+//      max_steps (stop_rule.hpp; task 31, layer 1).
 // THE DEGENERATE CASE: cga_pop = 1 makes every child a mutant of the one
 // member (CGA-2) by pbh's move, and with cga_de = 0 the run is pbh's with
 // pbh_K = 1 — monotonic basin hopping, ils with ils_accept = better — bit for
@@ -390,6 +392,8 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
     if (I > 1 && migrants > K) throw std::invalid_argument("cluster_ga: cga_migrants at most cga_pop");
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     strategy::round_stop_of(k, ev);                                                  // STRAT-16
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step a generation
+    long long idle = 0;
     ev.lean = lean_of(k);
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     group_by_symmetry(k, P, log);
@@ -643,8 +647,8 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                 for (const auto& is : isles) pop.insert(pop.end(), is.begin(), is.end());
             };
             gather();
-            long long idle = 0;
-            while (search::left(ev) > 0 && idle < 100 && (maxgen == 0 || generations < maxgen)) {   // SRCH-10
+            stop.mark(ev);
+            while (idle < 100 && (maxgen == 0 || generations < maxgen) && stop.go(ev)) {   // SRCH-10
                 const double before = ev.used();
                 std::vector<StartSpec> kids;
                 std::vector<std::size_t> made;
@@ -658,6 +662,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                 }
                 const std::vector<search::Found> Y = run_round(kids);
                 ++generations;
+                stop.step(ev);
                 bool all = Y.size() == kids.size();
                 std::size_t at = 0;
                 for (std::size_t i = 0; i < isles.size(); ++i) {
@@ -705,8 +710,8 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                 }
                 D_I = md_di * G;
             }
-            long long idle = 0;
-            while (search::left(ev) > 0 && idle < 100 && (maxgen == 0 || generations < maxgen)) {   // SRCH-10
+            stop.mark(ev);
+            while (idle < 100 && (maxgen == 0 || generations < maxgen) && stop.go(ev)) {   // SRCH-10
                 const double before = ev.used();
                 // 1. the children (CGA-2, CGA-3)
                 std::vector<std::pair<std::size_t, std::size_t>> parents;
@@ -721,6 +726,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                 }
                 const std::vector<search::Found> Y = run_round(kids);
                 ++generations;
+                stop.step(ev);
                 // 3. placed one after the other
                 bool all = Y.size() == kids.size();
                 if (md || afpo) {
@@ -862,7 +868,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
         rows_of(mport, "mutation");
         extra.push_back({"operators", json::dump(rows, -1, ",", ":")});
     }
-    Result r = search::finish(ev, k, log, extra);
+    Result r = search::finish(ev, k, log, extra, stop.stopped_by(ev, idle >= 100 ? "idle" : "rule"));
     for (const auto& m : pop)                                                        // param.hpp PARAM-9
         if (m.ok) r.population.push_back(m.x);
     return r;

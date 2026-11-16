@@ -122,6 +122,8 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
     const std::size_t n = P.lo.size();
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     strategy::round_stop_of(k, ev);                                                  // STRAT-16
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step a generation
+    long long idle = 0;
     ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
@@ -169,8 +171,8 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
                     sum += d(pop[static_cast<std::size_t>(a)], pop[static_cast<std::size_t>(b)]);
             dcut = dcut_c * sum / static_cast<double>(pairs);
         }
-        long long idle = 0;
-        while (search::left(ev) > 0 && idle < 100 && (maxstep == 0 || iterations < maxstep)) {   // SRCH-10
+        stop.mark(ev);
+        while (idle < 100 && (maxstep == 0 || iterations < maxstep) && stop.go(ev)) {   // SRCH-10
             const double before = ev.used();
             // 1. the children's starts (PBH-3, PBH-4)
             std::vector<StartSpec> kids;
@@ -196,6 +198,7 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
             }
             const std::vector<search::Found> Y = run_round(kids);
             ++iterations;
+            stop.step(ev);
             // 2. placed one after the other (PBH-1, PBH-2, PBH-5)
             bool all = static_cast<long long>(Y.size()) == K;
             for (std::size_t p = 0; p < Y.size(); ++p) {
@@ -232,7 +235,7 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
                                                            {"accepted", std::to_string(accepted)},
                                                            {"iterations", std::to_string(iterations)}};
     if (std::isfinite(dcut)) extra.push_back({"pbh_dcut_end", detail::g_format(dcut)});
-    return search::finish(ev, k, log, extra);
+    return search::finish(ev, k, log, extra, stop.stopped_by(ev, idle >= 100 ? "idle" : "rule"));
 }
 
 }   // namespace mootation::scalar

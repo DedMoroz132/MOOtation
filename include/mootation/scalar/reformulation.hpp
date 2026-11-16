@@ -69,23 +69,29 @@ inline Result run_reformulation(const Problem& P, double eq_tol, bool has_tol0, 
     if (K > 0 && (!P.formulation || !P.to_formulation || !P.from_formulation))
         throw std::invalid_argument("reformulation: n_formulations > 0 needs formulation, to_formulation and from_formulation");
     if (P.n_cons > 0) throw std::invalid_argument("reformulation: constraints are refused (RF-2)");
-    long long spent = 0, grads = 0, searches = 0, improved = 0;
+    StopRule stop = stop_of(k);                                       // stop_rule.hpp: a step a search
+    Ledger ledger;                                                    // STOP-1: what the budget is checked by
+    ledger.budget_grads = budget_grads_of(k);
+    double grad_cost = 1.0;                                           // the inner solver's, where it takes one
+    for (const auto& kv : inner.knobs)
+        if (kv.first == "grad_cost" && !kv.second.is_word) grad_cost = kv.second.number;
+    long long searches = 0, improved = 0;
     auto allowance = [&]() {                                                         // RF-3
-        const long long left = budget - spent;
+        const long long left = ledger.left(budget);
         return std::max(1LL, cap > 0 ? std::min(cap, left) : left / static_cast<long long>(K + 1));
     };
     // 0. the first search, in the problem from the run's start
     const long long a0 = K == 0 ? budget : allowance();
     Result best = run(inner.name, P, eq_tol, has_tol0, eq_tol0, pop_size, a0, seed, inner.knobs, {}, 0, start);
-    spent += best.evaluations;
-    grads += best.grad_calls;
+    ledger.add(best, grad_cost);
     ++searches;
+    stop.step(true);
     if (!best.objectives.empty() && K > 0) {
         Vec x = best.variables[0];
         double f = best.objectives[0][0];
         std::size_t q = 1;
         long long pass = 0;
-        while (q <= K && budget - spent > 0 && (passes == 0 || pass < passes)) {
+        while (q <= K && (passes == 0 || pass < passes) && stop.go(ledger.left(budget), P)) {
             Result r;
             Vec back;
             if (q == 0) {
@@ -93,7 +99,7 @@ inline Result run_reformulation(const Problem& P, double eq_tol, bool has_tol0, 
                         start_seed(seed, static_cast<std::uint64_t>(searches)), inner.knobs, {}, 0, search::at(x));
                 if (!r.variables.empty()) back = r.variables[0];
             } else {
-                const Problem F = P.formulation(q);
+                const Problem F = derived(P, P.formulation(q));                      // STOP-6: the deadline, the clock
                 Vec y;
                 P.to_formulation(q, x, y);
                 if (y.size() != F.lo.size()) throw std::runtime_error("reformulation: to_formulation gave y of another length");
@@ -105,16 +111,16 @@ inline Result run_reformulation(const Problem& P, double eq_tol, bool has_tol0, 
                     for (std::size_t j = 0; j < back.size(); ++j) back[j] = std::min(P.hi[j], std::max(P.lo[j], back[j]));
                 }
             }
-            spent += r.evaluations;
-            grads += r.grad_calls;
+            ledger.add(r, grad_cost);
             ++searches;
             double fb = std::numeric_limits<double>::infinity();
             if (!back.empty()) {                                                     // RF-2
                 Vec fv, gv;
                 P.evaluate(back, fv, gv);
-                ++spent;
+                ++ledger.evaluations;
                 fb = fv.empty() ? fb : fv[0];
             }
+            stop.step(fb < f);
             if (fb < f) {
                 f = fb;
                 x = back;
@@ -128,8 +134,8 @@ inline Result run_reformulation(const Problem& P, double eq_tol, bool has_tol0, 
             }
         }
     }
-    best.evaluations = spent;
-    best.grad_calls = grads;
+    ledger.into(best);                                                               // the searches' counts and costs
+    best.stopped_by = stop.stopped_by("rule");
     best.ignored = k.ignored();
     best.settings.push_back({"searches", std::to_string(searches)});
     best.settings.push_back({"improved", std::to_string(improved)});

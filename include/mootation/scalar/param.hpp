@@ -133,8 +133,7 @@ inline Problem problem_at(const Problem& P, double L)
         throw std::invalid_argument("at_param(" + std::to_string(L) + ") changed the number of variables");
     if (std::isnan(Q.param) || Q.param != L)
         throw std::invalid_argument("at_param(" + std::to_string(L) + ") gave a problem whose param is not L");
-    Q.deadline = std::min(Q.deadline, P.deadline);                                   // PARAM-7
-    return Q;
+    return derived(P, std::move(Q));                         // PARAM-7: the deadline, the clock (stop_rule.hpp STOP-6)
 }
 
 // PARAM-2
@@ -204,6 +203,8 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
         if (!(lo_b < P.param)) throw std::invalid_argument("shrink: bisect needs shrink_lo below the problem's param");
     }
 
+    StopRule stop = stop_of(k);                                                      // stop_rule.hpp: a step a level
+    Ledger ledger;                                                                   // STOP-6: the levels' spending
     long long spent = 0, grads = 0, levels = 0;
     double L = rule == "ladder" ? ladder[0] : P.param, L_best = std::numeric_limits<double>::quiet_NaN();
     double delta = delta0, hi_b = P.param;
@@ -232,6 +233,10 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
             break;
         }
         if (rule == "ladder" && static_cast<std::size_t>(levels) >= ladder.size()) break;
+        if (!stop.go(left, P)) {                                                     // stall, max_steps
+            stopped = stop.stopped_by("rule");
+            break;
+        }
         long long allowance = cap > 0 ? std::min(cap, left)                                        // PARAM-4
                               : rounds > 0 ? left / (rounds - levels)
                               : rule == "ladder" ? left / static_cast<long long>(ladder.size() - static_cast<std::size_t>(levels))
@@ -267,6 +272,7 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
         const double cost = static_cast<double>(r.evaluations) + grad_cost * static_cast<double>(r.grad_calls) +
                             r.success_spent + r.hook_spent + r.delta_spent;
         charged += cost;
+        ledger.add(r, grad_cost);
         counts += (levels ? "," : "") + std::string("[") + std::to_string(r.evaluations) + "," +
                   std::to_string(r.grad_calls) + "," + param_text(cost) + "]";
         const bool ok = reached(Q, r);
@@ -278,6 +284,7 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
             pop_last = r.population;
             L_last = L;
         }
+        stop.step(ok && (!have_best || L < L_best || rule == "ladder"));            // STOP-3: a lower level that succeeded
         if (rule == "ladder") {
             best = r;
             have_best = true;
@@ -318,8 +325,10 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
     }
     trail += "]";
     Result out = have_best ? best : first;
+    ledger.into(out);                                                                // the levels' counts and costs
     out.evaluations = spent;
     out.grad_calls = grads;
+    out.stopped_by = stopped;
     out.ignored = k.ignored();
     out.settings.push_back({"shrink_levels", std::to_string(levels)});
     out.settings.push_back({"shrink_trail", trail});

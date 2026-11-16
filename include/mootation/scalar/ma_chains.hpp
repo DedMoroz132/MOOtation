@@ -107,6 +107,8 @@ inline Result run_ma_chains(const Problem& P, double eq_tol, bool has_tol0, doub
     const long long n_freq = std::max(1LL, std::llround(static_cast<double>(istr) * (1.0 - rlg) / rlg));   // MAC-4
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     strategy::round_stop_of(k, ev);                                                  // STRAT-16
+    StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step a GA phase and its search
+    std::string own = "rule";
     ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
@@ -223,7 +225,9 @@ inline Result run_ma_chains(const Problem& P, double eq_tol, bool has_tol0, doub
             eval(p == 0 && start.has_x0 ? start.x0 : uniform_point(), m);
             pop.push_back(m);
         }
-        for (;;) {
+        stop.mark(ev);
+        // the budget: every evaluation of a phase is the evaluator's (charge), as before; the rule's other ends here
+        while (stop.go(std::numeric_limits<long long>::max(), ev.P)) {
             // 2. the steady-state GA for n_freq evaluations
             const double ga_from = ev.used();
             long long ga_idle = 0;                                                     // MAC-4: repeats are free
@@ -289,13 +293,18 @@ inline Result run_ma_chains(const Problem& P, double eq_tol, bool has_tol0, doub
             }
             const double ls_from = ev.used();
             local_search(pick);                                                         // 4.
-            if (ev.used() == ga_from && ev.used() == ls_from) break;                    // a phase that spends nothing (SRCH-9)
+            stop.step(ev);
+            if (ev.used() == ga_from && ev.used() == ls_from) {                        // a phase that spends nothing (SRCH-9)
+                own = "idle";
+                break;
+            }
         }
     } catch (const BudgetSpent&) {
     }
     return search::finish(ev, k, log,
                           {{"ls_applications", std::to_string(applications)}, {"restarts", std::to_string(restarts)},
-                           {"n_freq", std::to_string(n_freq)}});
+                           {"n_freq", std::to_string(n_freq)}},
+                          stop.stopped_by(ev, own));
 }
 
 }   // namespace mootation::scalar

@@ -129,7 +129,14 @@ inline Result run_replica_ladder(const Problem& P, double eq_tol, bool has_tol0,
         return kn;
     };
     std::mt19937 rng(start_seed(seed, 0x5EA1u));                                     // RL-3
-    long long spent = 0, grads = 0, pieces = 0, tried = 0, swapped = 0;
+    StopRule stop = stop_of(k);                                       // stop_rule.hpp: a step a round of pieces
+    Ledger ledger;                                                    // STOP-1: what the budget is checked by
+    ledger.budget_grads = budget_grads_of(k);
+    double grad_cost = 1.0;                                           // the inner solver's, where it takes one
+    for (const auto& kv : inner.knobs)
+        if (kv.first == "grad_cost" && !kv.second.is_word) grad_cost = kv.second.number;
+    long long pieces = 0, tried = 0, swapped = 0;
+    double best_f = std::numeric_limits<double>::infinity();                         // STOP-3
     std::vector<Vec> x(K);
     std::vector<double> E(K, std::numeric_limits<double>::infinity());
     std::vector<Result> best(K);
@@ -137,70 +144,83 @@ inline Result run_replica_ladder(const Problem& P, double eq_tol, bool has_tol0,
     std::vector<char> started(K, 0);
     auto value = [&](std::size_t m, const Vec& y) {
         Vec f, g;
+        if (past_deadline(Q[m])) throw BudgetSpent{};                                // TIME-2
         Q[m].evaluate(y, f, g);
-        ++spent;
+        ++ledger.evaluations;
         return f.empty() ? std::numeric_limits<double>::infinity() : f[0];
     };
-    while (budget - spent > 0) {
-        const long long left = budget - spent;
-        const long long piece = every > 0 ? std::max(1LL, std::min(every, left / static_cast<long long>(K)))
-                                          : std::max(1LL, left / static_cast<long long>(K));
-        bool any = false;
-        for (std::size_t m = 0; m < K && budget - spent > 0; ++m) {
-            const long long allowance = std::min(piece, budget - spent);
-            const Start st = started[m] ? search::at(x[m]) : start;
-            const Result r = run(inner.name, Q[m], eq_tol, has_tol0, eq_tol0, pop_size, allowance,
-                                 start_seed(seed, static_cast<std::uint64_t>(pieces)), knobs_at(m), {}, 0, st);
-            ++pieces;
-            spent += r.evaluations;
-            grads += r.grad_calls;
-            any = any || r.evaluations > 0;
-            if (r.variables.empty()) continue;
-            started[m] = 1;
-            x[m] = r.variables[0];
-            E[m] = r.objectives[0][0];
-            if (!has[m] || r.objectives[0][0] < best[m].objectives[0][0]) {
-                best[m] = r;
-                has[m] = 1;
+    std::string own = "rule";
+    try {
+        while (stop.go(ledger.left(budget), P)) {
+            const long long left = ledger.left(budget);
+            const long long piece = every > 0 ? std::max(1LL, std::min(every, left / static_cast<long long>(K)))
+                                              : std::max(1LL, left / static_cast<long long>(K));
+            bool any = false;
+            for (std::size_t m = 0; m < K && ledger.left(budget) > 0; ++m) {
+                const long long allowance = std::min(piece, ledger.left(budget));
+                const Start st = started[m] ? search::at(x[m]) : start;
+                const Result r = run(inner.name, Q[m], eq_tol, has_tol0, eq_tol0, pop_size, allowance,
+                                     start_seed(seed, static_cast<std::uint64_t>(pieces)), knobs_at(m), {}, 0, st);
+                ++pieces;
+                ledger.add(r, grad_cost);
+                any = any || r.evaluations > 0;
+                if (r.variables.empty()) continue;
+                started[m] = 1;
+                x[m] = r.variables[0];
+                E[m] = r.objectives[0][0];
+                if (!has[m] || r.objectives[0][0] < best[m].objectives[0][0]) {
+                    best[m] = r;
+                    has[m] = 1;
+                }
+            }
+            double now = std::numeric_limits<double>::infinity();
+            for (std::size_t m = 0; m < K; ++m)
+                if (has[m]) now = std::min(now, best[m].objectives[0][0]);
+            stop.step(now < best_f);
+            best_f = std::min(best_f, now);
+            if (every == 0 || !any) {
+                own = every == 0 ? "rule" : "idle";
+                break;
+            }
+            for (std::size_t m = 0; m + 1 < K && ledger.left(budget) > 1; ++m) {   // RL-3: the neighbours
+                if (!started[m] || !started[m + 1]) continue;
+                ++tried;
+                double delta;
+                Vec xa = x[m], xb = x[m + 1];
+                double Ea = E[m], Eb = E[m + 1];
+                if (over_param) {                                                        // RL-1
+                    xa = carried(Q[m + 1], Q[m], x[m + 1], lv[m + 1], lv[m]);
+                    xb = carried(Q[m], Q[m + 1], x[m], lv[m], lv[m + 1]);
+                    Ea = value(m, xa);
+                    Eb = value(m + 1, xb);
+                    delta = beta * (Ea + Eb - E[m] - E[m + 1]);
+                } else {
+                    delta = (1.0 / lv[m + 1] - 1.0 / lv[m]) * (E[m] - E[m + 1]);
+                    xa = x[m + 1];
+                    xb = x[m];
+                    Ea = E[m + 1];
+                    Eb = E[m];
+                }
+                const bool accept = !(delta > 0.0) || rnd::uniform01(rng) < dm::exp(-fs * delta);
+                if (accept) {
+                    x[m] = xa;
+                    x[m + 1] = xb;
+                    E[m] = Ea;
+                    E[m + 1] = Eb;
+                    ++swapped;
+                }
             }
         }
-        if (every == 0 || !any) break;
-        for (std::size_t m = 0; m + 1 < K && budget - spent > 1; ++m) {          // RL-3: the neighbours
-            if (!started[m] || !started[m + 1]) continue;
-            ++tried;
-            double delta;
-            Vec xa = x[m], xb = x[m + 1];
-            double Ea = E[m], Eb = E[m + 1];
-            if (over_param) {                                                        // RL-1
-                xa = carried(Q[m + 1], Q[m], x[m + 1], lv[m + 1], lv[m]);
-                xb = carried(Q[m], Q[m + 1], x[m], lv[m], lv[m + 1]);
-                Ea = value(m, xa);
-                Eb = value(m + 1, xb);
-                delta = beta * (Ea + Eb - E[m] - E[m + 1]);
-            } else {
-                delta = (1.0 / lv[m + 1] - 1.0 / lv[m]) * (E[m] - E[m + 1]);
-                xa = x[m + 1];
-                xb = x[m];
-                Ea = E[m + 1];
-                Eb = E[m];
-            }
-            const bool accept = !(delta > 0.0) || rnd::uniform01(rng) < dm::exp(-fs * delta);
-            if (accept) {
-                x[m] = xa;
-                x[m + 1] = xb;
-                E[m] = Ea;
-                E[m + 1] = Eb;
-                ++swapped;
-            }
-        }
+    } catch (const BudgetSpent&) {                    // the deadline at an exchange's evaluation (TIME-2)
+        own = "deadline";
     }
     std::size_t pick = K - 1;                                                        // RL-4
     if (!over_param)
         for (std::size_t m = 0; m < K; ++m)
             if (has[m] && (!has[pick] || best[m].objectives[0][0] < best[pick].objectives[0][0])) pick = m;
     Result out = best[pick];
-    out.evaluations = spent;
-    out.grad_calls = grads;
+    ledger.into(out);                                                                // the pieces' counts and costs
+    out.stopped_by = stop.stopped_by(own);
     out.ignored = k.ignored();
     std::string per = "[";
     for (std::size_t m = 0; m < K; ++m)
