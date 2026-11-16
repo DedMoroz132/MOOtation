@@ -300,6 +300,58 @@ int main()
         check(ratio < 40.0, "n = 3000 costs the solver less than 40 times n = 300 per evaluation (" +
                                 std::to_string(ratio) + ")");
     }
+    // ties of the breakpoints (LB-5; task 30, §30.11): in each group of four variables the k-th is
+    // the first's copy scaled by 2^k (f_i = d (x_i - 2^k c)^2, its box times 2^k, x0 = 0). Scaling
+    // by 2^k is exact, so x_i, g_i and their row of W stay 2^k times the first's, and the four
+    // breakpoints t = (x - u) / g are equal at every iteration while their rows differ: the order
+    // among equal t (by index) decides the sums. Every evaluation's bits as before LB-12, and the
+    // copies still exact at the end.
+    {
+        const std::size_t n = 400;
+        LB::Problem p;
+        p.n = n;
+        p.lo.assign(n, 0.0);
+        p.hi.assign(n, 0.0);
+        Vec d(n), c(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            const std::size_t grp = i / 4;
+            const double s = static_cast<double>(1u << (i % 4));
+            d[i] = 1.0 + static_cast<double>(grp * 37 % 101);
+            c[i] = s * (grp % 3 == 0 ? 1.5 : 0.1 + 0.3 * static_cast<double>(grp % 7) / 7.0);
+            p.lo[i] = -s;
+            p.hi[i] = s;
+        }
+        std::uint64_t trail = 1469598103934665603ull;
+        p.fg = [&](const Vec& x, Vec& g) {
+            double f = 0.0;
+            g.assign(n, 0.0);
+            for (std::size_t i = 0; i < n; ++i) {
+                const double r = x[i] - c[i];
+                f += d[i] * r * r;
+                g[i] = 2.0 * d[i] * r;
+            }
+            std::uint64_t b;
+            auto put = [&](double v) {
+                std::memcpy(&b, &v, sizeof b);
+                trail = (trail ^ b) * 1099511628211ull;
+            };
+            for (double v : x) put(v);
+            put(f);
+            for (double v : g) put(v);
+            return f;
+        };
+        LB::Options o;
+        o.pgtol = 1e-12;
+        o.max_nfev = 400;
+        const LB::Result r = LB::solve(p, Vec(n, 0.0), o);
+        bool copies = true;
+        for (std::size_t i = 0; i < n; ++i)
+            copies = copies && r.x[i] == static_cast<double>(1u << (i % 4)) * r.x[i - i % 4];
+        std::printf("      ties: n %zu, %lld iterations, %lld evaluations, f %.10g, trail %016llx\n", n, r.iterations,
+                    r.nfev, r.f, static_cast<unsigned long long>(trail));
+        check(copies, "ties: the scaled copies are exact at the end (their breakpoints tied throughout)");
+        check(trail == 0x4351b7cba0052808ull, "ties: every evaluation's x, f, g as before LB-12 (on every platform)");
+    }
     std::printf(g_failed ? "FAILED\n" : "all passed\n");
     return g_failed ? 1 : 0;
 }
