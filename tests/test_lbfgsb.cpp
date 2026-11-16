@@ -9,7 +9,8 @@
 // gradient vanishes (BLNZ (6.1)); a checksum of the MGH runs, the same bits
 // on every platform (dm:: in the problems, + - * / sqrt in the solver); at
 // n = 300 in a box, m = 5, 12, 20: the cost per iteration against m (LB-11)
-// and the runs' bits.
+// and the runs' bits; at n = 300 and 3000 the solver's own cost per
+// evaluation against n (LB-12) and every evaluation's bits.
 // ============================================================================
 
 #include <algorithm>
@@ -223,6 +224,81 @@ int main()
             check(ratio < 30.0, std::string("n = 300: m = 20 costs less than 30 times m = 5 per iteration (") +
                                     (which == 0 ? "rosenbrock" : "quadratic") + ", " + std::to_string(ratio) + ")");
         }
+    }
+    // speed (task 30, §30.11; LB-12): the solver's own time per evaluation (the problem's
+    // taken out) at n = 3000 against n = 300, m = 5, the quadratic above in [-1, 1]: some 11
+    // times, linear in n (before LB-12 as well, at some 2.5 times the cost); a growth as n^2
+    // would give some 100. And the runs' bits: every evaluation's x, f and g, as before LB-12
+    {
+        auto quad = [](const Vec& x, Vec& g) {
+            const std::size_t k = x.size();
+            double f = 0.0;
+            g.assign(k, 0.0);
+            for (std::size_t i = 0; i < k; ++i) {
+                const double d = 1.0 + 1e4 * static_cast<double>(i * 37 % k) / static_cast<double>(k);
+                const double c = (i % 3 == 0) ? 1.5 : 0.3 * static_cast<double>(i % 7) / 7.0;
+                const double r = x[i] - c;
+                f += d * r * r;
+                g[i] += 2.0 * d * r;
+                if (i + 1 < k) {
+                    const double e = x[i] - x[i + 1];
+                    f += 10.0 * e * e;
+                    g[i] += 20.0 * e;
+                    g[i + 1] -= 20.0 * e;
+                }
+            }
+            return f;
+        };
+        using clock = std::chrono::steady_clock;
+        std::uint64_t trail = 1469598103934665603ull;
+        double own[2] = {};
+        const std::size_t sizes[] = {300, 3000};
+        for (int a = 0; a < 2; ++a) {
+            const std::size_t n = sizes[a];
+            LB::Problem p;
+            p.n = n;
+            p.lo.assign(n, -1.0);
+            p.hi.assign(n, 1.0);
+            double fg_seconds = 0.0;
+            bool on_trail = false;
+            p.fg = [&](const Vec& x, Vec& g) {
+                const auto t0 = clock::now();
+                const double f = quad(x, g);
+                fg_seconds += std::chrono::duration<double>(clock::now() - t0).count();
+                if (on_trail) {
+                    std::uint64_t b;
+                    auto put = [&](double v) {
+                        std::memcpy(&b, &v, sizeof b);
+                        trail = (trail ^ b) * 1099511628211ull;
+                    };
+                    for (double v : x) put(v);
+                    put(f);
+                    for (double v : g) put(v);
+                }
+                return f;
+            };
+            LB::Options o;
+            o.pgtol = 1e-12;
+            o.max_nfev = 600;
+            LB::Result r;
+            double best = 1e300;
+            for (int rep = 0; rep < 3; ++rep) {        // the least of three against the machine's noise
+                fg_seconds = 0.0;
+                const auto t0 = clock::now();
+                r = LB::solve(p, Vec(n, 0.0), o);
+                best = std::min(best, std::chrono::duration<double>(clock::now() - t0).count() - fg_seconds);
+            }
+            own[a] = best / static_cast<double>(std::max(r.nfev, 1LL));
+            on_trail = true;
+            LB::solve(p, Vec(n, 0.0), o);
+            std::printf("      n %4zu quadratic m 5: %lld iterations, %lld evaluations, %.1f us of the solver's own per evaluation\n",
+                        n, r.iterations, r.nfev, 1e6 * own[a]);
+        }
+        std::printf("      n 300 and 3000 trail %016llx\n", static_cast<unsigned long long>(trail));
+        check(trail == 0x30c1a3b0a5bf8136ull, "n = 300 and 3000: every evaluation's x, f, g as before LB-12 (on every platform)");
+        const double ratio = own[1] / own[0];
+        check(ratio < 40.0, "n = 3000 costs the solver less than 40 times n = 300 per evaluation (" +
+                                std::to_string(ratio) + ")");
     }
     std::printf(g_failed ? "FAILED\n" : "all passed\n");
     return g_failed ? 1 : 0;

@@ -111,6 +111,14 @@ always listed under **Changed** or **Removed**.
   minima, `off` keeps none and drops the `minima` row from the settings;
   strategies that read their log (`minima_bayes`, `mlsl_stop = bayes`,
   `start_filter = oqnlp`) refuse a log that is not whole (STRAT-15).
+- Changed (task 30, §30.11): `lbfgsb` spends less of its own time per
+  evaluation. The Cauchy point takes its breakpoints from a heap instead of
+  sorting them all; a row of W is no longer a new vector per breakpoint and
+  per free variable; W^T A A^T W is formed by its upper half; the products
+  of the stored pairs are kept with them, a new pair forming only its row
+  and column (`scalar/lbfgsb.hpp`, LB-5, LB-11, LB-12). Every run is bit for
+  bit as before. `test_lbfgsb` times n = 300 and 3000 and checks every
+  evaluation's x, f and g.
 - Fixed (task 30, §30.4): `lbfgsb`'s cost per iteration grew as m⁴ n with
   the memory m: forming the limited-memory matrices took the products of
   the stored pairs again inside their loops. Each product is now formed once

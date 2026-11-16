@@ -423,7 +423,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-506 items: 414 yes, 89 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+507 items: 415 yes, 89 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -588,13 +588,14 @@ Their readings, from every comment of each file (the first column the file's nam
 | `lbfgsb` | LB-2 | The free variables at x^c are those strictly between their bounds there (Algorithm CP's last lines leave the set to be read this way). | yes | `lbfgsb.hpp` |
 | `lbfgsb` | LB-3 | MN's "not a direction of strong descent": g^T d >= 0. | yes | `lbfgsb.hpp` |
 | `lbfgsb` | LB-4 | OURS: where even the truncated d is not a descent direction (B lost positive definiteness to rounding), the pairs are dropped and the iteration made again with B = I. | yes | `lbfgsb.hpp` |
-| `lbfgsb` | LB-5 | OURS: the breakpoints are sorted (BLNZ use a heap: the same order; ties by index); m = 5 (BLNZ's Table 1, first column); a line search that ends without a lower f ends the run (BLNZ's F2); the point of the search is p... | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-5 | OURS: the breakpoints come from a heap, as BLNZ's (ties by index; only those the path passes are ordered); m = 5 (BLNZ's Table 1, first column); a line search that ends without a lower f ends the run (BLNZ's F2); the... | yes | `lbfgsb.hpp` |
 | `lbfgsb` | LB-7 | M of (3.4) by the Schur complement of -D, T = theta S^T S + L D^-1 L^T (positive definite: s_i^T y_i > 0), by Cholesky (the factorization of Byrd, Nocedal, Schnabel, BLNZ's [6]; | yes | `lbfgsb.hpp` |
 | `lbfgsb` | LB-8 | The subspace step's middle matrix is (I + theta Mbar Wbar^T A A^T Wbar)^-1 Mbar of (5.22), the form BLNZ used in their experiments (end of §5.3: "identical to" (5.10)'s (I - M W^T Z Z^T W / theta)^-1 M), with Mbar of... | yes | `lbfgsb.hpp` |
 | `lbfgsb` | LB-9 | x^c = x + t d is projected onto the box (the path is P(x - t g, l, u), (2.2)), and so is (5.9)'s point (feasible by (5.8)): their rounding crossed a bound (Penalty II in [0, 0.5]^4: the largest step along d came out -... | yes | `lbfgsb.hpp` |
 | `lbfgsb` | LB-10 | Not a departure, a note: where a pair is near (3.9)'s refusal (s^T y the difference of nearly equal terms), theta and the next step follow the last digits of the search's end point, which MT leave to the program (line... | yes | `lbfgsb.hpp` |
 | `lbfgsb` | LB-6 | OURS: the new point is the one the search accepts; where it stops short of (2.5)-(2.6) (its own limits), the trial with the lowest f. | yes | `lbfgsb.hpp` |
-| `lbfgsb` | LB-11 | Not a departure, a note on the cost (task 30, §30.4): M and Mbar take the k x k products S^T Y, S^T S, Y^T Y, each formed once per iteration (k^2 n). | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-11 | Not a departure, a note on the cost (task 30, §30.4): M and Mbar take the k x k products S^T Y, S^T S, Y^T Y, kept with the pairs: a new pair forms its row and column (k n), the others stay (task 30, §30.11; they were... | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-12 | Not a departure, a note on the cost (task 30, §30.11): an iteration costs O(m n), but for the m^2 terms BLNZ count too (Algorithm CP's per breakpoint passed, the subspace step's per variable at a bound). | yes | `lbfgsb.hpp` |
 | `line_search` | LS-1 | Unbracketed, case 4 takes the far end a_t + 4 (a_t - a_l) (MT give no interpolant there without a_u; | yes | `line_search.hpp` |
 | `line_search` | LS-6 | Unbracketed, case 3 takes the farther of alpha_c and alpha_s from a_t (the words: the closer, "to be cautious"), alpha_c being the far end where the cubic has no minimizer beyond a_t (the words: alpha_s); then (2.2)'s... | yes | `line_search.hpp` |
 | `line_search` | LS-3 | Before the switch to phi, psi stands in for phi in §4's cases only where the trial has a lower phi than a_l but not the sufficient decrease (phi_t <= phi_l, psi_t > 0), phi elsewhere (the words: psi until the switch). | yes | `line_search.hpp` |

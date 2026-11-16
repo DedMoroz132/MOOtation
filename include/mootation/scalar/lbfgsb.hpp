@@ -34,10 +34,11 @@
 //   LB-4. OURS: where even the truncated d is not a descent direction (B
 //     lost positive definiteness to rounding), the pairs are dropped and the
 //     iteration made again with B = I.
-//   LB-5. OURS: the breakpoints are sorted (BLNZ use a heap: the same order;
-//     ties by index); m = 5 (BLNZ's Table 1, first column); a line search
-//     that ends without a lower f ends the run (BLNZ's F2); the point of the
-//     search is projected onto the box against rounding; ftol (off by
+//   LB-5. OURS: the breakpoints come from a heap, as BLNZ's (ties by index;
+//     only those the path passes are ordered); m = 5 (BLNZ's Table 1, first
+//     column); a line search that ends without a lower f ends the run
+//     (BLNZ's F2); the point of the search is projected onto the box against
+//     rounding; ftol (off by
 //     default) stops where (f_k - f_k+1) / max(|f_k|, |f_k+1|, 1) <= ftol
 //     (the test Algorithm 778 has; that paper is not at hand); the forward
 //     difference gradient takes the relative step sqrt(eps) |x_j| (sqrt(eps)
@@ -66,11 +67,21 @@
 //   LB-6. OURS: the new point is the one the search accepts; where it stops
 //     short of (2.5)-(2.6) (its own limits), the trial with the lowest f.
 //   LB-11. Not a departure, a note on the cost (task 30, §30.4): M and Mbar
-//     take the k x k products S^T Y, S^T S, Y^T Y, each formed once per
-//     iteration (k^2 n). Their entries were formed again inside the loops of
-//     R^-1 and of R^-T (D + Y^T Y / theta) R^-1, k^3 n and k^4 n: at n = 300
-//     m = 12 took some 20 times m = 5 per iteration (test_lbfgsb). The same
-//     products in the same order: the same bits.
+//     take the k x k products S^T Y, S^T S, Y^T Y, kept with the pairs: a new
+//     pair forms its row and column (k n), the others stay (task 30, §30.11;
+//     they were formed again every iteration, k^2 n). Their entries were
+//     formed again inside the loops of R^-1 and of R^-T (D + Y^T Y / theta)
+//     R^-1, k^3 n and k^4 n: at n = 300 m = 12 took some 20 times m = 5 per
+//     iteration (test_lbfgsb). The same products in the same order: the
+//     same bits.
+//   LB-12. Not a departure, a note on the cost (task 30, §30.11): an
+//     iteration costs O(m n), but for the m^2 terms BLNZ count too
+//     (Algorithm CP's per breakpoint passed, the subspace step's per variable
+//     at a bound). The breakpoints were all sorted (n log n, most never
+//     passed), a row of W was a new vector per breakpoint and per free
+//     variable, and W^T A A^T W took both halves of the symmetric matrix.
+//     Each value is the same sum of the same products in the same order (x y
+//     = y x in IEEE arithmetic): the same bits.
 // ============================================================================
 
 #include <algorithm>
@@ -80,6 +91,7 @@
 #include <limits>
 #include <numeric>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include "../fp_contract.hpp"
@@ -152,6 +164,7 @@ struct Memory {
     double theta = 1.0;
     std::vector<double> M;                  // row by row
     std::vector<double> Mbar;               // (3.7)'s, for Wbar = [Y / theta, S] (LB-8)
+    std::vector<double> SY, SS, YY;         // S^T Y, S^T S, Y^T Y (k x k), entry (i, j) dot(row i, column j) (LB-11)
 
     std::size_t k() const { return S.size(); }
     // W^T v
@@ -170,25 +183,27 @@ struct Memory {
         }
         return r;
     }
-    Vec w_row(std::size_t b) const          // row b of W
+    static double dot(const Vec& a, const Vec& b)
+    {
+        double s = 0.0;
+        for (std::size_t i = 0; i < a.size(); ++i) s += a[i] * b[i];
+        return s;
+    }
+    void w_row(std::size_t b, Vec& r) const     // row b of W, into r (2k entries)
     {
         const std::size_t kk = k();
-        Vec r(2 * kk);
         for (std::size_t j = 0; j < kk; ++j) {
             r[j] = Y[j][b];
             r[kk + j] = theta * S[j][b];
         }
-        return r;
     }
-    Vec wbar_row(std::size_t b) const       // row b of Wbar = [Y / theta, S]
+    void wbar_row(std::size_t b, Vec& r) const  // row b of Wbar = [Y / theta, S], into r
     {
         const std::size_t kk = k();
-        Vec r(2 * kk);
         for (std::size_t j = 0; j < kk; ++j) {
             r[j] = Y[j][b] / theta;
             r[kk + j] = S[j][b];
         }
-        return r;
     }
     Vec mul_m(const Vec& v) const
     {
@@ -198,25 +213,44 @@ struct Memory {
             for (std::size_t j = 0; j < q; ++j) r[i] += M[i * q + j] * v[j];
         return r;
     }
+    // the pair (s, y) kept, the oldest dropped beyond m; S^T Y, S^T S, Y^T Y
+    // with them: the entries of the pairs kept stay, the new pair's row and
+    // column are formed (LB-11)
+    void add(Vec s, Vec y, std::size_t m)
+    {
+        const std::size_t k0 = k();
+        S.push_back(std::move(s));
+        Y.push_back(std::move(y));
+        const std::size_t drop = S.size() > m ? 1 : 0;
+        if (drop) {
+            S.erase(S.begin());
+            Y.erase(Y.begin());
+        }
+        const std::size_t kk = k();
+        std::vector<double> sy(kk * kk), ss(kk * kk), yy(kk * kk);
+        for (std::size_t i = 0; i < kk; ++i)
+            for (std::size_t j = 0; j < kk; ++j) {
+                if (i + 1 < kk && j + 1 < kk) {      // both pairs kept before: the entry stays
+                    const std::size_t a = (i + drop) * k0 + j + drop;
+                    sy[i * kk + j] = SY[a];
+                    ss[i * kk + j] = SS[a];
+                    yy[i * kk + j] = YY[a];
+                } else {
+                    sy[i * kk + j] = dot(S[i], Y[j]);
+                    ss[i * kk + j] = dot(S[i], S[j]);
+                    yy[i * kk + j] = dot(Y[i], Y[j]);
+                }
+            }
+        SY.swap(sy);
+        SS.swap(ss);
+        YY.swap(yy);
+    }
     // M = [[-D, L^T], [L, theta S^T S]]^-1 (BLNZ (3.4)-(3.6)) by its Schur
     // complement T = theta S^T S + L D^-1 L^T, positive definite (LB-7):
     // M = [[-D^-1 + D^-1 L^T T^-1 L D^-1, D^-1 L^T T^-1], [T^-1 L D^-1, T^-1]]
     void form()
     {
         const std::size_t kk = k(), q = 2 * kk;
-        auto dot = [](const Vec& a, const Vec& b) {
-            double s = 0.0;
-            for (std::size_t i = 0; i < a.size(); ++i) s += a[i] * b[i];
-            return s;
-        };
-        // S^T Y, S^T S, Y^T Y: each entry formed once (LB-11), entry (i, j) as dot(row i, column j)
-        std::vector<double> SY(kk * kk), SS(kk * kk), YY(kk * kk);
-        for (std::size_t i = 0; i < kk; ++i)
-            for (std::size_t j = 0; j < kk; ++j) {
-                SY[i * kk + j] = dot(S[i], Y[j]);
-                SS[i * kk + j] = dot(S[i], S[j]);
-                YY[i * kk + j] = dot(Y[i], Y[j]);
-            }
         Vec D(kk);
         std::vector<double> L(kk * kk, 0.0), T(kk * kk, 0.0);
         for (std::size_t i = 0; i < kk; ++i) {
@@ -313,10 +347,11 @@ inline Vec cauchy(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, cons
         else t[i] = kInf;
         d[i] = t[i] == 0.0 ? 0.0 : -g[i];
     }
-    std::vector<std::size_t> order;                   // F, by increasing t_i (LB-5)
+    std::vector<std::size_t> heap;                    // F, the least t_i on top, ties by index (LB-5)
     for (std::size_t i = 0; i < n; ++i)
-        if (t[i] > 0.0 && t[i] < kInf) order.push_back(i);
-    std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) { return t[a] < t[b]; });
+        if (t[i] > 0.0 && t[i] < kInf) heap.push_back(i);
+    auto later = [&](std::size_t a, std::size_t b) { return t[a] > t[b] || (t[a] == t[b] && a > b); };
+    std::make_heap(heap.begin(), heap.end(), later);
     Vec p = B.wt(d);
     c.assign(p.size(), 0.0);
     double fp = 0.0;
@@ -328,32 +363,39 @@ inline Vec cauchy(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, cons
     }
     double dtmin = fpp > 0.0 ? -fp / fpp : kInf;
     double told = 0.0;
-    std::size_t next = 0;
-    double tt = next < order.size() ? t[order[next]] : kInf;
+    double tt = heap.empty() ? kInf : t[heap.front()];
     double dt = tt - told;
-    while (dtmin >= dt && next < order.size()) {
-        const std::size_t b = order[next++];
+    const std::size_t q = p.size();
+    Vec wb(q);
+    while (dtmin >= dt && !heap.empty()) {
+        std::pop_heap(heap.begin(), heap.end(), later);
+        const std::size_t b = heap.back();
+        heap.pop_back();
         xc[b] = d[b] > 0.0 ? hi[b] : lo[b];
         const double zb = xc[b] - x[b];
-        for (std::size_t i = 0; i < c.size(); ++i) c[i] += dt * p[i];
+        for (std::size_t i = 0; i < q; ++i) c[i] += dt * p[i];
         const double gb = g[b];
-        const Vec wb = B.w_row(b);
-        double wMc = 0.0, wMp = 0.0, wMw = 0.0;
-        if (!wb.empty()) {
-            const Vec Mc = B.mul_m(c), Mp = B.mul_m(p), Mw = B.mul_m(wb);
-            for (std::size_t i = 0; i < wb.size(); ++i) {
-                wMc += wb[i] * Mc[i];
-                wMp += wb[i] * Mp[i];
-                wMw += wb[i] * Mw[i];
+        B.w_row(b, wb);
+        double wMc = 0.0, wMp = 0.0, wMw = 0.0;       // w_b^T M c, w_b^T M p, w_b^T M w_b
+        for (std::size_t i = 0; i < q; ++i) {         // entry i of M c, M p, M w_b, then into the sums
+            double mc = 0.0, mp = 0.0, mw = 0.0;
+            for (std::size_t j = 0; j < q; ++j) {
+                const double mij = B.M[i * q + j];
+                mc += mij * c[j];
+                mp += mij * p[j];
+                mw += mij * wb[j];
             }
+            wMc += wb[i] * mc;
+            wMp += wb[i] * mp;
+            wMw += wb[i] * mw;
         }
         fp = fp + dt * fpp + gb * gb + theta * gb * zb - gb * wMc;
         fpp = fpp - theta * gb * gb - 2.0 * gb * wMp - gb * gb * wMw;
-        for (std::size_t i = 0; i < p.size(); ++i) p[i] += gb * wb[i];
+        for (std::size_t i = 0; i < q; ++i) p[i] += gb * wb[i];
         d[b] = 0.0;
         dtmin = fpp > 0.0 ? -fp / fpp : kInf;
         told = tt;
-        tt = next < order.size() ? t[order[next]] : kInf;
+        tt = heap.empty() ? kInf : t[heap.front()];
         dt = tt - told;
     }
     dtmin = (std::max)(dtmin, 0.0);
@@ -377,12 +419,12 @@ inline Vec subspace(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, co
     if (Z.empty()) return xc;
     const std::size_t t = Z.size(), q = 2 * B.k();
     Vec Mc = q ? B.mul_m(c) : Vec();
-    Vec r(t);                                         // (5.4)
+    Vec r(t), wi(q);                                  // (5.4)
     for (std::size_t a = 0; a < t; ++a) {
         const std::size_t i = Z[a];
         double s = g[i] + theta * (xc[i] - x[i]);
         if (q) {
-            const Vec wi = B.w_row(i);
+            B.w_row(i, wi);
             for (std::size_t j = 0; j < q; ++j) s -= wi[j] * Mc[j];
         }
         r[a] = s;
@@ -390,18 +432,21 @@ inline Vec subspace(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, co
     Vec du(t);
     for (std::size_t a = 0; a < t; ++a) du[a] = -r[a] / theta;
     if (q) {                                          // (5.10), its middle matrix as BLNZ §5.3 (LB-8):
-        std::vector<Vec> U(t);                        // - (1/theta^2) Z^T W P W^T Z r,
-        for (std::size_t a = 0; a < t; ++a) U[a] = B.w_row(Z[a]);   // P = (I + theta Mbar Wbar^T A A^T Wbar)^-1 Mbar
-        Vec v(q, 0.0);
-        for (std::size_t a = 0; a < t; ++a)
-            for (std::size_t j = 0; j < q; ++j) v[j] += U[a][j] * r[a];
+        Vec v(q, 0.0);                                // - (1/theta^2) Z^T W P W^T Z r,
+        for (std::size_t a = 0; a < t; ++a) {         // P = (I + theta Mbar Wbar^T A A^T Wbar)^-1 Mbar
+            B.w_row(Z[a], wi);
+            for (std::size_t j = 0; j < q; ++j) v[j] += wi[j] * r[a];
+        }
         std::vector<double> WAAW(q * q, 0.0), Nb(q * q, 0.0);
+        Vec wb(q);
         for (std::size_t i = 0; i < n; ++i) {
             if (xc[i] > lo[i] && xc[i] < hi[i]) continue;   // the active set A at x^c
-            const Vec wb = B.wbar_row(i);
-            for (std::size_t a = 0; a < q; ++a)
-                for (std::size_t b = 0; b < q; ++b) WAAW[a * q + b] += wb[a] * wb[b];
+            B.wbar_row(i, wb);
+            for (std::size_t a = 0; a < q; ++a)       // the upper half (LB-12) ...
+                for (std::size_t b = a; b < q; ++b) WAAW[a * q + b] += wb[a] * wb[b];
         }
+        for (std::size_t a = 0; a < q; ++a)           // ... and the lower, the same sums
+            for (std::size_t b = 0; b < a; ++b) WAAW[a * q + b] = WAAW[b * q + a];
         for (std::size_t i = 0; i < q; ++i)
             for (std::size_t j = 0; j < q; ++j) {
                 double s = 0.0;
@@ -413,8 +458,9 @@ inline Vec subspace(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, co
             for (std::size_t j = 0; j < q; ++j) mv[i] += B.Mbar[i * q + j] * v[j];
         v = solve(Nb, mv);
         for (std::size_t a = 0; a < t; ++a) {
+            B.w_row(Z[a], wi);
             double s = 0.0;
-            for (std::size_t j = 0; j < q; ++j) s += U[a][j] * v[j];
+            for (std::size_t j = 0; j < q; ++j) s += wi[j] * v[j];
             du[a] -= s / (theta * theta);
         }
     }
@@ -550,12 +596,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
         f = ft;
         ++res.iterations;
         if (sy > 2.2e-16 * yy) {                      // BLNZ (3.9), step 6
-            B.S.push_back(s);
-            B.Y.push_back(y);
-            if (static_cast<int>(B.S.size()) > o.m) {
-                B.S.erase(B.S.begin());
-                B.Y.erase(B.Y.begin());
-            }
+            B.add(std::move(s), std::move(y), static_cast<std::size_t>(o.m));
             B.theta = yy / sy;                        // step 7
             B.form();
         }
