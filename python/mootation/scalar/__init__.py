@@ -98,7 +98,9 @@ points from the seed, the rows of the design `init` (designs.py), or the seed
 population.
 
 THE VERSION of these methods' trajectories is in every result's settings,
-method_version (_core.scalar.METHOD_VERSION): 6 since task 31 (17.11: every
+method_version (_core.scalar.METHOD_VERSION): 7 since task 31 (17.11: lbfgsb's
+Cauchy point, one product with M per breakpoint as cauchy.f, LB-13), 6 since
+task 31's layer 1 (17.11: every
 strategy's budget_units = budget, the gradient calls in its budget; these methods
 as in 5), 5 since task 30 (16.11: shrink's
 shrink_count = budget, the strategies' round_stop = target; these methods as in

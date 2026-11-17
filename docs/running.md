@@ -1461,7 +1461,8 @@ in C++ since task 17, stage 6, with the library's own SQP and Nelder–Mead): th
 algorithm `scalar` and its presets `eps_sqp`, `tch_sqp`, `nbi_sqp`,
 `nnc_sqp`, `eps_nm`, `eps_cmaes`; they need the compiled extension, not SciPy.
 `method_version` in the settings (meta) is the version of their trajectories:
-6 since task 31 (every strategy's `budget_units = budget`: the gradient
+7 since task 31 (lbfgsb's Cauchy point, one product with M per breakpoint,
+as cauchy.f), 6 since task 31 (every strategy's `budget_units = budget`: the gradient
 calls in its budget; these methods run as in 5), 5 since task 30 (shrink's `shrink_count = budget`, the strategies'
 `round_stop = target`; these methods run as in 4), 4 since
 `sqp_line_search = powell` became the default (3: `accept`), 2 since

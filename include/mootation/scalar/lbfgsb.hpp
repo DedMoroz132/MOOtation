@@ -82,6 +82,13 @@
 //     variable, and W^T A A^T W took both halves of the symmetric matrix.
 //     Each value is the same sum of the same products in the same order (x y
 //     = y x in IEEE arithmetic): the same bits.
+//   LB-13. Not a departure, a note (task 31, the owner's word of 17.11):
+//     Algorithm CP's w_b^T M c, w_b^T M p, w_b^T M w_b ((4.11)-(4.12), at a
+//     breakpoint passed) come from one product v = M w_b, then c^T v, p^T v,
+//     w_b^T v, as L-BFGS-B 3.0's cauchy.f takes them (bmv, then ddot): the
+//     same numbers in exact arithmetic (M is symmetric), q^2 + 3q operations
+//     where M c, M p and M w_b took 3 q^2. Since METHOD_VERSION 7; before,
+//     the three products and the sums over w_b gave other last digits.
 // ============================================================================
 
 #include <algorithm>
@@ -366,7 +373,7 @@ inline Vec cauchy(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, cons
     double tt = heap.empty() ? kInf : t[heap.front()];
     double dt = tt - told;
     const std::size_t q = p.size();
-    Vec wb(q);
+    Vec wb(q), v(q);
     while (dtmin >= dt && !heap.empty()) {
         std::pop_heap(heap.begin(), heap.end(), later);
         const std::size_t b = heap.back();
@@ -376,18 +383,16 @@ inline Vec cauchy(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, cons
         for (std::size_t i = 0; i < q; ++i) c[i] += dt * p[i];
         const double gb = g[b];
         B.w_row(b, wb);
+        for (std::size_t i = 0; i < q; ++i) {         // v = M w_b, one product (LB-13)
+            double s = 0.0;
+            for (std::size_t j = 0; j < q; ++j) s += B.M[i * q + j] * wb[j];
+            v[i] = s;
+        }
         double wMc = 0.0, wMp = 0.0, wMw = 0.0;       // w_b^T M c, w_b^T M p, w_b^T M w_b
-        for (std::size_t i = 0; i < q; ++i) {         // entry i of M c, M p, M w_b, then into the sums
-            double mc = 0.0, mp = 0.0, mw = 0.0;
-            for (std::size_t j = 0; j < q; ++j) {
-                const double mij = B.M[i * q + j];
-                mc += mij * c[j];
-                mp += mij * p[j];
-                mw += mij * wb[j];
-            }
-            wMc += wb[i] * mc;
-            wMp += wb[i] * mp;
-            wMw += wb[i] * mw;
+        for (std::size_t i = 0; i < q; ++i) {
+            wMc += c[i] * v[i];
+            wMp += p[i] * v[i];
+            wMw += wb[i] * v[i];
         }
         fp = fp + dt * fpp + gb * gb + theta * gb * zb - gb * wMc;
         fpp = fpp - theta * gb * gb - 2.0 * gb * wMp - gb * gb * wMw;

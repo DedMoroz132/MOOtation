@@ -155,7 +155,10 @@
 // task 31, layer 1: every strategy checks its budget by what it is spent by,
 // the gradient calls included (budget_units = budget, stop_rule.hpp STOP-1,
 // STOP-2; the owner's choice of 17.11): the strategies of several rounds on
-// a problem with a gradient change, the methods and the rest as in 5.
+// a problem with a gradient change, the methods and the rest as in 5; 7 —
+// task 31: lbfgsb's Cauchy point takes one product with M per breakpoint,
+// as cauchy.f (lbfgsb.hpp LB-13): lbfgsb's runs, and every strategy's with
+// lbfgsb inside, change in their last digits.
 // ============================================================================
 
 #include <algorithm>
@@ -197,7 +200,7 @@
 
 namespace mootation::scalar {
 
-inline constexpr int METHOD_VERSION = 6;
+inline constexpr int METHOD_VERSION = 7;
 
 // A knob as the caller gives it: a word or a number.
 struct Knob {

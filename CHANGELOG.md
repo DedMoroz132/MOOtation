@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Changed (task 31; the owner's word of 17.11, METHOD_VERSION 7): `lbfgsb`'s
+  Cauchy point takes w_b^T M c, w_b^T M p and w_b^T M w_b at a breakpoint
+  from one product v = M w_b, as L-BFGS-B 3.0's cauchy.f, instead of three
+  (`scalar/lbfgsb.hpp`, LB-13). The same mathematics in another summation
+  order: `lbfgsb`'s runs, and those of the strategies with it inside, differ
+  in their last digits. `test_lbfgsb`'s and `test_scalar`'s checksums new.
 - Fixed (task 31, layer 1; the owner's choice of 17.11): the headers compile
   after a plain `#include <windows.h>` (no `NOMINMAX`, no
   `WIN32_LEAN_AND_MEAN`): every call of `min` and `max` is in parentheses,

@@ -141,7 +141,8 @@ int main()
     check(g_hash == 0x8ae4a65d9e843c71ull, "the runs' bits as on every platform (dm:: and + - * / sqrt only)");
     // speed (task 30, §30.4; LB-11): n = 300 in a box, m = 5, 12, 20. From m = 5 to 20 the
     // time per iteration grew some 150 times (the k^4 n of M's forming), now some 7; the
-    // runs keep their bits (the checksum of the runs before LB-11)
+    // runs' bits: those before LB-11 (1281c1698fa2cdea) until METHOD_VERSION 7, then
+    // LB-13's (the Cauchy point's breakpoints by one product with M)
     {
         const std::size_t n = 300;
         auto rosen = [](const Vec& x, Vec& g) {        // extended Rosenbrock
@@ -218,7 +219,7 @@ int main()
                             which == 0 ? "rosenbrock" : "quadratic ", ms[a], r.iterations, r.nfev, 1e3 * per_it[which][a], r.f);
             }
         std::printf("      n 300 checksum %016llx\n", static_cast<unsigned long long>(hash));
-        check(hash == 0x1281c1698fa2cdeaull, "n = 300, m = 5, 12, 20: the runs' bits as before LB-11 (on every platform)");
+        check(hash == 0x0c56d1d5c4efbdd6ull, "n = 300, m = 5, 12, 20: the runs' bits, METHOD_VERSION 7 (on every platform)");
         for (int which = 0; which < 2; ++which) {
             const double ratio = per_it[which][2] / per_it[which][0];
             check(ratio < 30.0, std::string("n = 300: m = 20 costs less than 30 times m = 5 per iteration (") +
