@@ -10,6 +10,10 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Changed (task 31, layer 2)
+- `ga_sbx` and `ssga` with `ga_crossover = user` hand the crossover hook c1 and c2 of n values,
+  as `cluster_ga` does (the owner's choice of 18.11); a hook that writes them whole runs as before.
+
 ### Added (task 31, layer 2)
 - The move of the strategies over local minima as one piece (`scalar/moves.hpp`):
   `step = box | user | portfolio` for `basin_hopping`, `ils` and `pbh` (`user`: the

@@ -72,14 +72,15 @@
 //     the generation's placement; ga: after tell). The settings' operators
 //     row as CGA-7's: [name, kind, calls, taken, mean gain, P at the end].
 //   MOVE-6. The crossover hook's children (Problem::crossover and each of
-//     crossover_ops): what c1 and c2 hold when the hook is called is not the
-//     same everywhere — cluster_ga gives n zeros each; ga_sbx and ssga's
-//     ga_crossover = user (GA-9) the vectors as they are, empty at the first
-//     pair, the last pair's children after; their ga_crossover = ops n zeros
-//     (GA-12). A hook writes both whole: assigns n values (c1 = p1, then
-//     changes it), never indexes into what it was handed, nor appends. ga's
-//     user path is kept as it was (bit for bit); one rule for all is the
-//     owner's to decide.
+//     crossover_ops): every strategy hands c1 and c2 of n values each, zeros
+//     (cluster_ga; ga_sbx and ssga with ga_crossover = user or ops), and the
+//     hook writes all n of each (it may index them, or assign n values;
+//     it must not append). Before (the owner's choice of 18.11) ga's user
+//     crossover (GA-9) got the vectors as they were — empty at the first
+//     pair, the last pair's children after — so a hook that indexed them
+//     wrote past the end; a hook that wrote them whole runs as before, bit
+//     for bit (an appending hook was refused by GA-10 from the second pair
+//     on, and is now at the first).
 // ============================================================================
 
 #include <cstddef>

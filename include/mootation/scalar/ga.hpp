@@ -65,7 +65,8 @@
 //     variables, is not set at M = 1). o.block_mutation = 0 draws nothing.
 //   GA-9. The user's genome (task 24, §24.1.2; off by default: the builtin
 //     operators): ga_crossover = user calls Problem::crossover(p1, p2, c1,
-//     c2, rng) in SBX's place, ga_mutation = user Problem::mutate(c, rng) in
+//     c2, rng) in SBX's place (c1, c2 handed as n zeros, MOVE-6), ga_mutation
+//     = user Problem::mutate(c, rng) in
 //     the polynomial mutation's (each child, GA-3's order kept), ga_init =
 //     user Problem::sample(x, rng) for each member of the first population
 //     (the seeds of POP-7 then over its first rows); rng is the run's, drawn
@@ -91,8 +92,8 @@
 //     generator before the operator's own draws (none with one operator: one
 //     operator with op_select = fixed is ga_crossover / ga_mutation = user
 //     with it, bit for bit); a crossover operator gets c1, c2 of n values
-//     (zeros; cluster_ga gives n values too, the user crossover of GA-9 the
-//     vectors as they are); the rows are repaired and checked as GA-10's. A
+//     (zeros, as GA-9's hook and cluster_ga's; MOVE-6); the rows are
+//     repaired and checked as GA-10's. A
 //     child kept (GA-3) carries its record — its parents' f at the ask, its
 //     operators — and after tell it is taken where it survived the
 //     replacement (GA-2, or GA-3's worst of mu + 1); its operators are then
@@ -296,6 +297,8 @@ public:
                 guarded("crossover", u_.size(), [&] { o_.crossover_ops[q](p1, p2, c1, c2, rng_); });
                 xo = static_cast<long long>(q);
             } else if (o_.user_crossover) {                              // GA-9
+                c1.assign(lo_.size(), 0.0);                              // n values (MOVE-6)
+                c2.assign(lo_.size(), 0.0);
                 guarded("crossover", u_.size(), [&] { o_.user_crossover(p1, p2, c1, c2, rng_); });
                 xo = 0;
             } else cross(p1, p2, c1, c2, b_, o_, rng_);

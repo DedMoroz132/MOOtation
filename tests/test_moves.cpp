@@ -453,6 +453,31 @@ int main()
         }
     }
 
+    // ── MOVE-6: the crossover hook gets c1, c2 of n values in every strategy ─
+    {
+        auto sizes_ok = std::make_shared<bool>(true);
+        auto indexing = [sizes_ok](const Vec& p1, const Vec& p2, Vec& c1, Vec& c2, std::mt19937& g) {
+            *sizes_ok = *sizes_ok && c1.size() == p1.size() && c2.size() == p1.size();
+            if (c1.size() != p1.size() || c2.size() != p1.size()) throw std::runtime_error("c1, c2 not of n values");
+            for (std::size_t j = 0; j < p1.size(); ++j) {          // indexes them, as cluster_ga's hooks may
+                const bool first = u01(g) < 0.5;
+                c1[j] = first ? p1[j] : p2[j];
+                c2[j] = first ? p2[j] : p1[j];
+            }
+        };
+        sc::Problem I = R;
+        I.crossover = indexing;
+        for (const char* name : {"ga_sbx", "ssga"}) {
+            const sc::Knobs kn{{"np", number(20)}, {"ga_crossover", word("user")}};
+            const sc::Result a = run(name, I, 3000, kn, from), b = run(name, R, 3000, kn, from);
+            check(*sizes_ok && same(a, b),
+                  std::string(name) + ": ga_crossover = user hands c1, c2 of n values; a hook that indexes them = "
+                                      "one that assigns them whole, bit for bit");
+        }
+        const sc::Result c = run("cluster_ga", I, 3000, {{"inner", nm}, {"cga_pop", number(4)}, {"crossover", word("user")}}, from);
+        check(*sizes_ok && c.evaluations > 0, "cluster_ga: the same hook gets c1, c2 of n values");
+    }
+
     // ── the schedule of bh_temperature (STOP-7) ────────────────────────────
     {
         const sc::Knobs base{{"inner", nm}, {"bh_temperature", number(2.0)}};
