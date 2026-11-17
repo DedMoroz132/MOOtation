@@ -1419,3 +1419,4 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
 #include "reformulation.hpp"
 #include "replica.hpp"
 #include "catcma_run.hpp"
+#include "resumable_run.hpp"

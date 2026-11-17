@@ -112,6 +112,7 @@ set(MOOTATION_TESTS
     test_max_seconds
     test_stop_rule
     test_moves
+    test_resumable
     test_clocks
     test_windows_first)
 

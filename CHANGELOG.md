@@ -10,6 +10,12 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 31, layer 3)
+- The resumable run of a strategy (`scalar/resumable.hpp`): `start_resumable` with the arguments of
+  `scalar::run`, then `advance` by pieces of the budget or of steps, `members` and `admit`,
+  `best_points`, `operators` and `set_operators`, `best`, `summary`, `result`; the helpers of
+  `carry_points` (`takes_population`, `carry_start`, `split_budget`). Nothing runs differently.
+
 ### Changed (task 31, layer 2)
 - `ga_sbx` and `ssga` with `ga_crossover = user` hand the crossover hook c1 and c2 of n values,
   as `cluster_ga` does (the owner's choice of 18.11); a hook that writes them whole runs as before.

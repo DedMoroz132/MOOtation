@@ -269,6 +269,13 @@ struct Start {
     Vec ls_state;                    // the user's local search's state (task 24, §24.1.1)
 };
 
+}   // namespace mootation::scalar
+
+// the resumable run of a strategy (task 31, layer 3): its interface needs Result and Start
+#include "resumable.hpp"
+
+namespace mootation::scalar {
+
 // The names: the presets of `scalar`, then the methods beside it, then the
 // single-objective solvers (run_single, run_local, run_population), then the
 // strategies (strategy.hpp).

@@ -423,7 +423,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-518 items: 417 yes, 98 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `subproblems`.
+526 items: 417 yes, 106 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -753,6 +753,14 @@ Their readings, from every comment of each file (the first column the file's nam
 | `restarts` | RST-7 | A run's generator and its start mean come from start_seed(seed, k) (strategy.hpp, STRAT-1), k the run's number from 0; bipop draws λ_s and σ⁰ of a run of regime 2 from it before the start mean. | yes | `restarts.hpp` |
 | `restarts` | RST-8 | A run that evaluates nothing ends the strategy (ipop, bipop and bipop_2009): the budget, or the run's target (evaluator.hpp, THE TARGET), is spent, whatever regime 2's own allowance says, or every point the run asks f... | yes | `restarts.hpp` |
 | `restarts` | RST-9 | With warm_start = on (task 24, §24.4.1; off by default: x0 is ignored and reported, as before) x0 is the start mean of the first run only; the restarts draw theirs as before (the decision of 13.11: INJ-3 stays). | no: option | `restarts.hpp` |
+| `resumable` | RES-1 (only when asked: the resumable API) | A run cut into pieces is the run in one piece, bit for bit (its evaluations, its generator's draws, its answer and settings): a piece ends between two steps only, and every step is taken as in the one-call run — a rou... | no: option | `resumable.hpp` |
+| `resumable` | RES-2 (only when asked: the resumable API) | Piece::spend is in the budget's units (Evaluator::counted(), stop_rule.hpp STOP-1), from the call on; begin()'s spending is the first piece's. | no: option | `resumable.hpp` |
+| `resumable` | RES-3 (only when asked: the resumable API) | A member (Member) is x with its values as the giver's archive has them: f, the constraints' g, cv at the giver's tolerance. admit plants it in the receiver's archive (Evaluator::plant: known values, not evaluated, not... | no: option | `resumable.hpp` |
+| `resumable` | RES-4 (only when asked: the resumable API) | admit(in, Place): worst — each member in place of the worst of the members not admitted in this call; worst_if_better — the same, only where it is better (search.hpp SRCH-8: less violating, then lower f; cluster_ga: i... | no: option | `resumable.hpp` |
+| `resumable` | RES-5 (only when asked: the resumable API) | set_budget(b) between pieces: the run's budget is b from then on (Evaluator::budget). | no: option | `resumable.hpp` |
+| `resumable` | RES-6 (only when asked: the resumable API) | operators(): the move's strength where it adapts (has_step: basin_hopping's bh_step, SRCH-5) and the portfolios (portfolio.hpp, their P, Q and counts; on() false where the strategy has none). set_operators replaces wh... | no: option | `resumable.hpp` |
+| `resumable` | RES-7 | carry_points = N (the owner's knob of 17.11; off by default, and then the next run gets the one point of before): the next run (a shrink level, an ensemble member, the next strategy) gets the N best points — the run's... | no: option | `resumable.hpp` |
+| `resumable` | RES-8 (only when asked: the resumable API) | The problem: a run keeps a reference to P (Evaluator), so P outlives it; with max_seconds or time_clock in the knobs the run holds its own copy of P with the deadline (scalar.hpp TIME-1), as scalar::run does. | no: option | `resumable.hpp` |
 | `rgn` | RGN-1 | Step 1 evaluates r at theta_i again every iteration; here theta_i and its residuals come from the line search or the difference points, so no evaluation is repeated (the library's evaluator does not count a point twic... | yes | `rgn.hpp` |
 | `rgn` | RGN-2 | Every line search trial is an evaluation (the pseudocode adds 1 to N_Phi only for the accepted one). | yes | `rgn.hpp` |
 | `rgn` | RGN-3 | The expected reduction of B2, delta^T g + 1/2 delta^T H delta, is taken for the projected step (Appendix A writes it for delta_rdc before the projection of step 7); | yes | `rgn.hpp` |
