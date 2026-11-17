@@ -2557,7 +2557,8 @@ inline Result run_named(const std::string& name, const Problem& P, double eq_tol
 // every method and strategy here, sets the run's deadline (Problem::
 // deadline) at s seconds of the run's clock after the run's start;
 // time_clock = wall | unbiased | cpu (task 31, layer 1; clocks.hpp; wall by
-// default, the steady clock of before) is that clock.
+// default, the steady clock of before) is that clock; unbiased on Windows
+// before 10 moves by the system timer's tick (clocks.hpp CLOCK-4).
 //   TIME-1 (only when asked: max_seconds). The deadline is absolute and goes with the problem: a strategy's
 //     starts (their views, their threads) and its inner runs keep the one
 //     deadline of the run, on its clock; a run inside a run with its own

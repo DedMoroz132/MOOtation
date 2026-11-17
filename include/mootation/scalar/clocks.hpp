@@ -7,7 +7,8 @@
 //   wall      a steady clock (std::chrono::steady_clock), as before: it goes
 //             on while the machine sleeps or hibernates;
 //   unbiased  the time the machine was awake: Windows'
-//             QueryUnbiasedInterruptTimePrecise, Linux's CLOCK_MONOTONIC
+//             QueryUnbiasedInterruptTimePrecise (Windows 10 and later; else
+//             QueryUnbiasedInterruptTime, CLOCK-4), Linux's CLOCK_MONOTONIC
 //             (it stops in a suspend), macOS's CLOCK_UPTIME_RAW;
 //   cpu       the processor time of the whole process, every thread's:
 //             Windows' GetProcessTimes (kernel and user), elsewhere
@@ -23,10 +24,17 @@
 //     job of a campaign in another thread) counts too.
 //   CLOCK-3. Off by default (time_clock = unbiased or cpu only). Windows'
 //     functions are declared here, not by <windows.h> (its macros min, max,
-//     near, far): with windows.h's own types, so that a program including
-//     both compiles. QueryUnbiasedInterruptTimePrecise is in Windows 10 and
-//     later, in mincore (named for the linker by a #pragma under MSVC; its
-//     kernel32.lib does not have it).
+//     near, far): with windows.h's own types (STRICT's HMODULE, FARPROC), so
+//     that a program including both compiles; all of them are kernel32.lib's,
+//     the default library, nothing else is linked.
+//   CLOCK-4. Off by default (time_clock = unbiased only).
+//     QueryUnbiasedInterruptTimePrecise is not in kernel32.lib (an api set's,
+//     Windows 10 and later): it is looked up once, at the first reading, in
+//     KernelBase.dll (which every process has loaded; kernel32.dll does not
+//     export it) by GetProcAddress, a function-local static (thread-safe).
+//     Where it is absent (before Windows 10) the clock is
+//     QueryUnbiasedInterruptTime, the system timer's tick (15.6 ms by
+//     default): a deadline then ends up to a tick late.
 // ============================================================================
 
 #include <chrono>
@@ -34,13 +42,20 @@
 #include <string>
 
 #if defined(_WIN32)
+// windows.h's declarations, its types spelt out (CLOCK-3): HANDLE void*,
+// LPFILETIME _FILETIME*, BOOL int, PULONGLONG unsigned long long*, HMODULE
+// HINSTANCE__* (STRICT), FARPROC INT_PTR (WINAPI*)(), INT_PTR __int64 on 64 bits
 struct _FILETIME;
+struct HINSTANCE__;
 extern "C" __declspec(dllimport) void* __stdcall GetCurrentProcess(void);
 extern "C" __declspec(dllimport) int __stdcall GetProcessTimes(void* process, _FILETIME* creation, _FILETIME* exit,
                                                                  _FILETIME* kernel, _FILETIME* user);
-extern "C" __declspec(dllimport) void __stdcall QueryUnbiasedInterruptTimePrecise(unsigned long long* time);
-#if defined(_MSC_VER)
-#pragma comment(lib, "mincore")
+extern "C" __declspec(dllimport) int __stdcall QueryUnbiasedInterruptTime(unsigned long long* time);
+extern "C" __declspec(dllimport) HINSTANCE__* __stdcall GetModuleHandleW(const wchar_t* name);
+#if defined(_WIN64)
+extern "C" __declspec(dllimport) long long(__stdcall* __stdcall GetProcAddress(HINSTANCE__* module, const char* name))();
+#else
+extern "C" __declspec(dllimport) int(__stdcall* __stdcall GetProcAddress(HINSTANCE__* module, const char* name))();
 #endif
 #else
 #include <time.h>
@@ -85,12 +100,29 @@ inline double cpu_seconds()
 #endif
 }
 
+#if defined(_WIN32)
+// QueryUnbiasedInterruptTimePrecise, looked up once; nullptr where the system has none (CLOCK-4)
+using UnbiasedClock = void(__stdcall*)(unsigned long long*);
+inline UnbiasedClock precise_unbiased_clock()
+{
+    static const UnbiasedClock f = []() -> UnbiasedClock {
+        HINSTANCE__* base = GetModuleHandleW(L"kernelbase.dll");
+        if (base == nullptr) return nullptr;
+        // through void (*)(), the type every function pointer may pass by
+        return reinterpret_cast<UnbiasedClock>(
+            reinterpret_cast<void (*)()>(GetProcAddress(base, "QueryUnbiasedInterruptTimePrecise")));
+    }();
+    return f;
+}
+#endif
+
 // the seconds the machine was awake
 inline double unbiased_seconds()
 {
 #if defined(_WIN32)
     unsigned long long t = 0;                                           // 100 ns
-    QueryUnbiasedInterruptTimePrecise(&t);
+    if (const UnbiasedClock f = precise_unbiased_clock()) f(&t);
+    else QueryUnbiasedInterruptTime(&t);                                // CLOCK-4: the timer's tick
     return static_cast<double>(t) * 1e-7;
 #else
     timespec t{};

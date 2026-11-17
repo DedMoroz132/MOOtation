@@ -423,7 +423,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-504 items: 414 yes, 87 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+505 items: 414 yes, 88 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -481,6 +481,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `clocks` | CLOCK-1 | Off by default (wall: the steady clock of before, the same call). | no: option | `clocks.hpp` |
 | `clocks` | CLOCK-2 | Off by default (time_clock = cpu only). cpu counts every thread of the process: a strategy on threads > 1 spends it faster than the wall clock, and work of the process outside the run (another job of a campaign in ano... | no: option | `clocks.hpp` |
 | `clocks` | CLOCK-3 | Off by default (time_clock = unbiased or cpu only). | no: option | `clocks.hpp` |
+| `clocks` | CLOCK-4 | Off by default (time_clock = unbiased only). | no: option | `clocks.hpp` |
 | `cluster_ga` | CGA-1 | The built-in cut and splice (DH95) needs the problem's first symmetry group to be of points (blocks of 2 or 3 coordinates): a random direction (uniform in the ball [-1, 1]^d, by rejection), each parent's points about... | yes | `cluster_ga.hpp` |
 | `cluster_ga` | CGA-2 | With one member there is no pair: every child is the member mutated (cga_mut_rate is not drawn). | yes | `cluster_ga.hpp` |
 | `cluster_ga` | CGA-3 | The draws per child: the parents (boltzmann: two uniforms; a parent drawn twice is kept, a child of one parent and itself), the crossover's, one uniform for the mutation's choice (not with one member), the mutation's... | yes | `cluster_ga.hpp` |

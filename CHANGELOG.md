@@ -40,7 +40,10 @@ always listed under **Changed** or **Removed**.
   unbiased | cpu` for `max_seconds` — the steady clock as before, the time
   the machine was awake, or the processor time of the process
   (scalar/clocks.hpp); with it the settings have `wall_seconds` and
-  `cpu_seconds` (`Result::cpu_seconds`).
+  `cpu_seconds` (`Result::cpu_seconds`). On Windows `unbiased` is
+  `QueryUnbiasedInterruptTimePrecise`, looked up at run time, else
+  `QueryUnbiasedInterruptTime` (the timer's tick); nothing beyond kernel32 is
+  linked.
 
 - Changed (task 29, tests only): `test_hvc` and `test_dss` check a part of
   their random sets on every push and all of them nightly (`--full`, ctest

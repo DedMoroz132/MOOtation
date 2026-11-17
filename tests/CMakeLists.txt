@@ -110,7 +110,8 @@ set(MOOTATION_TESTS
     test_ensembles
     test_continuous_symmetry
     test_max_seconds
-    test_stop_rule)
+    test_stop_rule
+    test_clocks)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)
