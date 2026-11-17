@@ -25,7 +25,8 @@
 // ils_accept = better (GLS07 §2.3), and the run is ils's bit for bit.
 //
 // Knobs: inner, pbh_K (10), pbh_step (0.1), step_units (box | absolute),
-// perturb (builtin | user), pbh_distance = fdiff (|f(X) - f(Y)|, GLS07's measure for Schwefel's
+// perturb (builtin | user), step (box | user | portfolio; PBH-7), op_select,
+// op_pmin, op_alpha, op_beta, pbh_distance = fdiff (|f(X) - f(Y)|, GLS07's measure for Schwefel's
 // function) | euclid (the Euclidean distance in the box normalized to [0,
 // 1]^n, the short way round a periodic coordinate) | aligned (distance_of,
 // hooks.hpp) | user (the problem's distance, PBH-6),
@@ -53,6 +54,13 @@
 //     §24.1.3) and refuses a problem without one; perturb = user the
 //     problem's perturb hook, its result clipped or wrapped as SRCH-19 (the
 //     draws of PBH-4 then are the hook's and the one extra uniform).
+//   PBH-7. Off by default. step = box | user | portfolio (task 31, layer 2; moves.hpp
+//     MOVE-1 ... MOVE-5; box by default, step 1's move): user the problem's
+//     mutate hook, portfolio its mutate_ops by op_select (op_pmin, op_alpha,
+//     op_beta), then pbh_step and step_units are not read. Each child keeps
+//     its member's f and its operator in its record; after step 2 the
+//     portfolio is rewarded and Problem::on_child told, child by child in
+//     the members' order (taken: it replaced a member).
 // ============================================================================
 
 #include <algorithm>
@@ -102,15 +110,21 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
     using namespace strategy;
     StrategyKnobs k("pbh", knobs,
                     {"inner", "pbh_K", "pbh_step", "step_units", "pbh_distance", "pbh_dcut", "pbh_dcut_anneal",
-                     "pbh_maxstep", "threads", "start_budget", "min_dist", "min_df", "keep_points", "perturb"});
+                     "pbh_maxstep", "threads", "start_budget", "min_dist", "min_df", "keep_points", "perturb",
+                     "step", "op_select", "op_pmin", "op_alpha", "op_beta"});                 // task 31, layer 2
     const Inner inner = k.inner("inner");
     const long long K = k.whole("pbh_K", 10, 1), threads = k.whole("threads", 1, 1);
-    const double step = k.number("pbh_step", 0.1);
-    const bool absolute = k.word("step_units", "box", {"box", "absolute"}) == "absolute";
+    // MOVE-1: the step's knobs only where the move has a strength (step = box, the default)
+    const Knob* step_knob = k.find("step");
+    const bool scaled = step_knob == nullptr || (step_knob->is_word && step_knob->word == "box");
+    const double step = scaled ? k.number("pbh_step", 0.1) : 0.1;
+    const bool absolute = scaled && k.word("step_units", "box", {"box", "absolute"}) == "absolute";
     const std::string dist = k.word("pbh_distance", "fdiff", {"fdiff", "euclid", "aligned", "user"});
     const bool user_move = k.find("perturb") && k.word("perturb", "builtin", {"builtin", "user"}) == "user";
     if (dist == "user" && !P.distance) throw std::invalid_argument("pbh: pbh_distance = user needs the problem's distance hook");
     if (user_move && !P.perturb) throw std::invalid_argument("pbh: perturb = user needs the problem's perturb hook");
+    moves::Move mv = moves::step_of(k, P, "pbh", user_move);                         // the move (moves.hpp)
+    mv.absolute = absolute;
     const double dcut_c = k.number("pbh_dcut", 0.0);
     const bool anneal = k.word("pbh_dcut_anneal", "off", {"off", "on"}) == "on";
     const long long maxstep = k.whole("pbh_maxstep", 0, 0);
@@ -176,37 +190,32 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
             const double before = ev.used();
             // 1. the children's starts (PBH-3, PBH-4)
             std::vector<StartSpec> kids;
+            std::vector<moves::Child> kid;                                           // MOVE-4: the children's records
             const long long first_kid = searches;
             for (long long p = 0; p < K; ++p) {
                 Vec y = pop[static_cast<std::size_t>(p)].x;
-                if (user_move) {                                                     // PBH-6, SRCH-19
-                    P.perturb(y, step, rng);
-                    if (y.size() != n) throw std::runtime_error("pbh: the perturb hook changed the point's length");
-                    for (std::size_t j = 0; j < n; ++j)
-                        y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
-                                                           : (std::min)(P.hi[j], (std::max)(P.lo[j], y[j]));
-                } else {
-                    for (std::size_t j = 0; j < n; ++j) {
-                        const double moved = y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step *
-                                                        (absolute ? 1.0 : search::width(P, j));
-                        y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(moved, P.lo[j], P.hi[j])
-                                                           : (std::min)(P.hi[j], (std::max)(P.lo[j], moved));
-                    }
-                }
+                const long long tag = mv.apply(P, y, step, rng, "pbh");              // PBH-6, SRCH-19, MOVE-2
+                if (tag >= 0 && mv.ops.on()) ++mv.ops.calls[static_cast<std::size_t>(tag)];   // MOVE-3
                 (void)rnd::uniform01(rng);                                           // PBH-4
                 kids.push_back(spec(search::at(y)));
+                moves::Child ch;
+                ch.mutation = tag;
+                ch.parents_f = {pop[static_cast<std::size_t>(p)].f};
+                kid.push_back(ch);
             }
             const std::vector<search::Found> Y = run_round(kids);
             ++iterations;
             stop.step(ev);
             // 2. placed one after the other (PBH-1, PBH-2, PBH-5)
             bool all = static_cast<long long>(Y.size()) == K;
+            std::vector<std::pair<std::size_t, bool>> placed;                        // MOVE-4: a child and its fate
             for (std::size_t p = 0; p < Y.size(); ++p) {
                 const search::Found& c = Y[p];
                 if (!c.ok) {
                     all = false;
                     continue;
                 }
+                placed.push_back({p, false});
                 ++steps;
                 log.add(c.x, c.f, first_kid + static_cast<long long>(p));
                 std::size_t nearby = 0, worst = 0;
@@ -223,8 +232,11 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
                 if (search::better(c, pop[target])) {
                     pop[target] = c;
                     ++accepted;
+                    placed.back().second = true;
                 }
             }
+            if (mv.ops.on() || P.on_child)                                           // MOVE-4, MOVE-5
+                for (const auto& pc : placed) moves::told(P, nullptr, &mv.ops, kid[pc.first], Y[pc.first].f, pc.second, rng);
             if (anneal && iterations <= 250 && iterations % 50 == 0) dcut *= 0.85;   // 2P-PBH*
             if (!all) break;
             idle = ev.used() == before ? idle + 1 : 0;
@@ -235,6 +247,7 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
                                                            {"accepted", std::to_string(accepted)},
                                                            {"iterations", std::to_string(iterations)}};
     if (std::isfinite(dcut)) extra.push_back({"pbh_dcut_end", detail::g_format(dcut)});
+    if (mv.ops.on()) extra.push_back({"operators", moves::operators_row(nullptr, &mv.ops)});       // MOVE-5
     return search::finish(ev, k, log, extra, stop.stopped_by(ev, idle >= 100 ? "idle" : "rule"));
 }
 

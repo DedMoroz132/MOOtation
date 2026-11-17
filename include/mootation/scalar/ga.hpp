@@ -83,6 +83,22 @@
 //     GA-10); a row that does not decode (valid = false) is not evaluated, costs
 //     nothing, and is told +inf in f and v (the worst), counted in
 //     Result::decode_invalid.
+//   GA-12. Off by default (task 31, layer 2; scalar/moves.hpp MOVE-2 ...
+//     MOVE-5). ga_crossover = ops, ga_mutation = ops: the problem's
+//     crossover_ops, mutate_ops as a portfolio (portfolio.hpp; op_select,
+//     op_pmin, op_alpha, op_beta), one operator chosen for each pair's
+//     crossover and each child's mutation by one uniform of the run's
+//     generator before the operator's own draws (none with one operator: one
+//     operator with op_select = fixed is ga_crossover / ga_mutation = user
+//     with it, bit for bit); a crossover operator gets c1, c2 of n values
+//     (zeros; cluster_ga gives n values too, the user crossover of GA-9 the
+//     vectors as they are); the rows are repaired and checked as GA-10's. A
+//     child kept (GA-3) carries its record — its parents' f at the ask, its
+//     operators — and after tell it is taken where it survived the
+//     replacement (GA-2, or GA-3's worst of mu + 1); its operators are then
+//     rewarded and Problem::on_child called, child by child in their order
+//     (MOVE-4; a crossover's calls count its children kept, so with ops on
+//     both the two portfolios' calls are equal).
 //   G3-1. PCX's index parent x_p is the best of the parents (best_centre, on
 //     by default: §3.2.1, "For a faster convergence, the best parent is
 //     always used"), not the operator's own pick "with equal probability"
@@ -122,6 +138,7 @@
 #include "../random.hpp"
 #include "evo.hpp"
 #include "genome.hpp"
+#include "portfolio.hpp"
 #include "symmetry.hpp"
 
 namespace mootation::scalar::ga {
@@ -151,6 +168,13 @@ struct Options {
     std::function<void(Vec&)> user_repair;
     bool clip = true;                   // repair = builtin after a user operator: clipped to the box
     std::function<Decoded(const Vec&)> decode;
+    // the portfolios of the user's operators (task 31, layer 2; GA-12): ga_crossover, ga_mutation =
+    // ops, each portfolio started by the caller with its operators' names and rule; the children's
+    // outcomes (moves.hpp MOVE-4)
+    std::vector<std::function<void(const Vec&, const Vec&, Vec&, Vec&, std::mt19937&)>> crossover_ops;
+    std::vector<std::function<void(Vec&, std::mt19937&)>> mutate_ops;
+    moves::Portfolio xport, mport;
+    OnChild on_child;
 };
 
 inline Options ga_sbx() { return Options{}; }
@@ -256,23 +280,45 @@ public:
             return u_;
         }
         u_.clear();
+        kids_.clear();
         Vec c1, c2;
         rnd::uniform_int_distribution<int> coin(0, 1);
         while (u_.size() < o_.lambda) {
-            const Vec& p1 = x_[tournament()];
-            const Vec& p2 = x_[tournament()];
-            if (o_.user_crossover)                                       // GA-9
+            const std::size_t i1 = tournament();
+            const std::size_t i2 = tournament();
+            const Vec& p1 = x_[i1];
+            const Vec& p2 = x_[i2];
+            long long xo = -1;                                           // GA-12: the crossover's tag
+            if (!o_.crossover_ops.empty()) {
+                const std::size_t q = o_.xport.pick(rng_);
+                c1.assign(lo_.size(), 0.0);                              // GA-12: n values, as cluster_ga's
+                c2.assign(lo_.size(), 0.0);
+                guarded("crossover", u_.size(), [&] { o_.crossover_ops[q](p1, p2, c1, c2, rng_); });
+                xo = static_cast<long long>(q);
+            } else if (o_.user_crossover) {                              // GA-9
                 guarded("crossover", u_.size(), [&] { o_.user_crossover(p1, p2, c1, c2, rng_); });
-            else cross(p1, p2, c1, c2, b_, o_, rng_);
+                xo = 0;
+            } else cross(p1, p2, c1, c2, b_, o_, rng_);
             const int keep = o_.coin ? coin(rng_) : -1;                  // GA-3
-            if (keep != 1) mutate(c1, u_.size());
-            if (keep != 0) mutate(c2, u_.size() + (keep != 1 ? 1 : 0));
-            if (keep != 1) u_.push_back(c1);
-            if (keep != 0 && u_.size() < o_.lambda) u_.push_back(c2);
+            long long m1 = -1, m2 = -1;
+            if (keep != 1) m1 = mutate(c1, u_.size());
+            if (keep != 0) m2 = mutate(c2, u_.size() + (keep != 1 ? 1 : 0));
+            if (keep != 1) {
+                u_.push_back(c1);
+                kid(i1, i2, xo, m1);
+            }
+            if (keep != 0 && u_.size() < o_.lambda) {
+                u_.push_back(c2);
+                kid(i1, i2, xo, m2);
+            }
         }
         prepare();
         return u_;
     }
+
+    // GA-12: the portfolios as they ended (calls, taken, P)
+    const moves::Portfolio& crossovers() const { return o_.xport; }
+    const moves::Portfolio& mutations() const { return o_.mport; }
 
     // GA-11: the rows of the last ask() that do not decode, not to be evaluated
     bool decoding() const { return static_cast<bool>(o_.decode); }
@@ -299,6 +345,7 @@ public:
                 f_[w] = f[0];
                 v_[w] = vv[0];
             }
+            outcomes(f, std::vector<char>{static_cast<char>(w < o_.mu)});              // GA-12
             return;
         }
         Rows x = x_;                                                     // GA-2
@@ -314,6 +361,12 @@ public:
             x_[i] = x[order[i]];
             f_[i] = ff[order[i]];
             v_[i] = vs[order[i]];
+        }
+        if (o_.on_child || o_.xport.on() || o_.mport.on()) {                    // GA-12: who survived
+            std::vector<char> in(u_.size(), 0);
+            for (std::size_t i = 0; i < o_.mu; ++i)
+                if (order[i] >= o_.mu) in[order[i] - o_.mu] = 1;
+            outcomes(f, in);
         }
     }
 
@@ -332,17 +385,47 @@ public:
     void migrate(const Vec& x, double f, double v) { evo::replace_worst(x_, f_, v_, x, f, v); }
 
 private:
-    void mutate(Vec& c, std::size_t k)
+    // the child's mutation; its tag (GA-12): the portfolio's index, 0 the mutate hook, -1 the builtin
+    long long mutate(Vec& c, std::size_t k)
     {
+        if (!o_.mutate_ops.empty()) {                                    // GA-12
+            const std::size_t q = o_.mport.pick(rng_);
+            guarded("mutate", k, [&] { o_.mutate_ops[q](c, rng_); });
+            return static_cast<long long>(q);
+        }
         if (o_.user_mutate) {                                            // GA-9
             guarded("mutate", k, [&] { o_.user_mutate(c, rng_); });
-            return;
+            return 0;
         }
         if (o_.mutation) ops::polynomial_mutation(c, b_, o_.eta_m, o_.pm, rng_);
         block_mutation(c, b_, o_, rng_);                                 // GA-8
+        return -1;
     }
 
-    bool user() const { return o_.user_crossover || o_.user_mutate || o_.user_sample; }
+    // GA-12: a child kept, its parents' f and its operators; the portfolios count it
+    void kid(std::size_t i1, std::size_t i2, long long xo, long long mo)
+    {
+        if (!o_.on_child && !o_.xport.on() && !o_.mport.on()) return;
+        moves::Child c;
+        c.crossover = xo;
+        c.mutation = mo;
+        c.parents_f = {f_[i1], f_[i2]};
+        if (xo >= 0 && o_.xport.on()) ++o_.xport.calls[static_cast<std::size_t>(xo)];
+        if (mo >= 0 && o_.mport.on()) ++o_.mport.calls[static_cast<std::size_t>(mo)];
+        kids_.push_back(std::move(c));
+    }
+
+    // GA-12: the children's outcomes in their order (in: survived the replacement)
+    void outcomes(const Vec& f, const std::vector<char>& in)
+    {
+        for (std::size_t k = 0; k < kids_.size() && k < f.size(); ++k)
+            moves::told(o_.on_child, &o_.xport, &o_.mport, kids_[k], f[k], in[k] != 0, rng_);
+    }
+
+    bool user() const
+    {
+        return o_.user_crossover || o_.user_mutate || o_.user_sample || !o_.crossover_ops.empty() || !o_.mutate_ops.empty();
+    }
 
     // GA-10: an exception of the user's hook, refused with the row's number
     // and generation (the budget's end passes through)
@@ -421,6 +504,7 @@ private:
     Rows x_, u_;
     Vec f_, v_;
     std::vector<char> invalid_;
+    std::vector<moves::Child> kids_;    // GA-12: the last ask()'s children, as u_
     long long gen_ = 0;
 };
 

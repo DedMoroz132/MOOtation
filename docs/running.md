@@ -2848,6 +2848,30 @@ returns to the current minimum, an equal minimum counts as refused, and the
 threshold grows without end. The run says so once (`mootation::warn`) and is
 otherwise unchanged; for a fixed step set `ladder_min = ladder_max` to the step.
 
+### The move, its operators and the children's outcomes
+
+`basin_hopping`, `ils` and `pbh` take `step = box | user | portfolio` (task 31,
+C++ only; `box`, the default, is the move of before): `user` moves the point by
+the problem's `mutate` hook, `portfolio` by one of its named `mutate_ops`,
+chosen by `op_select = fixed | probability_matching | adaptive_pursuit`
+(Thierens 2005; `op_pmin`, `op_alpha`, `op_beta`), the rule `cluster_ga` has
+had since task 30 (`mutation = ops`; `ga_sbx` and `ssga` take `ga_mutation =
+ops`, `ga_crossover = ops`). The hooks get no strength, so `basin_hopping`'s
+step adaptation and the strength ladder are off with them; a move that needs
+the adapted step as its scale is `perturb = user`, whose hook gets it.
+Each child carries the tag of the operators that made it, and the problem's
+`on_child(parents_f, child_f, tag)` is called once for each child whose
+outcome came back (after its local search; `tag.taken`: it entered the
+population, or the walk moved to it), on the run's thread and in the
+children's order, so 1 thread and N give the same calls. A portfolio is
+rewarded by the same outcome; the settings' `operators` row lists each
+operator's calls, children taken, mean gain and its final probability.
+`bh_temperature_schedule = geometric` with `bh_temperature_end` (and
+`ils_temperature_*` for `ils_accept = lsmc`) anneals the temperature from
+`bh_temperature` to the end value over the run's progress: the larger of the
+budget's share spent, the share of `max_steps` and the share of
+`max_seconds` gone.
+
 ### Choosing k of n points
 
 An archive reduced to N points, and so the hypervolume taken of it, depends

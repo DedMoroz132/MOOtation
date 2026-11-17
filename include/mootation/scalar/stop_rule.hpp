@@ -87,12 +87,30 @@
 //     deadline and clock; its run's evaluations and gradient calls go to the
 //     ledger: the user's subproblem of coevolution and lns evaluates outside
 //     the run's archive and was not counted at all before.
+//   STOP-7. Off by default (task 31, layer 2; knob_schedule given). The
+//     schedule of a numeric knob over the run, the first of them
+//     basin_hopping's bh_temperature and ils's ils_temperature (annealing of
+//     the one chain, task 30's §30.14): knob_schedule = const (the default:
+//     the knob's value throughout) | geometric, knob_end the value at the
+//     end: v(p) = v0 (v_end / v0)^p, v0 the knob's value, p the run's
+//     progress — the largest of the budget's share spent (counted(), STOP-1),
+//     the share of max_steps taken (where given) and the share of the time
+//     to the deadline gone (where the run has max_seconds), at most 1;
+//     knob_end alone, without knob_schedule, is not read. The value is
+//     taken where the strategy uses it (the walk: at each step's
+//     acceptance). With a deadline the progress is the clock's, so the run
+//     depends on the machine's speed, as where it ends already does; a run
+//     to be repeated anneals by the budget or by max_steps.
 // ============================================================================
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
+#include <stdexcept>
 #include <string>
 
+#include "../detmath.hpp"
 #include "evaluator.hpp"
 
 namespace mootation::scalar {
@@ -161,6 +179,46 @@ private:
         return false;
     }
 };
+
+// THE SCHEDULE of a numeric knob over the run (task 31, layer 2; STOP-7):
+// const (the knob's value throughout) or geometric, v0 (v_end / v0)^p at the
+// run's progress p
+struct Schedule {
+    bool geometric = false;
+    double v0 = 0.0, v_end = 0.0;
+    double t0 = 0.0;                  // the run's start on its clock (with a deadline)
+
+    // STOP-7: the largest of the shares of the budget, of max_steps and of
+    // the time to the deadline used so far, at most 1
+    double at(const Evaluator& ev, const StopRule& stop) const
+    {
+        double p = ev.budget > 0 ? ev.counted() / static_cast<double>(ev.budget) : 0.0;
+        if (stop.max_steps > 0)
+            p = (std::max)(p, static_cast<double>(stop.steps()) / static_cast<double>(stop.max_steps));
+        if (ev.P.deadline < std::numeric_limits<double>::infinity() && ev.P.deadline > t0)
+            p = (std::max)(p, (clock_seconds(ev.P.time_clock) - t0) / (ev.P.deadline - t0));
+        p = (std::min)(1.0, (std::max)(0.0, p));
+        return v0 * dm::pow(v_end / v0, p);
+    }
+};
+
+// knob_schedule = const | geometric and knob_end of the knob whose value is
+// v0, where given (STOP-7); the settings list them only where given
+template <class Knobs_>
+Schedule schedule_of(Knobs_& k, const std::string& who, const std::string& knob, double v0, const Evaluator& ev)
+{
+    Schedule s;
+    s.v0 = s.v_end = v0;
+    if (!k.given(knob + "_schedule")) return s;
+    s.geometric = k.word(knob + "_schedule", "const", {"const", "geometric"}) == "geometric";
+    if (!s.geometric) return s;
+    s.v_end = k.number(knob + "_end", v0);
+    if (!(v0 > 0.0 && s.v_end > 0.0 && std::isfinite(s.v_end)))
+        throw std::invalid_argument(who + ": " + knob + "_schedule = geometric needs " + knob + " and " + knob +
+                                    "_end > 0");
+    if (ev.P.deadline < std::numeric_limits<double>::infinity()) s.t0 = clock_seconds(ev.P.time_clock);
+    return s;
+}
 
 // THE LEDGER of a strategy whose runs have evaluators of their own: every
 // run's counts and costs, and what its budget is checked by (STOP-1, STOP-2)

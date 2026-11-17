@@ -191,6 +191,7 @@
 #include "lm.hpp"
 #include "lshade.hpp"
 #include "mosqp.hpp"
+#include "moves.hpp"
 #include "population.hpp"
 #include "pso.hpp"
 #include "sep_cmaes.hpp"
@@ -2195,7 +2196,8 @@ inline std::vector<std::string> population_knobs(const std::string& name)
         k.insert(k.end(), {"shade_h", "lshade_p", "lshade_r_arc", "lshade_n_min", "lshade_max_nfe", "sym"});
     else if (name == "ga_sbx" || name == "ssga")
         k.insert(k.end(), {"pc", "eta_c", "pm", "eta_m", "ga_tournament", "sym", "ga_block_uniform", "ga_block_mutation",
-                           "ga_crossover", "ga_mutation", "ga_repair", "ga_init"});
+                           "ga_crossover", "ga_mutation", "ga_repair", "ga_init", "op_select", "op_pmin", "op_alpha",
+                           "op_beta"});
     else if (name == "g3_pcx") k.insert(k.end(), {"g3_mu", "g3_lambda", "g3_sigma", "bound_repair"});
     else if (name == "chc") k.insert(k.end(), {"chc_divergence", "blx_alpha", "chc_bits", "bound_repair"});
     else if (name == "pso") k.insert(k.end(), {"pso_phi", "kappa", "pso_topology", "pso_v0", "bound_repair", "sym"});
@@ -2441,14 +2443,38 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             auto user = [&](const char* knob, const std::vector<std::string>& words) {
                 return k.given(knob) && k.word(knob, "builtin", words) == "user";
             };
-            if (user("ga_crossover", {"builtin", "user"})) {
+            // ... or a portfolio of them (task 31, layer 2; ga.hpp GA-12)
+            auto how = [&](const char* knob) {
+                return k.given(knob) ? k.word(knob, "builtin", {"builtin", "user", "ops"}) : std::string("builtin");
+            };
+            const std::string x_how = how("ga_crossover"), m_how = how("ga_mutation");
+            if (x_how == "user") {
                 if (!P.crossover) throw std::invalid_argument(name + ": ga_crossover = user: the problem gives no crossover");
                 o.user_crossover = P.crossover;
             }
-            if (user("ga_mutation", {"builtin", "user"})) {
+            if (m_how == "user") {
                 if (!P.mutate) throw std::invalid_argument(name + ": ga_mutation = user: the problem gives no mutate");
                 o.user_mutate = P.mutate;
             }
+            if (x_how == "ops" || m_how == "ops") {                                      // GA-12
+                if (x_how == "ops" && P.crossover_ops.empty())
+                    throw std::invalid_argument(name + ": ga_crossover = ops: the problem gives no crossover_ops");
+                if (m_how == "ops" && P.mutate_ops.empty())
+                    throw std::invalid_argument(name + ": ga_mutation = ops: the problem gives no mutate_ops");
+                double alpha = 0.8, beta = 0.8;
+                const int rule = moves::rule_of(k, name, alpha, beta);
+                if (x_how == "ops") {
+                    for (const auto& op : P.crossover_ops) o.crossover_ops.push_back(op.second);
+                    o.xport.start(moves::names_of(P.crossover_ops), rule,
+                                  moves::pmin_of(k, name, rule, P.crossover_ops.size()), alpha, beta);
+                }
+                if (m_how == "ops") {
+                    for (const auto& op : P.mutate_ops) o.mutate_ops.push_back(op.second);
+                    o.mport.start(moves::names_of(P.mutate_ops), rule, moves::pmin_of(k, name, rule, P.mutate_ops.size()),
+                                  alpha, beta);
+                }
+            }
+            o.on_child = P.on_child;                                                     // MOVE-4
             if (user("ga_init", {"builtin", "user"})) {
                 if (!P.sample) throw std::invalid_argument(name + ": ga_init = user: the problem gives no sample");
                 o.user_sample = P.sample;
@@ -2461,11 +2487,21 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             }
             o.clip = repair == "builtin";
             o.decode = P.decode;
-            if ((o.user_crossover || o.user_mutate) && (o.block_uniform > 0.0 || o.block_mutation > 0.0))
+            const bool ops_on = !o.crossover_ops.empty() || !o.mutate_ops.empty();
+            if ((o.user_crossover || o.user_mutate || ops_on) && (o.block_uniform > 0.0 || o.block_mutation > 0.0))
                 throw std::invalid_argument(name + ": the block operators are the builtin's (GA-7, GA-8), not with the user's");
             ga::GA m(lo, hi, o, rng);
             k.size(m.mu());
-            population::drive(m, ev, [&] { return m.done(); });
+            auto operators = [&] {                                                       // GA-12, MOVE-5
+                if (ops_on) k.settings.push_back({"operators", moves::operators_row(&m.crossovers(), &m.mutations())});
+            };
+            try {
+                population::drive(m, ev, [&] { return m.done(); });
+            } catch (const BudgetSpent&) {
+                operators();
+                throw;
+            }
+            operators();
         } else if (name == "g3_pcx") {
             ga::G3Options o;
             o.seeds = seeds;

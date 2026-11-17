@@ -171,6 +171,7 @@
 #include "clocks.hpp"
 #include "genome.hpp"
 #include "periodic.hpp"
+#include "portfolio.hpp"
 #include "improvements.hpp"
 #include "symmetry.hpp"
 
@@ -256,6 +257,8 @@ struct Problem {
     // THE USER'S GENOME (task 24, §24.1.2; ga.hpp GA-9 ... GA-11): operators
     // on the genome of fixed length for ga_sbx and ssga (ga_crossover,
     // ga_mutation, ga_repair, ga_init = user), and its decoding, written back
+    // crossover: c1 and c2 must be written whole, n values each (c1 = p1 first, then
+    // changed): what they hold on the call differs by strategy (moves.hpp MOVE-6)
     std::function<void(const Vec& p1, const Vec& p2, Vec& c1, Vec& c2, std::mt19937& rng)> crossover;
     std::function<void(Vec& x, std::mt19937& rng)> mutate;
     // cluster_ga's portfolios of named operators (task 30, §30.7; cluster_ga.hpp
@@ -263,6 +266,11 @@ struct Problem {
     std::vector<std::pair<std::string, std::function<void(const Vec& p1, const Vec& p2, Vec& c1, Vec& c2,
                                                           std::mt19937& rng)>>> crossover_ops;
     std::vector<std::pair<std::string, std::function<void(Vec& x, std::mt19937& rng)>>> mutate_ops;
+    // THE CHILD'S OUTCOME (task 31, layer 2; moves.hpp MOVE-4; off by
+    // default): called by the library, on the run's thread and in the
+    // children's order, with every child's outcome — its parents' f, its own
+    // (after its local search), its tag (portfolio.hpp ChildTag)
+    OnChild on_child;
     std::function<void(Vec& x)> repair;
     std::function<Decoded(const Vec& x)> decode;
     std::function<void(Vec& x, std::mt19937& rng)> sample;     // x arrives with n values

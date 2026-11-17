@@ -159,7 +159,12 @@
 //     = worst_if_better only. In the settings, operators: each operator's
 //     [name, kind, calls, children taken, mean of the better parent's f -
 //     the child's f over its children that came back, P at the end]; the
-//     crossovers' calls add up to the run's crossings.
+//     crossovers' calls add up to the run's crossings. Since task 31's layer
+//     2 the portfolio is every strategy's (portfolio.hpp), the move is
+//     moves.hpp's (mutation = builtin | user | ops are its box | user |
+//     portfolio) and every child's outcome goes to Problem::on_child
+//     (MOVE-4), in every cga_replace; the runs are those of before, bit for
+//     bit.
 //   Not here: the pool mode, the
 //   stagnation trigger of mutation, the predator, the outlier parents of
 //   Jørgensen et al. and USPEX's antiseeds; Wolf and Landman's two-stage
@@ -233,75 +238,9 @@ inline Vec cut_and_splice(const Problem& P, const symmetry::Blocks& g, const Vec
     return child;
 }
 
-// A portfolio of operators and its allocation rule (CGA-7; D. Thierens, "An
-// adaptive pursuit strategy for allocating operator probabilities", GECCO
-// 2005, §2-3): fixed, probability matching (2), adaptive pursuit (3)-(5)
-struct Portfolio {
-    std::vector<std::string> names;
-    std::vector<double> P, Q;                 // the probabilities, the running estimates of the reward
-    std::vector<long long> calls, taken;      // applications; children that entered the population
-    std::vector<double> gain;                 // the sum of (the better parent's f - the child's f)
-    std::vector<long long> scored;            // the children whose f came back
-    int rule = 0;                             // 0 fixed, 1 probability matching, 2 adaptive pursuit
-    double pmin = 0.0, alpha = 0.8, beta = 0.8;
-
-    void start(std::vector<std::string> ns, int r, double p_min, double a, double b)
-    {
-        names = std::move(ns);
-        const std::size_t K = names.size();
-        P.assign(K, 1.0 / static_cast<double>(K));   // the algorithms' line 2: P(i) = 1/K, Q(i) = 1.0
-        Q.assign(K, 1.0);
-        calls.assign(K, 0);
-        taken.assign(K, 0);
-        gain.assign(K, 0.0);
-        scored.assign(K, 0);
-        rule = r;
-        pmin = p_min;
-        alpha = a;
-        beta = b;
-    }
-
-    // ProportionalSelectOperator(P): one uniform of g, none with one operator
-    std::size_t pick(std::mt19937& g) const
-    {
-        if (P.size() == 1) return 0;
-        const double u = rnd::uniform01(g);
-        double s = 0.0;
-        for (std::size_t q = 0; q + 1 < P.size(); ++q) {
-            s += P[q];
-            if (u < s) return q;
-        }
-        return P.size() - 1;
-    }
-
-    // the reward R of operator a: Q by (1), then P by (2) or (3)-(5); ties
-    // of the best Q broken at random, by one uniform of g (CGA-7)
-    void reward(std::size_t a, double R, std::mt19937& g)
-    {
-        if (rule == 0) return;
-        const std::size_t K = P.size();
-        Q[a] = Q[a] + alpha * (R - Q[a]);
-        if (rule == 1) {
-            double sum = 0.0;
-            for (double q : Q) sum += q;
-            for (std::size_t i = 0; i < K; ++i)
-                P[i] = sum > 0.0 ? pmin + (1.0 - static_cast<double>(K) * pmin) * Q[i] / sum : 1.0 / static_cast<double>(K);
-            return;
-        }
-        double top = Q[0];
-        for (double q : Q) top = (std::max)(top, q);
-        std::vector<std::size_t> best;
-        for (std::size_t i = 0; i < K; ++i)
-            if (Q[i] == top) best.push_back(i);
-        const std::size_t star =
-            best.size() == 1 ? best[0]
-                             : best[(std::min)(best.size() - 1,
-                                             static_cast<std::size_t>(rnd::uniform01(g) * static_cast<double>(best.size())))];
-        const double pmax = 1.0 - static_cast<double>(K - 1) * pmin;                     // (5)
-        for (std::size_t i = 0; i < K; ++i)
-            P[i] = i == star ? P[i] + beta * (pmax - P[i]) : P[i] + beta * (pmin - P[i]);   // (3), (4)
-    }
-};
+// the operator portfolio of CGA-7, now every strategy's (task 31, layer 2;
+// portfolio.hpp)
+using Portfolio = moves::Portfolio;
 
 }   // namespace cga
 
@@ -342,33 +281,23 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
     if (user_m && !P.mutate) throw std::invalid_argument("cluster_ga: mutation = user needs the mutate hook");
     if (ops_x && P.crossover_ops.empty()) throw std::invalid_argument("cluster_ga: crossover = ops needs crossover_ops");
     if (ops_m && P.mutate_ops.empty()) throw std::invalid_argument("cluster_ga: mutation = ops needs mutate_ops");
-    cga::Portfolio xport, mport;                                                     // CGA-7
+    moves::Move mv;                                                                  // the move (moves.hpp)
+    mv.kind = user_m ? moves::Kind::user : ops_m ? moves::Kind::portfolio : moves::Kind::box;
+    cga::Portfolio xport;                                                            // CGA-7
+    cga::Portfolio& mport = mv.ops;
     if (ops_x || ops_m) {
         if (md || afpo) throw std::invalid_argument("cluster_ga: crossover or mutation = ops needs cga_replace = worst_if_better");
-        const std::string sel = k.find("op_select")
-                                    ? k.word("op_select", "fixed", {"fixed", "probability_matching", "adaptive_pursuit"})
-                                    : "fixed";
-        const int rule = sel == "fixed" ? 0 : sel == "probability_matching" ? 1 : 2;
-        const double alpha = rule ? k.number("op_alpha", 0.8) : 0.8, beta = rule == 2 ? k.number("op_beta", 0.8) : 0.8;
-        if (!(alpha > 0.0 && alpha <= 1.0) || !(beta > 0.0 && beta <= 1.0))
-            throw std::invalid_argument("cluster_ga: op_alpha and op_beta in (0, 1]");
-        auto names_of = [](const auto& ops) {
-            std::vector<std::string> v;
-            for (const auto& o : ops) v.push_back(o.first);
-            return v;
-        };
-        auto pmin_of = [&](std::size_t K_ops) {                                      // Thierens's 1/(2K)
-            const double p = rule && K_ops > 1 ? k.number("op_pmin", 0.5 / static_cast<double>(K_ops)) : 0.0;
-            if (rule && K_ops > 1 && !(p > 0.0 && p < 1.0 / static_cast<double>(K_ops)))
-                throw std::invalid_argument("cluster_ga: op_pmin in (0, 1/K) for K operators (Thierens, footnote 2)");
-            return p;
-        };
-        if (ops_x) xport.start(names_of(P.crossover_ops), rule, pmin_of(P.crossover_ops.size()), alpha, beta);
-        if (ops_m) mport.start(names_of(P.mutate_ops), rule, pmin_of(P.mutate_ops.size()), alpha, beta);
+        double alpha = 0.8, beta = 0.8;
+        const int rule = moves::rule_of(k, "cluster_ga", alpha, beta);
+        if (ops_x)
+            xport.start(moves::names_of(P.crossover_ops), rule,
+                        moves::pmin_of(k, "cluster_ga", rule, P.crossover_ops.size()), alpha, beta);
+        if (ops_m)
+            mport.start(moves::names_of(P.mutate_ops), rule, moves::pmin_of(k, "cluster_ga", rule, P.mutate_ops.size()),
+                        alpha, beta);
     }
-    // a generation's children: their operators, the better parent's f, what became of them (CGA-7)
-    std::vector<long long> kid_x, kid_m;
-    std::vector<double> kid_pf;
+    // a generation's children: their operators and parents' f (moves.hpp MOVE-4), what became of them (CGA-7)
+    std::vector<moves::Child> kid;
     struct Placed {
         std::size_t kid;
         bool taken;
@@ -411,21 +340,8 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
         for (const Result& q : r) out.push_back(search::found(q));
         return out;
     };
-    auto shift = [&](Vec& y, std::mt19937& g) {                                      // pbh's move
-        if (user_m) {
-            P.mutate(y, g);
-            if (y.size() != n) throw std::runtime_error("cluster_ga: the mutate hook changed the point's length");
-        } else if (ops_m) {                                                          // CGA-7
-            const std::size_t o = mport.pick(g);
-            P.mutate_ops[o].second(y, g);
-            if (y.size() != n) throw std::runtime_error("cluster_ga: a mutate operator changed the point's length");
-            last_m = static_cast<long long>(o);
-        } else {
-            for (std::size_t j = 0; j < n; ++j) y[j] += (2.0 * rnd::uniform01(g) - 1.0) * step * search::width(P, j);
-        }
-        for (std::size_t j = 0; j < n; ++j)
-            y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
-                                               : (std::min)(P.hi[j], (std::max)(P.lo[j], y[j]));
+    auto shift = [&](Vec& y, std::mt19937& g) {                                      // pbh's move (moves.hpp)
+        last_m = mv.apply(P, y, step, g, "cluster_ga");
     };
     auto move = [&](Vec& y, std::mt19937& g) {
         shift(y, g);
@@ -541,6 +457,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                     P.crossover(a, b, c1, c2, g);
                     if (c1.size() != n) throw std::runtime_error("cluster_ga: the crossover hook gave a child of another length");
                     y = c1;
+                    xo = 0;                                                          // MOVE-4: the hook's tag
                 } else if (points) {
                     y = cga::cut_and_splice(P, P.sym_blocks[0], a, b, g);
                 } else {                                                         // CGA-1: uniform
@@ -557,10 +474,12 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
             (void)rnd::uniform01(g);                                           // PBH-4
             kids.push_back(spec(search::at(y)));
             const long long mo = moved ? last_m : -1;
-            if (mo >= 0) ++mport.calls[static_cast<std::size_t>(mo)];
-            kid_x.push_back(xo);
-            kid_m.push_back(mo);
-            kid_pf.push_back(K == 1 ? ps[0].f : (std::min)(ps[pr.first].f, ps[pr.second].f));
+            if (mo >= 0 && mport.on()) ++mport.calls[static_cast<std::size_t>(mo)];
+            moves::Child ch;                                                         // MOVE-4: the child's record
+            ch.crossover = xo;
+            ch.mutation = mo;
+            ch.parents_f = K == 1 ? Vec{ps[0].f} : Vec{ps[pr.first].f, ps[pr.second].f};
+            kid.push_back(ch);
         }
     };
     // 3. c in place of the highest member of ps where lower and none within cga_de of it
@@ -592,31 +511,13 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
         return all;
     };
     // CGA-7: a generation's rewards, child by child in their order: 1 where the
-    // child entered the population, else 0 — its crossover's and its mutation's
+    // child entered the population, else 0 — its crossover's and its mutation's;
+    // then on_child (moves.hpp MOVE-4, MOVE-5)
     auto credit = [&](std::mt19937& g) {
-        for (const Placed& c : placed) {
-            const double R = c.taken ? 1.0 : 0.0;
-            const double d = kid_pf[c.kid] - c.f;
-            if (kid_x[c.kid] >= 0) {
-                const std::size_t o = static_cast<std::size_t>(kid_x[c.kid]);
-                xport.taken[o] += c.taken ? 1 : 0;
-                xport.gain[o] += d;
-                ++xport.scored[o];
-                xport.reward(o, R, g);
-            }
-            if (kid_m[c.kid] >= 0) {
-                const std::size_t o = static_cast<std::size_t>(kid_m[c.kid]);
-                mport.taken[o] += c.taken ? 1 : 0;
-                mport.gain[o] += d;
-                ++mport.scored[o];
-                mport.reward(o, R, g);
-            }
-        }
+        for (const Placed& c : placed) moves::told(P, &xport, &mport, kid[c.kid], c.f, c.taken, g);
     };
     auto fresh_generation = [&]() {
-        kid_x.clear();
-        kid_m.clear();
-        kid_pf.clear();
+        kid.clear();
         placed.clear();
         kids_from = searches;
     };
@@ -732,12 +633,15 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                 if (md || afpo) {
                     std::vector<search::Found> U = pop;
                     std::vector<long long> A = age;
+                    std::vector<char> in_next;                                           // MOVE-4: by U's index
+                    std::vector<std::size_t> u_of(Y.size(), 0);
                     for (std::size_t p = 0; p < Y.size(); ++p) {
                         if (!Y[p].ok) {
                             all = false;
                             continue;
                         }
                         log.add(Y[p].x, Y[p].f, first_kid + static_cast<long long>(p));
+                        u_of[p] = U.size();
                         U.push_back(Y[p]);
                         A.push_back(p < parents.size() ? (std::max)(age[parents[p].first], age[parents[p].second]) : 1);
                     }
@@ -780,6 +684,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                             next.push_back(U[cand[pick]]);
                         }
                         accepted += static_cast<long long>(next.size());
+                        in_next = taken;
                         pop = next;
                         age.assign(pop.size(), 1);
                     } else {                                                             // AFPO, AF-2
@@ -817,14 +722,19 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                         }
                         std::vector<search::Found> next;
                         std::vector<long long> nage;
+                        in_next.assign(U.size(), 0);
                         for (std::size_t q : live) {
                             next.push_back(U[q]);
                             nage.push_back(A[q] + 1);                                    // AF-1
+                            in_next[q] = 1;
                         }
                         accepted += static_cast<long long>(live.size());
                         pop = next;
                         age = nage;
                     }
+                    if (P.on_child)                                                      // MOVE-4: afpo's newcomer is no child
+                        for (std::size_t p = 0; p < Y.size() && p < parents.size(); ++p)
+                            if (Y[p].ok) moves::told(P, nullptr, nullptr, kid[p], Y[p].f, in_next[u_of[p]] != 0, rng);
                     if (!all) break;
                     idle = ev.used() == before ? idle + 1 : 0;
                     continue;
@@ -850,24 +760,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
     if (init_mode == "around_x0") extra.push_back({"init_moves", std::to_string(init_shifts)});      // CGA-5
     if (init_mode == "seed_points") extra.push_back({"init_seeded", std::to_string(init_seeded)});
     if (I > 1) extra.push_back({"migrated", std::to_string(migrated)});                       // CGA-6
-    if (ops_x || ops_m) {                                                            // CGA-7
-        json::Value rows = json::Value::array();
-        auto rows_of = [&](const cga::Portfolio& pf, const char* kind) {
-            for (std::size_t o = 0; o < pf.names.size(); ++o) {
-                json::Value row = json::Value::array();
-                row.items.push_back(json::Value::string(pf.names[o]));
-                row.items.push_back(json::Value::string(kind));
-                row.items.push_back(json::Value::integer(pf.calls[o]));
-                row.items.push_back(json::Value::integer(pf.taken[o]));
-                row.items.push_back(json::Value::number(pf.scored[o] ? pf.gain[o] / static_cast<double>(pf.scored[o]) : 0.0));
-                row.items.push_back(json::Value::number(pf.P[o]));
-                rows.items.push_back(row);
-            }
-        };
-        rows_of(xport, "crossover");
-        rows_of(mport, "mutation");
-        extra.push_back({"operators", json::dump(rows, -1, ",", ":")});
-    }
+    if (ops_x || ops_m) extra.push_back({"operators", moves::operators_row(&xport, &mport)});   // CGA-7
     Result r = search::finish(ev, k, log, extra, stop.stopped_by(ev, idle >= 100 ? "idle" : "rule"));
     for (const auto& m : pop)                                                        // param.hpp PARAM-9
         if (m.ok) r.population.push_back(m.x);

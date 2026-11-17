@@ -151,6 +151,16 @@
 //     ladder's where there is one) as its strength; the result is clipped to
 //     the box, a periodic coordinate wrapped (PER-2), as the builtin move. A
 //     hook that repeats the builtin move gives the builtin run bit for bit.
+//   SRCH-22. Off by default. step = box | user | portfolio (task 31, layer 2; moves.hpp
+//     MOVE-1 ... MOVE-5; box by default, the moves above): user the problem's
+//     mutate hook, portfolio its mutate_ops by op_select; then the step's
+//     knobs and its adaptation are off (MOVE-1). Problem::on_child is told
+//     every step's child after the acceptance (taken: the walk moved to it),
+//     the restart's uniform point not being a child. bh_temperature_schedule,
+//     ils_temperature_schedule = const | geometric and *_end anneal the
+//     Metropolis temperature (stop_rule.hpp STOP-7; bh_accept = metropolis,
+//     ils_accept = lsmc only); the settings then say the last step's
+//     temperature (*_reached).
 //   SRCH-20. basin_hopping with bh_accept = threshold and its adaptive step
 //     (no ladder) warns once (mootation::warn): DTS is meant for a fixed move
 //     (SRCH-16); the run itself is unchanged.
@@ -460,31 +470,40 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     else own.insert(own.end(), {"ils_accept", "ils_step", "ils_restart", "ils_temperature"});
     own.insert(own.end(), {"step_units", "walk_th0", "walk_th_mu", "walk_t0_trials", "walk_t_rel", "ladder_min",
                            "ladder_max", "ladder_step", "perturb"});                          // task 25, §24.2.4
+    own.insert(own.end(), {"step", "op_select", "op_pmin", "op_alpha", "op_beta"});            // task 31, layer 2
+    own.insert(own.end(), {bh ? "bh_temperature_schedule" : "ils_temperature_schedule",
+                           bh ? "bh_temperature_end" : "ils_temperature_end"});              // STOP-7
     StrategyKnobs k(name, knobs, own);
     const Inner inner = k.inner("inner");
     const long long cap = k.whole("start_budget", 0, 0);
     const double min_dist = k.number("min_dist", 1e-3), min_df = k.number("min_df", 1e-8);
+    // MOVE-1: the step's knobs only where the move has a strength (step = box, the default)
+    const Knob* step_knob = k.find("step");
+    const bool scaled = step_knob == nullptr || (step_knob->is_word && step_knob->word == "box");
     std::string accept = "lsmc";
     double step = 0.05, T = 1.0, target = 0.5;
     long long interval = 10, restart_after = 0;
     if (bh) {
         T = k.number("bh_temperature", 1.0);
-        step = k.number("bh_step", 0.05);
-        target = k.number("bh_accept_rate", 0.5);
-        interval = k.whole("bh_interval", 10, 1);
+        if (scaled) {
+            step = k.number("bh_step", 0.05);
+            target = k.number("bh_accept_rate", 0.5);
+            interval = k.whole("bh_interval", 10, 1);
+        }
         if (k.find("bh_accept")) {                                                        // SRCH-16, SRCH-17
             const std::string a = k.word("bh_accept", "metropolis", {"metropolis", "threshold", "metropolis_rel"});
             accept = a == "metropolis" ? "lsmc" : a == "threshold" ? "threshold" : "lsmc_rel";
         }
     } else {
         accept = k.word("ils_accept", "better", {"better", "rw", "restart", "lsmc", "threshold", "lsmc_rel"});
-        step = k.number("ils_step", 0.1);
+        if (scaled) step = k.number("ils_step", 0.1);
         restart_after = k.whole("ils_restart", 10, 1);
         T = k.number("ils_temperature", 1.0);
     }
     if (!(step > 0.0) || !(T > 0.0)) throw std::invalid_argument(name + ": the step and the temperature must be > 0");
     // task 25, §24.2.4: each knob in the settings only where given
-    const bool absolute = k.find("step_units") && k.word("step_units", "box", {"box", "absolute"}) == "absolute";
+    const bool absolute =
+        scaled && k.find("step_units") && k.word("step_units", "box", {"box", "absolute"}) == "absolute";
     double th = k.find("walk_th0") ? k.number("walk_th0", 1e-4) : 1e-4;                        // SRCH-16
     const double th_mu = k.find("walk_th_mu") ? k.number("walk_th_mu", 0.75) : 0.75;
     const long long t0_trials = k.find("walk_t0_trials") ? k.whole("walk_t0_trials", 10, 1) : 10;   // SRCH-17
@@ -501,7 +520,11 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     if (ladder) step = ladder_min;
     const bool user_move = k.find("perturb") && k.word("perturb", "builtin", {"builtin", "user"}) == "user";   // SRCH-19
     if (user_move && !P.perturb) throw std::invalid_argument(name + ": perturb = user needs the problem's perturb hook");
-    if (bh && accept == "threshold" && !ladder)                                          // SRCH-20
+    moves::Move mv = moves::step_of(k, P, name, user_move);                          // the move (moves.hpp)
+    mv.absolute = absolute;
+    if (ladder && !mv.scaled())                                                      // MOVE-1
+        throw std::invalid_argument(name + ": the strength ladder needs a move with a strength (step = box)");
+    if (bh && accept == "threshold" && !ladder && mv.scaled())                           // SRCH-20
         mootation::warn("basin_hopping: bh_accept = threshold (DTS) is meant for a fixed move; the adaptive step "
                         "(bh_accept_rate) shrinks it until most new minima are the current one, which counts as a "
                         "refusal and drives the threshold up. A fixed step: ladder_min = ladder_max = the step.");
@@ -514,6 +537,11 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     ev.lean = lean_of(k);                                                            // STRAT-12
     MinimaLog log(P.lo, P.hi, min_dist, min_df);
     strategy::group_by_symmetry(k, P, log);
+    const std::string t_knob = bh ? "bh_temperature" : "ils_temperature";           // STOP-7: annealing
+    const Schedule anneal = schedule_of(k, name, t_knob, T, ev);
+    if (anneal.geometric && accept != "lsmc")
+        throw std::invalid_argument(name + ": " + t_knob + "_schedule is of the Metropolis acceptance's temperature (" +
+                                    (bh ? "bh_accept = metropolis" : "ils_accept = lsmc") + ")");
     std::mt19937 rng(start_seed(seed, 0x9E3779B9u));             // the walk's own draws
     long long steps = 0, accepted_all = 0;
     auto local = [&](const Start& st, long long s) {
@@ -535,24 +563,14 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
         for (long long s = 1; cur.ok && idle < 100 && stop.go(ev); ++s) {                          // SRCH-10
             const double before = ev.used();
             Vec y = cur.x;
-            if (user_move) {                                                                     // SRCH-19
-                P.perturb(y, step, rng);
-                if (y.size() != n) throw std::runtime_error(name + ": the perturb hook changed the point's length");
-                for (std::size_t j = 0; j < n; ++j)
-                    y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
-                                                       : (std::min)(P.hi[j], (std::max)(P.lo[j], y[j]));
-            } else {
-                for (std::size_t j = 0; j < n; ++j) {                                            // SRCH-4
-                    const double moved = y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step *
-                                                    (absolute ? 1.0 : search::width(P, j));    // SRCH-15
-                    y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(moved, P.lo[j], P.hi[j])  // PER-2
-                                                       : (std::min)(P.hi[j], (std::max)(P.lo[j], moved));
-                }
-            }
+            // SRCH-4, SRCH-15, SRCH-19, PER-2; MOVE-2
+            const long long tag = mv.apply(P, y, step, rng, name);
+            if (tag >= 0 && mv.ops.on()) ++mv.ops.calls[static_cast<std::size_t>(tag)];         // MOVE-3
             const double u = rnd::uniform01(rng);
             const search::Found next = local(search::at(y), s);
             if (!next.ok) break;
             ++steps;
+            if (anneal.geometric) T = anneal.at(ev, stop);                                     // STOP-7
             bool take;
             if (accept == "rw") take = true;
             else if (accept == "lsmc")
@@ -579,6 +597,12 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
                            (next.cv == cur.cv && u < dm::exp((cur.f - next.f) / T_rel));
                 }
             } else take = search::better(next, cur);
+            if (mv.ops.on() || P.on_child) {                                                 // MOVE-4, MOVE-5
+                moves::Child ch;
+                ch.mutation = tag;
+                ch.parents_f = {cur.f};
+                moves::told(P, nullptr, &mv.ops, ch, next.f, take, rng);
+            }
             ++tried;
             if (take) {
                 ++accepted;
@@ -597,7 +621,7 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
                 if (fresh.ok) cur = fresh;
                 since = 0;
             }
-            if (bh && !ladder && tried == interval) {                                            // SRCH-5, SRCH-18
+            if (bh && !ladder && mv.scaled() && tried == interval) {                             // SRCH-5, SRCH-18, MOVE-1
                 step = static_cast<double>(accepted) / static_cast<double>(tried) > target ? step / 0.9 : step * 0.9;
                 step = (std::min)(step, 1.0);                                                       // SRCH-10
                 accepted = tried = 0;
@@ -609,9 +633,11 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
     }
     std::vector<std::pair<std::string, std::string>> extra{{"steps", std::to_string(steps)},
                                                            {"accepted", std::to_string(accepted_all)}};
-    if (bh) extra.push_back({"bh_step_end", detail::g_format(step)});
+    if (bh && mv.scaled()) extra.push_back({"bh_step_end", detail::g_format(step)});         // MOVE-1
     if (accept == "threshold") extra.push_back({"walk_th_end", detail::g_format(th)});
     if (accept == "lsmc_rel") extra.push_back({"walk_t_rel_end", detail::g_format(T_rel)});
+    if (anneal.geometric) extra.push_back({t_knob + "_reached", detail::g_format(T)});            // STOP-7
+    if (mv.ops.on()) extra.push_back({"operators", moves::operators_row(nullptr, &mv.ops)});       // MOVE-5
     return search::finish(ev, k, log, extra, stop.stopped_by(ev, idle >= 100 ? "idle" : "rule"));
 }
 

@@ -222,6 +222,7 @@
 
 #include "../designs.hpp"
 #include "../json.hpp"
+#include "moves.hpp"
 #include "scalar.hpp"
 #include "stop_rule.hpp"
 
@@ -893,6 +894,8 @@ public:
             if (kv.first == k) return &kv.second;
         return nullptr;
     }
+
+    bool given(const std::string& k) const { return find(k) != nullptr; }
 
     double number(const std::string& k, double fallback)
     {

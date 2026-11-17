@@ -111,6 +111,7 @@ set(MOOTATION_TESTS
     test_continuous_symmetry
     test_max_seconds
     test_stop_rule
+    test_moves
     test_clocks
     test_windows_first)
 

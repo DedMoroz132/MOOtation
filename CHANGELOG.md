@@ -10,6 +10,20 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 31, layer 2)
+- The move of the strategies over local minima as one piece (`scalar/moves.hpp`):
+  `step = box | user | portfolio` for `basin_hopping`, `ils` and `pbh` (`user`: the
+  problem's `mutate`; `portfolio`: its `mutate_ops` with `op_select`, `op_pmin`,
+  `op_alpha`, `op_beta`); `ga_crossover`, `ga_mutation = ops` for `ga_sbx` and `ssga`.
+- The operator portfolio of task 30 (Thierens 2005) moved from `cluster_ga` to
+  `scalar/portfolio.hpp`, shared by every strategy; `cluster_ga`'s runs unchanged.
+- `Problem::on_child(parents_f, child_f, tag)`: every child's outcome with the tags of
+  its operators, carried in the child's record; the same calls on 1 thread and N.
+- The schedule of a numeric knob over the run (`stop_rule.hpp` STOP-7):
+  `bh_temperature_schedule`, `ils_temperature_schedule = const | geometric` with
+  `*_end` (annealing of one chain).
+- `test_moves`.
+
 - Changed (task 31; the owner's word of 17.11, METHOD_VERSION 7): `lbfgsb`'s
   Cauchy point takes w_b^T M c, w_b^T M p and w_b^T M w_b at a breakpoint
   from one product v = M w_b, as L-BFGS-B 3.0's cauchy.f, instead of three

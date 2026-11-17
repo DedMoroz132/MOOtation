@@ -423,7 +423,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-508 items: 416 yes, 89 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+518 items: 417 yes, 98 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -560,6 +560,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `ga` | GA-9 | The user's genome (task 24, §24.1.2; off by default: the builtin operators): ga_crossover = user calls Problem::crossover(p1, p2, c1, c2, rng) in SBX's place, ga_mutation = user Problem::mutate(c, rng) in the polynomi... | no: option | `ga.hpp` |
 | `ga` | GA-10 | Off by default. A row of the user's operators is repaired (ga_repair: builtin clips each coordinate to the box — SBX and the polynomial mutation stay in it, so the builtin run is unchanged; user calls Problem::repair;... | no: option | `ga.hpp` |
 | `ga` | GA-11 | Off by default. With Problem::decode every row is decoded before it is evaluated, its canonical genome written back (Lamarckian; checked as GA-10); a row that does not decode (valid = false) is not evaluated, costs no... | no: option | `ga.hpp` |
+| `ga` | GA-12 | Off by default (task 31, layer 2; scalar/moves.hpp MOVE-2 ... | no: option | `ga.hpp` |
 | `ga` | G3-1 | PCX's index parent x_p is the best of the parents (best_centre, on by default: §3.2.1, "For a faster convergence, the best parent is always used"), not the operator's own pick "with equal probability" (§2.2), which be... | yes | `ga.hpp` |
 | `ga` | G3-2 | Step (1)'s mu - 1 others differ from the best and from each other; step (3)'s two differ. | yes | `ga.hpp` |
 | `ga` | G3-3 | Step (4) keeps the two best of the family in its order (the two chosen, then the offspring), stably; the better goes to the first chosen place. | yes | `ga.hpp` |
@@ -679,6 +680,12 @@ Their readings, from every comment of each file (the first column the file's nam
 | `mosqp` | MS-5 | The line of stage 2: x_l = ℓ + l(u − ℓ)/(n̄ + 1), l = 1..n̄. | yes | `mosqp.hpp` |
 | `mosqp` | MS-6 | With H_i = I, (8) is the least-squares problem min ‖d + ∇f_i‖ under the linear rows, and (9), which Lemma 3.2 (item 6) writes as min Σ_i (∇f_iᵀv + ½vᵀH_i v) under the same rows, is min ‖√m v + Σ_i ∇f_i / √m‖: one lsq:... | yes | `mosqp.hpp` |
 | `mosqp` | MS-7 | (10) prints (u_j − ℓ_j)/2 for a finite box, which lies outside [ℓ_j, u_j] whenever ℓ_j > (u_j − ℓ_j)/2; read as the centre (u_j + ℓ_j)/2. | yes | `mosqp.hpp` |
+| `moves` | MOVE-1 | Off by default. step = user, portfolio: the hooks have no strength, so basin_hopping's step adaptation (SRCH-5) and the strength ladder (SRCH-18) are off — the ladder's knobs are refused, bh_step, ils_step, pbh_step a... | no: option | `moves.hpp` |
+| `moves` | MOVE-2 | Off by default. The draws: the user's hook and a portfolio's operator draw from the strategy's stream (rnd:: only), in the place of the box move's n uniforms; the portfolio's choice is one more uniform before them (no... | no: option | `moves.hpp` |
+| `moves` | MOVE-3 | Off by default. The operators' calls count the children made by a move, as they are made, whether or not their outcome comes back (a generation cut by the budget's end: its children were made, their calls counted, as... | no: option | `moves.hpp` |
+| `moves` | MOVE-4 | Off by default (Problem::on_child given). | no: option | `moves.hpp` |
+| `moves` | MOVE-5 | Off by default. A portfolio's reward is 1 where the child was taken (MOVE-4's taken), else 0, its gain the better parent's f less the child's; it is rewarded when on_child would be called, before the call (cluster_ga:... | no: option | `moves.hpp` |
+| `moves` | MOVE-6 | The crossover hook's children (Problem::crossover and each of crossover_ops): what c1 and c2 hold when the hook is called is not the same everywhere — cluster_ga gives n zeros each; ga_sbx and ssga's ga_crossover = us... | yes | `moves.hpp` |
 | `nelder_mead` | NM-1 | The initial simplex: x_0 and x_0 + tau e_i, tau = 0.05 in every coordinate, x_0 - tau e_i where x_0 + tau e_i would leave the box (the box is meant normalized to [0, 1]^n: Gao & Han's (3.1), fminsearch's, takes 0.0002... | yes | `nelder_mead.hpp` |
 | `nelder_mead` | NM-2 | Every point the method makes is clipped to the box before it is evaluated and becomes a vertex (Lagarias et al. and Gao & Han treat unconstrained problems). | yes | `nelder_mead.hpp` |
 | `nelder_mead` | NM-3 | The initial vertices are ordered by value, ties in their order of construction (x_0 first). | yes | `nelder_mead.hpp` |
@@ -710,6 +717,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `pbh` | PBH-4 | The draws: per child its n coordinates' moves and then one more uniform, as ils draws its acceptance's u at every step, so that K = 1 follows ils's stream; the extra members' uniform points come from the same stream b... | yes | `pbh.hpp` |
 | `pbh` | PBH-5 | Ties: the nearest and the worst are the first in the members' order; | yes | `pbh.hpp` |
 | `pbh` | PBH-6 | pbh_distance = user needs the problem's distance hook (task 24, §24.1.3) and refuses a problem without one; perturb = user the problem's perturb hook, its result clipped or wrapped as SRCH-19 (the draws of PBH-4 then... | yes | `pbh.hpp` |
+| `pbh` | PBH-7 | Off by default. step = box \| user \| portfolio (task 31, layer 2; moves.hpp MOVE-1 ... | no: option | `pbh.hpp` |
 | `periodic` | PER-1 | Off by default. The wrap is lo + fmod(v - lo, hi - lo), negatives raised by a period; a result that rounds to hi is lo (no point on the seam). | no: option | `periodic.hpp` |
 | `periodic` | PER-2 | Off by default. A wrapped coordinate is not a repair (RepairCounts, task 20, §20.2.2, does not count it) and costs no penalty (SCALAR-7, POP-4): the point is inside the problem's domain. | no: option | `periodic.hpp` |
 | `periodic` | PER-3 | Off by default. A difference d of a periodic coordinate is min(\|d\|, period - \|d\|). | no: option | `periodic.hpp` |
@@ -832,6 +840,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `search` | SRCH-17 | Metropolis on a relative scale (ils_accept = lsmc_rel, bh_accept = metropolis_rel; task 25): the first walk_t0_trials (10) steps accept the better only and record \|dE\| != 0; then T = walk_t_rel (1) times their median,... | yes | `search.hpp` |
 | `search` | SRCH-18 | The strength ladder (task 25, §24.2.4; IDLS, Lai et al. 2025, source structural-optimization-atomic_lai2025, Algorithm 1): with ladder_max > 0 the step is ladder_min after a new best, else grows by ladder_step, back t... | yes | `search.hpp` |
 | `search` | SRCH-19 | perturb = user (task 25, §24.2.4; task 24's Problem::perturb, §24.1.3): the move is the problem's, perturb(y, step, rng) on a copy of the current minimum with the walk's own generator and the step (the ladder's where... | yes | `search.hpp` |
+| `search` | SRCH-22 | Off by default. step = box \| user \| portfolio (task 31, layer 2; moves.hpp MOVE-1 ... | no: option | `search.hpp` |
 | `search` | SRCH-20 | basin_hopping with bh_accept = threshold and its adaptive step (no ladder) warns once (mootation::warn): DTS is meant for a fixed move (SRCH-16); the run itself is unchanged. | yes | `search.hpp` |
 | `search` | SRCH-21 | memetic on a problem with decode (task 24, §24.1.1, §24.1.2; off by default): a builtin local solver searches only the variables its start's genome has active (hooks.hpp active_of; the subproblem restricted(P, x, acti... | no: option | `search.hpp` |
 | `search` | SRCH-10 | ils and basin_hopping: 100 steps in a row that spend nothing end the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing ends it (its sample would grow without end); basin_hopping's step grows to the box's... | yes | `search.hpp` |
@@ -876,6 +885,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `stop_rule` | STOP-4 | Off by default (where none of stall, max_steps, budget_units, max_seconds, time_clock is given and no hook declared a cost: then the settings are as before). | no: option | `stop_rule.hpp` |
 | `stop_rule` | STOP-5 | Off by default (with a hook's declared cost only). | no: option | `stop_rule.hpp` |
 | `stop_rule` | STOP-6 | Off by default (a derived problem only). A problem made from the run's for a run of its own (evaluator.hpp derived: a level of at_param, a formulation, the user's restrict_to) keeps the run's deadline and clock; its r... | no: option | `stop_rule.hpp` |
+| `stop_rule` | STOP-7 | Off by default (task 31, layer 2; knob_schedule given). | no: option | `stop_rule.hpp` |
 | `strategy` | STRAT-1 | A start's generator: the run's seed for start 0, else a 32-bit word of std::seed_seq{seed, k} (the standard defines its words), so one start is the inner solver's own run, bit for bit (§3.1's test). | yes | `strategy.hpp` |
 | `strategy` | STRAT-2 | The inner solver counts what it asks for against its allowance, the points it gets free from the archive included; the strategy's budget counts only what is new. | yes | `strategy.hpp` |
 | `strategy` | STRAT-3 | The budget shared evenly: start k's allowance is budget / n, the first budget mod n starts one more. | yes | `strategy.hpp` |
