@@ -61,6 +61,15 @@
 //     run's, in the run's budget (the views of strategy.hpp). The cycle ends
 //     early when the budget is spent; the run ends on a cycle that spends
 //     nothing (SRCH-10's idea, STRAT-8).
+//   COEV-5. Off by default (the problem's own restrict_to only; task 31,
+//     layer 1). The user's subproblem evaluates outside the run's views: its
+//     run's evaluations and gradient calls go to the run's ledger (stop_rule.hpp
+//     STOP-6), and its answer, embedded in the whole space, into the run's
+//     archive — planted with the subproblem's f at one objective without
+//     constraints or residuals (free, as the user's local search's x', scalar.hpp
+//     ULS-2; a planted point does not end the run at the target), else
+//     evaluated (counted). Before, those points never reached the archive, and
+//     the run's answer missed what the subproblems found.
 //   LNS-1. The destroyed point is the repair's start: the inner solver
 //     starts from it, and the current point is replaced only by a better
 //     answer (SRCH-8: feasibility, then f).
@@ -128,6 +137,14 @@ inline search::Found sub_run(Evaluator& ev, const Inner& inner, const Vec& conte
     ev.cache_hits += view.cache_hits();
     ev.delta_calls += r.delta_calls;
     ev.delta_spent += r.delta_spent;
+    if (view.problem.restrict_to)                     // COEV-5: the user's subproblem's answer into the run's archive
+        for (std::size_t q = 0; q < r.variables.size(); ++q) {
+            const Vec x = embed(context, idx, r.variables[q]);
+            if (ev.m == 1 && ev.n_cons == 0 && !ev.P.has_residuals() && q < r.objectives.size())
+                ev.plant(x, r.objectives[q], {});     // its value known, as the user's local search's (ULS-2)
+            else
+                ev.index(x);                          // its values not known whole: evaluated, counted
+        }
     search::Found f = search::found(r);
     if (f.ok) f.x = embed(context, idx, f.x);
     return f;

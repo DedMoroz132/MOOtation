@@ -423,7 +423,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-505 items: 414 yes, 88 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
+506 items: 414 yes, 89 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -905,6 +905,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `subspace` | COEV-2 | cc_groups = neighbors: group j is {j} and neighbors(x)[j], sorted; a group equal to an earlier one is dropped; the groups are taken anew at the start of every cycle, from the context. | yes | `subspace.hpp` |
 | `subspace` | COEV-3 | Without an x0 the first context (and lns's first point) is a uniform point of the box, from the run's stream; it is evaluated as the first group's (or step's) start. | yes | `subspace.hpp` |
 | `subspace` | COEV-4 | A group's run is the inner solver's on the subproblem, its seed start_seed(seed, s) for the s-th run (0 the first); its points are the run's, in the run's budget (the views of strategy.hpp). | yes | `subspace.hpp` |
+| `subspace` | COEV-5 | Off by default (the problem's own restrict_to only; task 31, layer 1). | no: option | `subspace.hpp` |
 | `subspace` | LNS-1 | The destroyed point is the repair's start: the inner solver starts from it, and the current point is replaced only by a better answer (SRCH-8: feasibility, then f). | yes | `subspace.hpp` |
 | `subspace` | LNS-2 | lns_window = worst needs the contributions hook; the window is that variable with its neighbors (the hook) or the lns_size - 1 after it; a tie for the largest contribution takes the first. | yes | `subspace.hpp` |
 | `subspace` | LNS-3 | The draws per step: the window's variable (random) and then the window's new values, from one stream seeded by the run's seed. | yes | `subspace.hpp` |

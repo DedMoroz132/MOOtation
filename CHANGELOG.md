@@ -27,7 +27,8 @@ always listed under **Changed** or **Removed**.
 - Fixed (task 31, layer 1): `coevolution` and `lns` on a problem with its
   own `restrict_to` did not count the subproblem's evaluations (they bypass
   the run's archive); they are now in the ledger (`Result::outside_evals`,
-  `outside_grads`). A formulation of `reformulation` and the user's
+  `outside_grads`), and the subproblem's answer goes into the run's archive,
+  so the run's answer has it (COEV-5; the owner's choice of 17.11). A formulation of `reformulation` and the user's
   subproblem keep the run's deadline (`derived`, STOP-6).
 - Added (task 31, layer 1; off by default, bit for bit): one stop rule for
   every strategy — `stall` (steps in a row without a better best; for

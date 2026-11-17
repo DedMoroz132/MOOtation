@@ -362,28 +362,41 @@ int main(int argc, char** argv)
     // STOP-6: the user's subproblem counted; derived() keeps the deadline and the clock
     {
         auto direct = std::make_shared<std::atomic<long long>>(0);
+        auto lowest = std::make_shared<double>(1e300);             // the least f a subproblem evaluated (1 thread)
         sc::Problem P = sphere(6);
-        P.restrict_to = [direct](const Vec& xf, const std::vector<std::size_t>& idx) {
+        P.restrict_to = [direct, lowest](const Vec& xf, const std::vector<std::size_t>& idx) {
             sc::Problem Q;
             for (std::size_t j = 0; j < idx.size(); ++j) {
                 Q.lo.push_back(-2.0);
                 Q.hi.push_back(2.0);
             }
             Q.m = 1;
-            Q.evaluate = [direct, xf, idx](const Vec& z, Vec& f, Vec&) {
+            Q.evaluate = [direct, lowest, xf, idx](const Vec& z, Vec& f, Vec&) {
                 ++*direct;
                 Vec x = xf;
                 for (std::size_t k = 0; k < idx.size(); ++k) x[idx[k]] = z[k];
                 f.assign(1, sphere_of(x));
+                if (f[0] < *lowest) *lowest = f[0];
             };
             return Q;
         };
-        const sc::Result r = run("coevolution", P, 3000, {{"inner", word(kNM)}, {"cc_window", number(2)}});
-        check(r.outside_evals == direct->load() && r.outside_evals > 0,
-              "coevolution on the user's restrict_to: its evaluations counted outside (" +
-                  std::to_string(r.outside_evals) + ")");
-        check(r.evaluations + r.outside_evals <= 3000 + 3000 / 3 && r.used >= 3000.0 * 0.5,
-              "... and the run goes on to its budget (used " + std::to_string(r.used) + ")");
+        for (const char* name : {"coevolution", "lns"}) {
+            direct->store(0);
+            *lowest = 1e300;
+            sc::Knobs k{{"inner", word(kNM)}};
+            k.push_back(std::string(name) == "lns" ? std::make_pair(std::string("lns_size"), number(2))
+                                                   : std::make_pair(std::string("cc_window"), number(2)));
+            const sc::Result r = run(name, P, 3000, k);
+            check(r.outside_evals == direct->load() && r.outside_evals > 0,
+                  std::string(name) + " on the user's restrict_to: its evaluations counted outside (" +
+                      std::to_string(r.outside_evals) + ")");
+            check(r.evaluations + r.outside_evals <= 3000 + 3000 / 3 && r.used >= 3000.0 * 0.5,
+                  "... and the run goes on to its budget (used " + std::to_string(r.used) + ")");
+            // COEV-5: the best point, found inside a subproblem, is the run's answer
+            check(!r.objectives.empty() && r.objectives[0][0] == *lowest &&
+                      sphere_of(r.variables[0]) == r.objectives[0][0],
+                  "... the subproblems' best point (f " + std::to_string(*lowest) + ") is the run's answer");
+        }
         sc::Problem from = sphere(2), to = sphere(2);
         from.deadline = 5.0;
         from.time_clock = sc::Clock::cpu;
