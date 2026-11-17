@@ -157,7 +157,7 @@ inline Result run_mde(const Problem& P, double eq_tol, bool has_tol0, double eq_
     auto into_box = [&](Vec& y) {                                                    // MDE-6
         for (std::size_t j = 0; j < n; ++j)
             y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
-                                               : std::min(P.hi[j], std::max(P.lo[j], y[j]));
+                                               : (std::min)(P.hi[j], (std::max)(P.lo[j], y[j]));
     };
     auto pick_other = [&](long long i, const std::vector<long long>& taken) {       // MDE-2
         for (;;) {

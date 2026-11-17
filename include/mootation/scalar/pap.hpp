@@ -172,7 +172,7 @@ public:
         d2_.assign(Y.size(), 0.0);
         for (std::size_t k = 0; k < Y.size(); ++k)
             for (std::size_t j = 0; j < lo_.size(); ++j) {
-                const double yc = std::min(1.0, std::max(0.0, Y[k][j]));
+                const double yc = (std::min)(1.0, (std::max)(0.0, Y[k][j]));
                 d2_[k] += (Y[k][j] - yc) * (Y[k][j] - yc);
                 X_[k][j] = lo_[j] + yc * (hi_[j] - lo_[j]);
             }
@@ -253,7 +253,7 @@ inline std::unique_ptr<Member> member(const Spec& s, unsigned seed, const Vec& l
     if (s.solver == "lshade") {
         lshade::Options o;
         o.r_ninit = static_cast<double>(s.np) / static_cast<double>(lo.size());
-        o.max_nfe = std::max(1LL, nfe);                                                     // PAP-6
+        o.max_nfe = (std::max)(1LL, nfe);                                                     // PAP-6
         o.sym = sym;
         return std::make_unique<Kernel<lshade::LSHADE>>(seed, lo, hi, o, true);
     }
@@ -329,7 +329,7 @@ inline Result run_pap(const Problem& P, double eq_tol, bool has_tol0, double eq_
         bool first = true;
         long long per_generation = 0;
         // the budget: the evaluator's own check (charge), as before; the rule's other ends here
-        while (stop.go(std::numeric_limits<long long>::max(), ev.P)) {
+        while (stop.go((std::numeric_limits<long long>::max)(), ev.P)) {
             bool fresh = false, any = false;
             long long asked = 0;
             for (auto& a : m) {
@@ -347,9 +347,9 @@ inline Result run_pap(const Problem& P, double eq_tol, bool has_tol0, double eq_
             ++generations;
             stop.step(ev);
             if (generations == 1) {                                                            // PAP-1
-                per_generation = std::max(1LL, asked);
-                const long long max_gen = std::max(1LL, budget / per_generation);
-                if (interval == 0) interval = std::max(1LL, max_gen / 20);
+                per_generation = (std::max)(1LL, asked);
+                const long long max_gen = (std::max)(1LL, budget / per_generation);
+                if (interval == 0) interval = (std::max)(1LL, max_gen / 20);
             }
             idle = fresh ? 0 : idle + 1;
             if (idle >= population::kIdleGenerations) {                                       // POP-2

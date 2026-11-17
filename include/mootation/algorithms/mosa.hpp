@@ -260,8 +260,8 @@ private:
         std::vector<double> lo(m, std::numeric_limits<double>::infinity()), hi(m, -std::numeric_limits<double>::infinity());
         for (std::size_t j = 0; j < m; ++j)
             for (double v : ac_[j]) {
-                lo[j] = std::min(lo[j], v);
-                hi[j] = std::max(hi[j], v);
+                lo[j] = (std::min)(lo[j], v);
+                hi[j] = (std::max)(hi[j], v);
             }
         lo_c_ = lo;
         hi_c_ = hi;
@@ -327,7 +327,7 @@ private:
     {
         rnd::uniform_int_distribution<std::size_t> any(0, archive_.size() - 1);
         const std::vector<double> xa = archive_[any(rng_)].x;
-        const long long gen = k_ / std::max(1, N);
+        const long long gen = k_ / (std::max)(1, N);
         if (coords_.due(gen)) {
             std::vector<std::vector<double>> X, F;
             for (const auto& a : archive_) { X.push_back(a.x); F.push_back(a.f); }
@@ -382,7 +382,7 @@ private:
                      const std::vector<double>& z) const
     {
         double e = -std::numeric_limits<double>::infinity();
-        for (std::size_t j = 0; j < f.size(); ++j) e = std::max(e, W_[static_cast<std::size_t>(k)][j] * (f[j] - z[j]) / sp[j]);
+        for (std::size_t j = 0; j < f.size(); ++j) e = (std::max)(e, W_[static_cast<std::size_t>(k)][j] * (f[j] - z[j]) / sp[j]);
         return e;
     }
     // The acceptance's ΔE from x to y for chain k.
@@ -540,7 +540,7 @@ public:
 
     // ── knobs ────────────────────────────────────────────────────────────────
     void set_seed(unsigned s)              { rng_.seed(s); }
-    void set_t_max(int t)                  { t_max_ = std::max(1, t); }
+    void set_t_max(int t)                  { t_max_ = (std::max)(1, t); }
     void set_F(double f)                   { F_ = f; }
     void set_eta_crossover(double e)       { eta_c_ = e; }
     void set_pc(double p)                  { pc_ = p; }
@@ -682,8 +682,8 @@ public:
         }
         if (keep_bounds) {
             for (std::size_t j = 0; j < m; ++j) {
-                lo_c_[j] = std::min(lo_c_[j], p.f[j]);
-                hi_c_[j] = std::max(hi_c_[j], p.f[j]);
+                lo_c_[j] = (std::min)(lo_c_[j], p.f[j]);
+                hi_c_[j] = (std::max)(hi_c_[j], p.f[j]);
             }
             bounds_derived();
         } else {
@@ -717,7 +717,7 @@ public:
     {
         const auto& sp = span();
         const auto& x = cur_[static_cast<std::size_t>(c)].f;
-        int near = -1;
+        int nearby = -1;
         double best = std::numeric_limits<double>::infinity();
         for (int o = 0; o < static_cast<int>(cur_.size()); ++o) {
             if (o == c) continue;
@@ -725,17 +725,17 @@ public:
             if (dominates(x, y) || dominates(y, x)) continue;
             double d = 0.0;
             for (std::size_t j = 0; j < x.size(); ++j) d += (x[j] - y[j]) * (x[j] - y[j]) / (sp[j] * sp[j]);
-            if (d < best) { best = d; near = o; }
+            if (d < best) { best = d; nearby = o; }
         }
         auto& w = W_[static_cast<std::size_t>(c)];
         double s = 0.0;
-        if (near < 0) {                       // no x': random weights (PSA)
+        if (nearby < 0) {                       // no x': random weights (PSA)
             rnd::gamma_distribution<double> g(1.0, 1.0);
             for (auto& v : w) { v = g(rng_); s += v; }
             for (auto& v : w) v /= s;
             return;
         }
-        const auto& y = cur_[static_cast<std::size_t>(near)].f;
+        const auto& y = cur_[static_cast<std::size_t>(nearby)].f;
         for (std::size_t j = 0; j < w.size(); ++j) {   // x better or equal on j: up
             w[j] = x[j] <= y[j] ? w[j] * psa_alpha_ : w[j] / psa_alpha_;
             s += w[j];
@@ -795,11 +795,11 @@ public:
             const double* c = ac_[j].data();
             const double fj = f[j], sj = sp[j];
             double* x = mx_.data();
-            for (std::size_t i = 0; i < n; ++i) x[i] = std::max(x[i], (c[i] - fj) / sj);
+            for (std::size_t i = 0; i < n; ++i) x[i] = (std::max)(x[i], (c[i] - fj) / sj);
         }
         double eps = std::numeric_limits<double>::infinity();
         for (std::size_t i = 0; i < n; ++i)
-            if (!same_[i]) eps = std::min(eps, mx_[i]);
+            if (!same_[i]) eps = (std::min)(eps, mx_[i]);
         return -eps;
     }
 
@@ -845,7 +845,7 @@ public:
             archive_changed();
         }
         const int c = static_cast<int>(k_ % static_cast<long long>(cur_.size()));
-        const double frac = t_max_ > 1 ? std::min(1.0, static_cast<double>(k_) / static_cast<double>(t_max_ - 1)) : 1.0;
+        const double frac = t_max_ > 1 ? (std::min)(1.0, static_cast<double>(k_) / static_cast<double>(t_max_ - 1)) : 1.0;
         T_ = T0_ * dm::pow(t_ratio_, frac);
         s_ = s0_ * dm::pow(s_end_ / s0_, frac);
         rnd::uniform_real_distribution<double> u(0.0, 1.0);
@@ -867,7 +867,7 @@ public:
             accept = p.cv > 0.0 ? (x.cv > 0.0 && p.cv <= x.cv) : true;
         } else {
             const double d = ws ? before : before - energy(x.f, c);
-            accept = d <= 0.0 || u(rng_) < dm::exp(-d / std::max(T_, 1e-300));
+            accept = d <= 0.0 || u(rng_) < dm::exp(-d / (std::max)(T_, 1e-300));
         }
         if (accept) x = p;
         if (u(rng_) < reseed_ && archive_.size() > 1) {               // 7

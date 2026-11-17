@@ -83,7 +83,7 @@ struct Run {
         std::vector<double> x(width.size());
         for (std::size_t i = 0; i < x.size(); ++i) {
             const double yi = periodic::is(ev.P.periodic, i) ? periodic::wrap01(y[i])          // PER-2
-                                                             : std::min(1.0, std::max(0.0, y[i]));
+                                                             : (std::min)(1.0, (std::max)(0.0, y[i]));
             x[i] = ev.lo[i] + yi * width[i];
         }
         return x;
@@ -154,7 +154,7 @@ inline bool moved(const Run& run, const std::vector<std::size_t>& starts, std::s
         }
     }
     if (c0 > 0.0) return c1 < c0 * (1.0 - 1e-9);
-    return c1 <= 0.0 && v1 < v0 - 1e-9 * std::max(1.0, std::fabs(v0));
+    return c1 <= 0.0 && v1 < v0 - 1e-9 * (std::max)(1.0, std::fabs(v0));
 }
 
 // The problem's own gradient, where sqp takes it (SCALAR-13): one objective
@@ -178,7 +178,7 @@ inline void sqp(Run& run, const std::vector<double>& y0, double t0, double fd_st
     auto clip01 = [&run](std::vector<double> y) {
         for (std::size_t j = 0; j < y.size(); ++j)
             y[j] = periodic::is(run.ev.P.periodic, j) ? periodic::wrap01(y[j])         // periodic.hpp
-                                                      : std::min(1.0, std::max(0.0, y[j]));
+                                                      : (std::min)(1.0, (std::max)(0.0, y[j]));
         return y;
     };
     auto point = [&](const std::vector<double>& z) {
@@ -314,7 +314,7 @@ struct Penalty {
         for (std::size_t i : start) {
             double v, c;
             run.worth(i, v, c);
-            if (c <= 0.0 && std::isfinite(v)) worst = std::max(worst, v);
+            if (c <= 0.0 && std::isfinite(v)) worst = (std::max)(worst, v);
         }
         if (!std::isfinite(worst)) worst = 0.0;
     }
@@ -326,7 +326,7 @@ struct Penalty {
         run.worth(i, v, c);
         if (!std::isfinite(c)) return kInf;                 // a failed evaluation
         if (c <= 0.0) {
-            worst = std::max(worst, v);
+            worst = (std::max)(worst, v);
             return v;
         }
         return worst + c;
@@ -395,7 +395,7 @@ inline void cmaes(Run& run, const std::vector<double>& y0, const std::vector<std
                         yc[j] = periodic::wrap01(yc[j]);
                         continue;
                     }
-                    yc[j] = std::min(1.0, std::max(0.0, yc[j]));
+                    yc[j] = (std::min)(1.0, (std::max)(0.0, yc[j]));
                     if (yc[j] != y[j]) tally.out();
                     d2 += (y[j] - yc[j]) * (y[j] - yc[j]);
                 }

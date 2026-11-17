@@ -150,7 +150,7 @@ private:
     }
 
     void build_neighbourhoods(int n) {
-        int T_eff = std::min(T_, n); B_.resize(n);
+        int T_eff = (std::min)(T_, n); B_.resize(n);
         for (int i = 0; i < n; ++i) {
             std::vector<std::pair<double, int>> dists; dists.reserve(n);
             for (int j = 0; j < n; ++j)
@@ -182,7 +182,7 @@ private:
     // ── Ideal point update (Step 2.4) ──────────────────────────────────────
     void update_ideal(const std::vector<double>& f) {
         for (std::size_t j = 0; j < f.size(); ++j)
-            ideal_[j] = std::min(ideal_[j], f[j]);
+            ideal_[j] = (std::min)(ideal_[j], f[j]);
     }
 
     // ── EP update via vault.archive_* (extension beyond the paper) ────────
@@ -245,8 +245,8 @@ private:
         for (int j : P) g.emplace_back(tchebycheff(vault.objectives_of(j), W_[i]), j);
         std::stable_sort(g.begin(), g.end(),
                          [](const auto& a, const auto& b) { return a.first < b.first; });
-        const int top = std::max(1, static_cast<int>(std::ceil(de_p_ * static_cast<double>(P.size()))));
-        rnd::uniform_int_distribution<int> pick(0, std::min(top, static_cast<int>(P.size())) - 1);
+        const int top = (std::max)(1, static_cast<int>(std::ceil(de_p_ * static_cast<double>(P.size()))));
+        rnd::uniform_int_distribution<int> pick(0, (std::min)(top, static_cast<int>(P.size())) - 1);
         return g[static_cast<std::size_t>(pick(rng_))].second;
     }
 
@@ -417,7 +417,7 @@ public:
         vault.sync();
 
         // Step 1.3: z_j = min_i f_j(x^i).
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) update_ideal(vault.objectives_of(i));
 
         vault.archive_clear();
@@ -443,7 +443,7 @@ public:
 
         if (W_.empty()) { generate_weight_vectors(n, m); build_neighbourhoods(n); }
 
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) update_ideal(vault.objectives_of(i));
 
         vault.archive_clear();

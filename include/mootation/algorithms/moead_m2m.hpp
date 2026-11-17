@@ -256,7 +256,7 @@ private:
         for (auto& w : W) {
             double n2 = 0.0;
             for (double wi : w) n2 += wi * wi;
-            double nn = std::sqrt(std::max(n2, 1e-300));
+            double nn = std::sqrt((std::max)(n2, 1e-300));
             for (double& wi : w) wi /= nn;
             V_.push_back(std::move(w));
         }
@@ -364,9 +364,9 @@ private:
         // Eq.2 angles are taken from the ORIGIN (§II-A: f_i ≥ 0). An objective
         // whose pool minimum is negative is shifted by the smallest M that
         // makes it positive (footnote 1: f_i + M), M = −min_i f_i (M2M-4).
-        std::vector<double> fmin(m, std::numeric_limits<double>::max());
+        std::vector<double> fmin(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < M_act; ++i)
-            for (int k = 0; k < m; ++k) fmin[k] = std::min(fmin[k], objs[i][k]);
+            for (int k = 0; k < m; ++k) fmin[k] = (std::min)(fmin[k], objs[i][k]);
         std::vector<double> shift(m, 0.0);
         for (int k = 0; k < m; ++k) shift[k] = (fmin[k] < 0.0) ? -fmin[k] : 0.0;
         std::vector<std::vector<double>> U(M_act, std::vector<double>(m));

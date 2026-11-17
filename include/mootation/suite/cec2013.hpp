@@ -346,7 +346,7 @@ private:
                 y[k] = (x[k] - o_[i][k]) / lambda_[i];
             }
             w[i] = dm::exp(-d2 / (2.0 * static_cast<double>(D) * sigma_[i] * sigma_[i]));
-            wmax = std::max(wmax, w[i]);
+            wmax = (std::max)(wmax, w[i]);
             fit[i] = 2000.0 * detail::basic(basics_[i], times(y, i)) / std::fabs(fmax_[i]);
         }
         double sum = 0.0;

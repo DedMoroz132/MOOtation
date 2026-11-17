@@ -134,7 +134,7 @@ private:
     // ── L^p projection onto H_p (Eq.9) ─────────────────────────────────────
     static std::vector<double> project(const std::vector<double>& f, double p) {
         double s = 0.0;
-        for (double fk : f) s += dm::pow(std::max(0.0, fk), p);
+        for (double fk : f) s += dm::pow((std::max)(0.0, fk), p);
         double lp = dm::pow(s, 1.0 / p);
         std::vector<double> pr(f.size());
         if (lp < 1e-30) return f;
@@ -157,30 +157,30 @@ private:
     NormParams compute_norm(DataVault<Ind_t>& vault, const std::vector<int>& S) const {
         int m = vault.objs_n();
         NormParams np;
-        np.zmin.assign(m, std::numeric_limits<double>::max());
+        np.zmin.assign(m, (std::numeric_limits<double>::max)());
         for (int v : S) {
             const auto& o = vault.objectives_of(v);
-            for (int j = 0; j < m; ++j) np.zmin[j] = std::min(np.zmin[j], o[j]);
+            for (int j = 0; j < m; ++j) np.zmin[j] = (std::min)(np.zmin[j], o[j]);
         }
         const double eps = 1e-6;
         std::vector<int> extreme(m, -1);
         for (int i = 0; i < m; ++i) {
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             for (int v : S) {
                 const auto& o = vault.objectives_of(v);
                 double asf = 0.0;
                 for (int j = 0; j < m; ++j) {
                     double w = (i == j) ? 1.0 : eps;
-                    asf = std::max(asf, (o[j] - np.zmin[j]) / w);
+                    asf = (std::max)(asf, (o[j] - np.zmin[j]) / w);
                 }
                 if (asf < best) { best = asf; extreme[i] = v; }
             }
         }
         np.intercepts.assign(m, 1.0);
-        std::vector<double> nadir(m, -std::numeric_limits<double>::max());
+        std::vector<double> nadir(m, -(std::numeric_limits<double>::max)());
         for (int v : S) {
             const auto& o = vault.objectives_of(v);
-            for (int j = 0; j < m; ++j) nadir[j] = std::max(nadir[j], o[j]);
+            for (int j = 0; j < m; ++j) nadir[j] = (std::max)(nadir[j], o[j]);
         }
         bool deg = false;
         for (int i = 0; i < m && deg == false; ++i) if (extreme[i] < 0) deg = true;
@@ -283,9 +283,9 @@ private:
         for (int a = 0; a < n; ++a)
             for (int b = a + 1; b < n; ++b)
                 D[a][b] = D[b][a] = eucl(proj[a], proj[b]);        // (10)
-        int nclust = n, target = std::min(N, n);
+        int nclust = n, target = (std::min)(N, n);
         while (nclust > target) {
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             int ba = -1, bb = -1;
             for (int a = 0; a < n; ++a) {
                 if (!alive[a]) continue;
@@ -428,7 +428,7 @@ public:
             for (int j = 0; j < M; ++j) {
                 double d = np.intercepts[j];
                 double val = (std::abs(d) > 1e-12) ? (o[j] - np.zmin[j]) / d : 0.0;
-                Fn[v][j] = std::max(val, 0.0);   // >1.0 is allowed (Alg.3 filter)
+                Fn[v][j] = (std::max)(val, 0.0);   // >1.0 is allowed (Alg.3 filter)
                 cf += Fn[v][j];
             }
             CF[v] = cf;                                            // (14)
@@ -446,7 +446,7 @@ public:
 
         std::vector<int>  P;
         std::vector<char> used_cl(Kc, 0);
-        int Ksel = std::min(M, Kc);
+        int Ksel = (std::min)(M, Kc);
 
         // (13) the pair of solutions with the maximum projection distance,
         // taken from different clusters.
@@ -475,8 +475,8 @@ public:
             for (int t = 0; t < Kc; ++t) {
                 if (used_cl[t]) continue;
                 for (int v : clusters[t]) {
-                    double dmin = std::numeric_limits<double>::max();
-                    for (int y : P) dmin = std::min(dmin, eucl(proj[v], proj[y]));
+                    double dmin = (std::numeric_limits<double>::max)();
+                    for (int y : P) dmin = (std::min)(dmin, eucl(proj[v], proj[y]));
                     if (dmin > bestd) { bestd = dmin; best = v; }
                 }
             }

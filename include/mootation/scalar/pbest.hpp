@@ -47,7 +47,7 @@ inline double draw_F(std::mt19937& rng, double loc)
 {
     double F;
     do F = rnd::cauchy(rng, loc, 0.1); while (F <= 0.0);
-    return std::min(F, 1.0);
+    return (std::min)(F, 1.0);
 }
 
 inline double draw_CR(std::mt19937& rng, double loc)

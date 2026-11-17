@@ -113,7 +113,7 @@ using Objective = std::function<double(const std::vector<double>&)>;
 
 inline void clip(std::vector<double>& y, const std::vector<double>& lo, const std::vector<double>& hi)
 {
-    for (std::size_t i = 0; i < y.size(); ++i) y[i] = std::min(hi[i], std::max(lo[i], y[i]));
+    for (std::size_t i = 0; i < y.size(); ++i) y[i] = (std::min)(hi[i], (std::max)(lo[i], y[i]));
 }
 
 inline void check_sizes(const std::vector<double>& x, const std::vector<double>& lo, const std::vector<double>& hi)
@@ -193,7 +193,7 @@ inline long long solis_wets(const Objective& f, std::vector<double>& x, double& 
         st.dif.assign(n, 0.0);
     }
     if (st.bias.size() != n || st.dif.size() != n) throw std::invalid_argument("chain_ls: a state of another length");
-    long long period = opt.subset_evals > 0 ? opt.subset_evals : std::max(1LL, max_evals / 10);   // SSW-3
+    long long period = opt.subset_evals > 0 ? opt.subset_evals : (std::max)(1LL, max_evals / 10);   // SSW-3
 
     // SW-1: the step size after a success or a failure
     auto adapt = [&]() {
@@ -212,8 +212,8 @@ inline long long solis_wets(const Objective& f, std::vector<double>& x, double& 
         if (!st.pending) {
             if (opt.subgroups && (st.sub_start < 0 || st.sub_evals >= period)) {   // SSW-1, SSW-2
                 const double share = std::floor(opt.subset_share * static_cast<double>(n));
-                st.sub_count = std::min(opt.max_vars, std::max(1LL, static_cast<long long>(share)));
-                st.sub_count = std::min(st.sub_count, static_cast<long long>(n));
+                st.sub_count = (std::min)(opt.max_vars, (std::max)(1LL, static_cast<long long>(share)));
+                st.sub_count = (std::min)(st.sub_count, static_cast<long long>(n));
                 st.sub_start = static_cast<long long>(rnd::below(rng, n));
                 st.sub_evals = 0;
             }

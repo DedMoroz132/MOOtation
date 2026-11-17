@@ -667,7 +667,7 @@ private:
             for (double& v : c) v = 2.0 * v - 1.0;
         s_.centre = c;
         if ((map == "fold" || map == "rotate_abs") && s_.spread.empty())
-            for (double v : c) s_.spread.push_back(std::max(v, 1.0 - v));
+            for (double v : c) s_.spread.push_back((std::max)(v, 1.0 - v));
     }
 
     void check()

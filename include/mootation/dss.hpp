@@ -74,7 +74,7 @@ inline constexpr double DRS_LOSS = 0.1;    // p's largest loss to q, more than
 inline std::vector<std::size_t> order_plain(const std::vector<std::vector<double>>& F, std::size_t k)
 {
     const std::size_t n = F.size();
-    k = std::min(k, n);
+    k = (std::min)(k, n);
     std::vector<std::size_t> out;
     if (k == 0) return out;
     const std::size_t m = F[0].size();
@@ -89,8 +89,8 @@ inline std::vector<std::size_t> order_plain(const std::vector<std::vector<double
         for (std::size_t i = 0; i < n; ++i) {
             if (!kept[i]) continue;
             for (std::size_t j = 0; j < m; ++j) {
-                lo[j] = std::min(lo[j], F[i][j]);
-                hi[j] = std::max(hi[j], F[i][j]);
+                lo[j] = (std::min)(lo[j], F[i][j]);
+                hi[j] = (std::max)(hi[j], F[i][j]);
             }
         }
         for (std::size_t i = 0; i < n; ++i)
@@ -110,7 +110,7 @@ inline std::vector<std::size_t> order_plain(const std::vector<std::vector<double
                 for (std::size_t j = 0; j < m; ++j) {
                     const double d = G[p][j] - G[q][j];
                     if (-d > DRS_GAIN) { small_gain = false; break; }
-                    loss = std::max(loss, d);
+                    loss = (std::max)(loss, d);
                 }
                 if (small_gain && loss > DRS_LOSS) drop[p] = 1;
             }
@@ -133,7 +133,7 @@ inline std::vector<std::size_t> order_plain(const std::vector<std::vector<double
                 const double d = G[i][j] - G[c][j];
                 if (d > 0.0) s += d * d;
             }
-            cover[c] = std::min(cover[c], std::sqrt(s));
+            cover[c] = (std::min)(cover[c], std::sqrt(s));
         }
     };
     for (std::size_t j = 0; j < m && out.size() < k; ++j) {       // every objective's best kept
@@ -226,24 +226,24 @@ struct KdTree {
                 const std::size_t c = idx[t];
                 if (!(*member)[c]) continue;
                 for (std::size_t j = 0; j < m; ++j) {
-                    lo[id * m + j] = std::min(lo[id * m + j], G[c * m + j]);
-                    hi[id * m + j] = std::max(hi[id * m + j], G[c * m + j]);
+                    lo[id * m + j] = (std::min)(lo[id * m + j], G[c * m + j]);
+                    hi[id * m + j] = (std::max)(hi[id * m + j], G[c * m + j]);
                 }
                 if (sums)
                     for (std::size_t a = 0; a < SUMS; ++a)
-                        sums_min[id * SUMS + a] = std::min(sums_min[id * SUMS + a], (*sums)[c * SUMS + a]);
+                        sums_min[id * SUMS + a] = (std::min)(sums_min[id * SUMS + a], (*sums)[c * SUMS + a]);
             }
             return;
         }
         fit(G, node.left);
         fit(G, node.right);
         for (std::size_t j = 0; j < m; ++j) {
-            lo[id * m + j] = std::min(lo[node.left * m + j], lo[node.right * m + j]);
-            hi[id * m + j] = std::max(hi[node.left * m + j], hi[node.right * m + j]);
+            lo[id * m + j] = (std::min)(lo[node.left * m + j], lo[node.right * m + j]);
+            hi[id * m + j] = (std::max)(hi[node.left * m + j], hi[node.right * m + j]);
         }
         if (sums)
             for (std::size_t a = 0; a < SUMS; ++a)
-                sums_min[id * SUMS + a] = std::min(sums_min[node.left * SUMS + a],
+                sums_min[id * SUMS + a] = (std::min)(sums_min[node.left * SUMS + a],
                                                    sums_min[node.right * SUMS + a]);
     }
 
@@ -257,12 +257,12 @@ struct KdTree {
         if (r - l <= LEAF) {
             for (std::size_t t = l; t < r; ++t) {
                 for (std::size_t j = 0; j < m; ++j) {
-                    lo[id * m + j] = std::min(lo[id * m + j], G[idx[t] * m + j]);
-                    hi[id * m + j] = std::max(hi[id * m + j], G[idx[t] * m + j]);
+                    lo[id * m + j] = (std::min)(lo[id * m + j], G[idx[t] * m + j]);
+                    hi[id * m + j] = (std::max)(hi[id * m + j], G[idx[t] * m + j]);
                 }
                 if (sums)
                     for (std::size_t a = 0; a < SUMS; ++a)
-                        sums_min[id * SUMS + a] = std::min(sums_min[id * SUMS + a],
+                        sums_min[id * SUMS + a] = (std::min)(sums_min[id * SUMS + a],
                                                            (*sums)[idx[t] * SUMS + a]);
             }
             return id;
@@ -280,12 +280,12 @@ struct KdTree {
         nodes[id].left = left;
         nodes[id].right = right;
         for (std::size_t j = 0; j < m; ++j) {
-            lo[id * m + j] = std::min(lo[left * m + j], lo[right * m + j]);
-            hi[id * m + j] = std::max(hi[left * m + j], hi[right * m + j]);
+            lo[id * m + j] = (std::min)(lo[left * m + j], lo[right * m + j]);
+            hi[id * m + j] = (std::max)(hi[left * m + j], hi[right * m + j]);
         }
         if (sums)
             for (std::size_t a = 0; a < SUMS; ++a)
-                sums_min[id * SUMS + a] = std::min(sums_min[left * SUMS + a], sums_min[right * SUMS + a]);
+                sums_min[id * SUMS + a] = (std::min)(sums_min[left * SUMS + a], sums_min[right * SUMS + a]);
         return id;
     }
 
@@ -366,7 +366,7 @@ struct KdTree {
 inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F, std::size_t k)
 {
     const std::size_t n = F.size();
-    k = std::min(k, n);
+    k = (std::min)(k, n);
     if (k == 0) return {};
     const std::size_t m = F[0].size();
     if (m == 0) return order_plain(F, k);
@@ -390,8 +390,8 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
         for (std::size_t i = 0; i < n; ++i) {
             if (!kept[i]) continue;
             for (std::size_t j = 0; j < m; ++j) {
-                lo[j] = std::min(lo[j], F[i][j]);
-                hi[j] = std::max(hi[j], F[i][j]);
+                lo[j] = (std::min)(lo[j], F[i][j]);
+                hi[j] = (std::max)(hi[j], F[i][j]);
             }
         }
         for (std::size_t i = 0; i < n; ++i)
@@ -426,7 +426,7 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
                 double up = 0.0;                                   // sum_k w(p_k + DRS_GAIN)
                 for (std::size_t j = 0; j < m; ++j) up += w(a, bound[j]);
                 for (std::size_t j = 0; j < m; ++j)
-                    most[j * SUMS + a] = up - w(a, bound[j]) + w(a, std::max(beaten[j], 0.0)) + tol;
+                    most[j * SUMS + a] = up - w(a, bound[j]) + w(a, (std::max)(beaten[j], 0.0)) + tol;
             }
             tree.visit(
                 [&](std::size_t node) {
@@ -448,7 +448,7 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
                     for (std::size_t j = 0; j < m; ++j) {
                         const double d = G[p * m + j] - G[q * m + j];
                         if (-d > DRS_GAIN) { small_gain = false; break; }
-                        loss = std::max(loss, d);
+                        loss = (std::max)(loss, d);
                     }
                     if (small_gain && loss > DRS_LOSS) drop[p] = 1;
                 });
@@ -461,8 +461,8 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
         for (std::size_t i = 0; i < n; ++i) {
             if (!kept[i]) continue;
             for (std::size_t j = 0; j < m; ++j) {
-                lo2[j] = std::min(lo2[j], F[i][j]);
-                hi2[j] = std::max(hi2[j], F[i][j]);
+                lo2[j] = (std::min)(lo2[j], F[i][j]);
+                hi2[j] = (std::max)(hi2[j], F[i][j]);
             }
         }
         if (lo2 == lo && hi2 == hi) {               // the same coordinates: none more set aside
@@ -503,7 +503,7 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
             },
             [&](std::size_t c) {
                 if (taken[c]) return;
-                cover[c] = std::min(cover[c], d_plus(i, c));
+                cover[c] = (std::min)(cover[c], d_plus(i, c));
             },
             cover);
     };
@@ -519,7 +519,7 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
         for (std::size_t i = 0; i < n; ++i)
             if (!taken[i]) aside.push_back(i);
         for (std::size_t c : aside)
-            for (std::size_t s : out) cover[c] = std::min(cover[c], d_plus(s, c));
+            for (std::size_t s : out) cover[c] = (std::min)(cover[c], d_plus(s, c));
         while (out.size() < k) {
             std::size_t arg = n;
             double worst = -1.0;
@@ -532,7 +532,7 @@ inline std::vector<std::size_t> order(const std::vector<std::vector<double>>& F,
             taken[arg] = 1;
             out.push_back(arg);
             for (std::size_t c : aside)
-                if (!taken[c]) cover[c] = std::min(cover[c], d_plus(arg, c));
+                if (!taken[c]) cover[c] = (std::min)(cover[c], d_plus(arg, c));
         }
     }
     return out;

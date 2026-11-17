@@ -78,7 +78,7 @@ public:
             for (std::size_t j = 0; j < m; ++j) {
                 const double v = P[order_[t] * m + j];
                 pts_[t * m + j] = v;
-                lo[j] = std::min(lo[j], v);
+                lo[j] = (std::min)(lo[j], v);
             }
         for (std::size_t d = 0; d < m; ++d)
             for (std::size_t j = 0; j < m; ++j) pts_[(k + d) * m + j] = d == j ? ref_[j] : lo[j];
@@ -112,7 +112,7 @@ public:
                 for (std::size_t j = 0; j < last; ++j) {
                     double top = -std::numeric_limits<double>::infinity();
                     for (std::size_t q = 0; q < m; ++q)
-                        if (q != j) top = std::max(top, pts_[dz[q] * m + j]);
+                        if (q != j) top = (std::max)(top, pts_[dz[q] * m + j]);
                     if (!(z[j] >= top)) continue;
                     const std::size_t at = nu_.size();
                     nu_.insert(nu_.end(), u, u + m);
@@ -143,7 +143,7 @@ private:
         double v = ref_[0] - u[0];
         for (std::size_t j = 1; j < m && v > 0.0; ++j) {
             double lo = -std::numeric_limits<double>::infinity();
-            for (std::size_t q = 0; q < j; ++q) lo = std::max(lo, pts_[dz[q] * m + j]);
+            for (std::size_t q = 0; q < j; ++q) lo = (std::max)(lo, pts_[dz[q] * m + j]);
             const double w = u[j] - lo;
             v = w > 0.0 ? v * w : 0.0;
         }
@@ -206,7 +206,7 @@ inline double box(const double* F, std::size_t n, std::size_t m, const double* r
     if (k == 0) return 0.0;
     if (m == 1) {
         double best = P[0];
-        for (std::size_t i = 1; i < k; ++i) best = std::min(best, P[i]);
+        for (std::size_t i = 1; i < k; ++i) best = (std::min)(best, P[i]);
         return ref[0] - best;
     }
     k = detail::stable_rows(P, k, m);

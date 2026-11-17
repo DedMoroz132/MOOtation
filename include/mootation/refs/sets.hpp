@@ -196,7 +196,7 @@ inline Rows lsmop_set(std::size_t M, int which, std::size_t n)
         const std::size_t start = at;
         for (std::size_t s : parts[k]) {
             if (which == 14 && k % 2 == 1 && s >= 2)
-                for (std::size_t i = at; i < at + s; ++i) x1_max = std::min(x1_max, link[3 * i] - 1.0 / link[3 * i + 2]);
+                for (std::size_t i = at; i < at + s; ++i) x1_max = (std::min)(x1_max, link[3 * i] - 1.0 / link[3 * i + 2]);
             at += s;
         }
         if (which == 14 && k % 2 == 1)
@@ -210,7 +210,7 @@ inline Rows lsmop_set(std::size_t M, int which, std::size_t n)
         std::copy(P.row(r), P.row(r) + P.m, X.row(r));
         for (std::size_t i = 0; i < ns; ++i) {
             const double a = link[3 * i], l = link[3 * i + 1], w = link[3 * i + 2];
-            X.row(r)[M - 1 + i] = std::min(l + (z[i] + P.row(r)[0] * w) / a, l + w);
+            X.row(r)[M - 1 + i] = (std::min)(l + (z[i] + P.row(r)[0] * w) / a, l + w);
         }
     }
     return X;
@@ -275,7 +275,7 @@ inline Rows pareto_set(const json::Value& spec, std::size_t n)
                     double p = 0.0;
                     if (rest > 0.0) {
                         const double v = F.row(r)[m - 1 - j] / rest;
-                        p = i == 4 ? v : dm::asin(std::min(std::max(v, 0.0), 1.0)) * 2.0 / dm::kPi;
+                        p = i == 4 ? v : dm::asin((std::min)((std::max)(v, 0.0), 1.0)) * 2.0 / dm::kPi;
                     }
                     P.row(r)[j] = p;
                     rest = i == 4 ? rest * (1.0 - p) : rest * dm::cos(0.5 * dm::kPi * p);
@@ -287,7 +287,7 @@ inline Rows pareto_set(const json::Value& spec, std::size_t n)
         Rows X = rows_of(P.n, nv);
         for (std::size_t r = 0; r < P.n; ++r) {
             double* x = X.row(r);
-            for (std::size_t j = 0; j < d; ++j) x[j] = std::min(std::max(P.row(r)[j], 0.0), mw::upper(i));
+            for (std::size_t j = 0; j < d; ++j) x[j] = (std::min)((std::max)(P.row(r)[j], 0.0), mw::upper(i));
             double last = x[d - 1];
             for (std::size_t k = m; k <= nv; ++k) {          // i = m .. n, x_i at index i - 1
                 const double fi = static_cast<double>(k), fn = static_cast<double>(nv);
@@ -312,7 +312,7 @@ inline Rows pareto_set(const json::Value& spec, std::size_t n)
             if (cdtlz_feasible(Cons::C2_DTLZ2, f.data(), M)) ok.push_back(i);
         }
         std::vector<std::size_t> pick;
-        for (double at : linspace(0.0, static_cast<double>(ok.size()) - 1.0, std::min(n, ok.size()))) {
+        for (double at : linspace(0.0, static_cast<double>(ok.size()) - 1.0, (std::min)(n, ok.size()))) {
             const auto k = static_cast<std::size_t>(std::nearbyint(at));
             if (pick.empty() || pick.back() != ok[k]) pick.push_back(ok[k]);
         }

@@ -637,7 +637,7 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
         std::vector<Result> all;
         for (std::size_t c = 0; c < n; c += kLeanChunk) {
             const std::vector<StartSpec> chunk(starts.begin() + static_cast<std::ptrdiff_t>(c),
-                                               starts.begin() + static_cast<std::ptrdiff_t>(std::min(n, c + kLeanChunk)));
+                                               starts.begin() + static_cast<std::ptrdiff_t>((std::min)(n, c + kLeanChunk)));
             for (Result& r : round(ev, inner, chunk, threads, pop_size)) all.push_back(std::move(r));
         }
         return all;
@@ -666,7 +666,7 @@ inline std::vector<Result> round(Evaluator& ev, const Inner& inner, const std::v
         --start_depth();
     };
     const std::size_t T = start_depth() > 0 ? 1                                       // STRAT-7
-                                            : std::min<std::size_t>(n, static_cast<std::size_t>(std::max(1, threads)));
+                                            : std::min<std::size_t>(n, static_cast<std::size_t>((std::max)(1, threads)));
     if (T <= 1) {
         double declared = ev.counted();               // STOP-5: the merge's least spending so far
         for (std::size_t k = 0; k < n; ++k) {
@@ -875,7 +875,7 @@ private:
         for (std::size_t j = 0; j < a.size(); ++j) {
             const double w = hi_[j] - lo_[j];
             const double s = std::isfinite(w) && w > 0.0 ? w : 1.0;
-            d = std::max(d, periodic::gap(a[j], b[j], periodic::is(periodic_, j), w) / s);
+            d = (std::max)(d, periodic::gap(a[j], b[j], periodic::is(periodic_, j), w) / s);
         }
         return d;
     }
@@ -1194,7 +1194,7 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
                 const bool box = std::isfinite(P.lo[j]) && std::isfinite(P.hi[j]);
                 const double z = rnd::normal01(jitter);
                 const double step = sigma * (box ? P.hi[j] - P.lo[j] : 1.0);
-                sp.start.x0[j] = std::min(P.hi[j], std::max(P.lo[j], start.x0[j] + step * z));
+                sp.start.x0[j] = (std::min)(P.hi[j], (std::max)(P.lo[j], start.x0[j] + step * z));
             }
         } else {
             sp.start.has_x0 = true;
@@ -1220,7 +1220,7 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
             auto run_from = [&](StartSpec sp, const Vec& from) {
                 const double left = static_cast<double>(ev.budget) - ev.used();
                 if (left < 1.0) throw BudgetSpent{};
-                if (!stop.go(std::numeric_limits<long long>::max(), P)) throw BudgetSpent{};   // the budget: above
+                if (!stop.go((std::numeric_limits<long long>::max)(), P)) throw BudgetSpent{};   // the budget: above
                 sp.allowance = static_cast<long long>(left);
                 const Result r = round(ev, inner, {sp}, 1, pop_size).at(0);
                 stop.step(ev);
@@ -1235,7 +1235,7 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
                 const std::size_t at = log.joined();                                  // the solution it joined
                 (void)before;
                 if (at >= maxdist.size()) maxdist.resize(at + 1, 0.0);
-                maxdist[at] = std::max(maxdist[at], d);
+                maxdist[at] = (std::max)(maxdist[at], d);
             };
             // the trial points (OQ-6): start 0's x0 where the start has one, then
             // the starts of the design; stage 1: the first oq_stage1 evaluated,
@@ -1273,17 +1273,17 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
             long long above = 0;
             for (std::size_t t = s1; t < trial.size(); ++t) {
                 const double v = p1(trial[t]);
-                bool far = true;
-                for (std::size_t q = 0; q < log.list().size() && far; ++q) {
+                bool distant = true;
+                for (std::size_t q = 0; q < log.list().size() && distant; ++q) {
                     double d2 = 0.0;
                     for (std::size_t j = 0; j < n; ++j)
                         d2 += (trial[t][j] - log.list()[q].x[j]) * (trial[t][j] - log.list()[q].x[j]);
-                    far = !(std::sqrt(d2) < oq_dist * (q < maxdist.size() ? maxdist[q] : 0.0));
+                    distant = !(std::sqrt(d2) < oq_dist * (q < maxdist.size() ? maxdist[q] : 0.0));
                 }
                 const bool merit = v <= threshold;
                 if (!merit) ++oq_rejected_merit;
-                if (!far) ++oq_rejected_distance;
-                if (merit && far) {
+                if (!distant) ++oq_rejected_distance;
+                if (merit && distant) {
                     threshold = v;
                     above = 0;
                     run_from(specs[t], trial[t]);
@@ -1305,7 +1305,7 @@ inline Result run_multistart(const Problem& P, double eq_tol, bool has_tol0, dou
             for (StartSpec& sp : starts) {
                 const double left = static_cast<double>(ev.budget) - ev.used();
                 if (left < 1.0) break;
-                if (!stop.go(std::numeric_limits<long long>::max(), P)) break;     // the budget: above
+                if (!stop.go((std::numeric_limits<long long>::max)(), P)) break;     // the budget: above
                 sp.allowance = static_cast<long long>(left);
                 runs.push_back(round(ev, inner, {sp}, 1, pop_size).at(0));
                 stop.step(ev);

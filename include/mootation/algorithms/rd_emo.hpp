@@ -151,13 +151,13 @@ private:
         double dot=0; for(int k=0;k<m_;++k) dot+=(f[k]-z_[k])*R_[i][k];
         double d1=dot/Rnorm_[i], s2=0;
         for(int k=0;k<m_;++k){ double pr=(f[k]-z_[k])-d1*R_[i][k]/Rnorm_[i]; s2+=pr*pr; }
-        return std::sqrt(std::max(s2,0.0));
+        return std::sqrt((std::max)(s2,0.0));
     }
     double pbi(const std::vector<double>& f, int i) const {
         double dot=0; for(int k=0;k<m_;++k) dot+=(f[k]-z_[k])*R_[i][k];
         double d1=dot/Rnorm_[i], s2=0;
         for(int k=0;k<m_;++k){ double pr=(f[k]-z_[k])-d1*R_[i][k]/Rnorm_[i]; s2+=pr*pr; }
-        return d1 + theta_*std::sqrt(std::max(s2,0.0));
+        return d1 + theta_*std::sqrt((std::max)(s2,0.0));
     }
     int assoc(const std::vector<double>& f) const {
         int best=0; double bd=d2_to(f,0);
@@ -167,15 +167,15 @@ private:
     // RDE-3: z* is the running ideal (minimum over the population).
     void upd_ideal_pop(){
         if(ideal_origin_){ z_.assign(m_,0.0); return; }   // RDE-9: the origin, as §4.1
-        for(const auto& s:pop_) for(int k=0;k<m_;++k) z_[k]=std::min(z_[k],s.objs[k]);
+        for(const auto& s:pop_) for(int k=0;k<m_;++k) z_[k]=(std::min)(z_[k],s.objs[k]);
     }
 
     void build_regions(int m){
         R_=das_dennis::generate_auto(m, popsiz_);
         N_=(int)R_.size();
         Rnorm_.assign(N_,0.0);
-        for(int i=0;i<N_;++i){ double s=0; for(double v:R_[i]) s+=v*v; Rnorm_[i]=std::sqrt(std::max(s,1e-300)); }
-        int Te=std::min(T_,N_-1), We=std::min(W_,N_-1);
+        for(int i=0;i<N_;++i){ double s=0; for(double v:R_[i]) s+=v*v; Rnorm_[i]=std::sqrt((std::max)(s,1e-300)); }
+        int Te=(std::min)(T_,N_-1), We=(std::min)(W_,N_-1);
         if(Te<1) Te=1;
         if(We<1) We=1;
         U_.assign(N_,{}); V_.assign(N_,{});
@@ -234,7 +234,7 @@ private:
     // infeasible members are worst by definition, ordered by descending CV, so
     // an infeasible incumbent is always evicted before any feasible one.
     int worst_in_region(int reg) const {
-        int worst=-1; double wg=-std::numeric_limits<double>::max();
+        int worst=-1; double wg=-(std::numeric_limits<double>::max)();
         double wcv=-1.0; bool found_infeasible=false;
         const bool cm = (constraint_mode!=ConstraintMode::NONE);
         for(int i=0;i<(int)pop_.size();++i){
@@ -256,7 +256,7 @@ private:
 
 public:
     RDEMOCore() = default;
-    void set_T(int t){ if(t>0){T_=t;W_=std::max(1,t/4);} }
+    void set_T(int t){ if(t>0){T_=t;W_=(std::max)(1,t/4);} }
     void set_theta(double t){ if(t>0) theta_=t; }
     bool set_word(const std::string& k, const std::string& w){
         if(k!="rd_ideal") return false;                      // RDE-9
@@ -273,7 +273,7 @@ public:
 
     void setup(DataVault<Ind_t>& vault){
         m_=vault.objs_n(); popsiz_=vault.pop_size();
-        z_.assign(m_,std::numeric_limits<double>::max());  // z* = running ideal
+        z_.assign(m_,(std::numeric_limits<double>::max)());  // z* = running ideal
         build_regions(m_);
         const auto& b=vault.get_bounds();
         rnd::uniform_real_distribution<double> d(0.0,1.0);
@@ -294,7 +294,7 @@ public:
 
     void setup_seeded(DataVault<Ind_t>& vault){
         m_=vault.objs_n(); popsiz_=vault.pop_size();
-        z_.assign(m_,std::numeric_limits<double>::max());
+        z_.assign(m_,(std::numeric_limits<double>::max)());
         build_regions(m_);
         pop_.clear(); region_of_.clear();
         for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i); s.bvars=vault.binary_variables_of(i);
@@ -348,7 +348,7 @@ public:
 
         // ── Algorithm 2: update ──
         for(auto& q:Q){
-            if(!ideal_origin_) for(int kk=0;kk<m_;++kk) z_[kk]=std::min(z_[kk],q.objs[kk]);   // running ideal (RDE-9: or the origin)
+            if(!ideal_origin_) for(int kk=0;kk<m_;++kk) z_[kk]=(std::min)(z_[kk],q.objs[kk]);   // running ideal (RDE-9: or the origin)
             std::vector<int> rd=region_degrees();
             int n=0; for(int i=1;i<N_;++i) if(rd[i]>rd[n]) n=i;
             int k=assoc(q.objs);

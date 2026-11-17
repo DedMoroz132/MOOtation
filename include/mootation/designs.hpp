@@ -319,8 +319,8 @@ inline double initial_temperature(std::size_t n, std::size_t k, int p, double sc
     const double lo = 0.5 * mean / scale, hi = 1.5 * mean / scale;
     double total = 0.0;
     const std::size_t count = n * (n - 1) / 2;
-    for (std::size_t i = 0; i < count; ++i) total += neg_power(lo + (hi - lo) * static_cast<double>(i) / std::max(m - 1.0, 1.0), p);
-    const double closer = std::max(lo - 1.0 / scale, 1e-12);
+    for (std::size_t i = 0; i < count; ++i) total += neg_power(lo + (hi - lo) * static_cast<double>(i) / (std::max)(m - 1.0, 1.0), p);
+    const double closer = (std::max)(lo - 1.0 / scale, 1e-12);
     const double total_try = total - neg_power(lo, p) + neg_power(closer, p);
     const double d_phi = dm::pow(total_try, 1.0 / p) - dm::pow(total, 1.0 / p);
     return d_phi / -dm::log(kAccept);
@@ -333,7 +333,7 @@ inline std::vector<int> anneal(std::vector<int> L, std::size_t n, std::size_t k,
 {
     std::vector<double> D2 = squared_distances(L, n, k);
     double scale = std::numeric_limits<double>::infinity();
-    for (double v : D2) scale = std::min(scale, v);
+    for (double v : D2) scale = (std::min)(scale, v);
     for (double& v : D2) v /= scale;
     std::vector<double> T(n * n);
     double S = 0.0;
@@ -414,7 +414,7 @@ inline std::vector<int> anneal_lean(std::vector<int> L, std::size_t n, std::size
 {
     double scale = std::numeric_limits<double>::infinity();
     for (std::size_t a = 0; a < n; ++a)
-        for (std::size_t b = a + 1; b < n; ++b) scale = std::min(scale, level_distance(L, k, a, b));
+        for (std::size_t b = a + 1; b < n; ++b) scale = (std::min)(scale, level_distance(L, k, a, b));
     auto total = [&]() {                                     // the sum of phi_p's terms, in full
         double s = 0.0;
         for (std::size_t a = 0; a < n; ++a)

@@ -114,12 +114,12 @@ inline std::vector<std::size_t> hungarian(std::size_t n, Vec c)
     // Preliminaries
     for (std::size_t i = 0; i < n; ++i) {
         double m = at(i, 0);
-        for (std::size_t j = 1; j < n; ++j) m = std::min(m, at(i, j));
+        for (std::size_t j = 1; j < n; ++j) m = (std::min)(m, at(i, j));
         for (std::size_t j = 0; j < n; ++j) at(i, j) -= m;
     }
     for (std::size_t j = 0; j < n; ++j) {
         double m = at(0, j);
-        for (std::size_t i = 1; i < n; ++i) m = std::min(m, at(i, j));
+        for (std::size_t i = 1; i < n; ++i) m = (std::min)(m, at(i, j));
         for (std::size_t i = 0; i < n; ++i) at(i, j) -= m;
     }
     const std::size_t none = n;
@@ -157,7 +157,7 @@ inline std::vector<std::size_t> hungarian(std::size_t n, Vec c)
             for (std::size_t i = 0; i < n; ++i)
                 if (!row_covered[i])
                     for (std::size_t j = 0; j < n; ++j)
-                        if (!col_covered[j]) h = std::min(h, at(i, j));
+                        if (!col_covered[j]) h = (std::min)(h, at(i, j));
             for (std::size_t i = 0; i < n; ++i)
                 for (std::size_t j = 0; j < n; ++j) {
                     if (row_covered[i]) at(i, j) += h;

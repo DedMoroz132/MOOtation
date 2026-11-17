@@ -155,13 +155,13 @@ private:
     normalise(DataVault<Ind_t>& vault, const std::vector<int>& idx, int pool,
               std::vector<double>* zmin_out = nullptr) {
         int m = vault.objs_n();
-        std::vector<double> zmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> zmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> zmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> zmax(m, -(std::numeric_limits<double>::max)());
         for (int v : idx) {
             const auto& o = vault.objectives_of(v);
             for (int j = 0; j < m; ++j) {
-                zmin[j] = std::min(zmin[j], o[j]);
-                zmax[j] = std::max(zmax[j], o[j]);
+                zmin[j] = (std::min)(zmin[j], o[j]);
+                zmax[j] = (std::max)(zmax[j], o[j]);
             }
         }
         std::vector<std::vector<double>> fn(pool, std::vector<double>(m, 0.0));
@@ -193,7 +193,7 @@ private:
         double denom = vnorm(a) * vnorm(b);
         if (denom < 1e-30) return 1.0;
         double c = dot / denom;
-        c = std::max(-1.0, std::min(1.0, c));
+        c = (std::max)(-1.0, (std::min)(1.0, c));
         return 1.0 - c;
     }
 
@@ -230,7 +230,7 @@ private:
         int Nref = static_cast<int>(W_.size());
         std::vector<double> CM(Nref, 0.0);
         for (int j = 0; j < Nref; ++j) {
-            int    best = -1; double bd = std::numeric_limits<double>::max();
+            int    best = -1; double bd = (std::numeric_limits<double>::max)();
             for (int s = 0; s < n; ++s) {           // v2s: closest solution to the RV
                 double d = angle_dist(Fn[s], W_[j]);
                 if (d < bd) { bd = d; best = s; }
@@ -252,7 +252,7 @@ private:
         {
             std::vector<int> rho(W_.size(), 0);
             for (int s = 0; s < n; ++s) {
-                int    bj = 0; double bd = std::numeric_limits<double>::max();
+                int    bj = 0; double bd = (std::numeric_limits<double>::max)();
                 for (int j = 0; j < static_cast<int>(W_.size()); ++j) {
                     double d = angle_dist(Fn[s], W_[j]);
                     if (d < bd) { bd = d; bj = j; }
@@ -274,7 +274,7 @@ private:
             std::vector<int> assoc(n, -1);
             for (int s = 0; s < n; ++s) {
                 if (used[s]) continue;
-                int    bj = 0; double bd = std::numeric_limits<double>::max();
+                int    bj = 0; double bd = (std::numeric_limits<double>::max)();
                 for (int j = 0; j < Nref; ++j) {
                     double d = angle_dist(Fn[s], W_[j]);
                     if (d < bd) { bd = d; bj = j; }
@@ -283,24 +283,24 @@ private:
             }
             // the most crowded RV (random on ties)
             int rmax = 0;
-            for (int j = 0; j < Nref; ++j) rmax = std::max(rmax, rho[j]);
+            for (int j = 0; j < Nref; ++j) rmax = (std::max)(rmax, rho[j]);
             if (rmax == 0) break;
             std::vector<int> ties;
             for (int j = 0; j < Nref; ++j) if (rho[j] == rmax) ties.push_back(j);
             int wmost = ties[rnd::uniform_int_distribution<int>(0, static_cast<int>(ties.size()) - 1)(rng_)];
             // the farthest solution in the subregion of wmost (max angular distance)
-            int    xf = -1; double far = -1.0;
+            int    xf = -1; double distant = -1.0;
             for (int s = 0; s < n; ++s) {
                 if (used[s] || assoc[s] != wmost) continue;
                 double d = angle_dist(Fn[s], W_[wmost]);
-                if (d > far) { far = d; xf = s; }
+                if (d > distant) { distant = d; xf = s; }
             }
             if (xf < 0) break;
             // new RV (8): (f(x_f)−zmin) normalised to sum 1.
             const auto& o = vault.objectives_of(xf);
             std::vector<double> wnew(m, 0.0);
             double sum = 0.0;
-            for (int j = 0; j < m; ++j) { wnew[j] = std::max(0.0, o[j] - zmin[j]); sum += wnew[j]; }
+            for (int j = 0; j < m; ++j) { wnew[j] = (std::max)(0.0, o[j] - zmin[j]); sum += wnew[j]; }
             if (sum > 1e-30) for (int j = 0; j < m; ++j) wnew[j] /= sum;
             else             wnew = Fn[xf];
             W_.push_back(wnew);
@@ -433,7 +433,7 @@ public:
         int Nref = static_cast<int>(W_.size());
         std::vector<std::vector<int>> sub(Nref);
         for (int i = 0; i < pool; ++i) {
-            int    bj = 0; double bd = std::numeric_limits<double>::max();
+            int    bj = 0; double bd = (std::numeric_limits<double>::max)();
             for (int j = 0; j < Nref; ++j) {
                 double d = angle_dist(Fn[i], W_[j]);
                 if (d < bd) { bd = d; bj = j; }
@@ -460,7 +460,7 @@ public:
         } else {
             // layers by FitNo within cand.
             int maxfit = 0;
-            for (int v : cand) maxfit = std::max(maxfit, FitNo[v]);
+            for (int v : cand) maxfit = (std::max)(maxfit, FitNo[v]);
             std::vector<std::vector<int>> FitF(maxfit + 1);
             for (int v : cand) FitF[FitNo[v]].push_back(v);
 
@@ -480,9 +480,9 @@ public:
                     for (int t = 0; t < static_cast<int>(rem.size()); ++t) {
                         if (taken[t]) continue;
                         int xq = rem[t];
-                        double dmin = std::numeric_limits<double>::max();
+                        double dmin = (std::numeric_limits<double>::max)();
                         for (int xp : survivors)
-                            dmin = std::min(dmin, angle_dist(Fn[xq], Fn[xp]));
+                            dmin = (std::min)(dmin, angle_dist(Fn[xq], Fn[xp]));
                         if (survivors.empty()) dmin = 0.0;
                         if (dmin > bestd) { bestd = dmin; best = xq; bidx = t; }
                     }
@@ -496,7 +496,7 @@ public:
 
         // ── Reference vector adjustment (Algorithm 1: Condition1/2) ────────
         int G = current_gen_;
-        int period = std::max(1, static_cast<int>(std::lround(fr_ * t_max_)));
+        int period = (std::max)(1, static_cast<int>(std::lround(fr_ * t_max_)));
         bool cond1 = (G >= static_cast<int>(0.2 * t_max_)) &&
                      (G <= static_cast<int>(0.9 * t_max_)) &&
                      (G % period == 0);
@@ -504,7 +504,7 @@ public:
             std::vector<double> CM = cal_convergence(vault, N);
             // Both sizes are bounded by the population size, so the narrowing
             // is safe; make it explicit rather than let the compiler warn.
-            int sz = static_cast<int>(std::min(CM.size(), CM_old_.size()));
+            int sz = static_cast<int>((std::min)(CM.size(), CM_old_.size()));
             int conv_sum = 0;
             for (int j = 0; j < sz; ++j) {
                 double base = CM_old_[j];

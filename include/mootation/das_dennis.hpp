@@ -375,7 +375,7 @@ inline std::vector<std::vector<double>> reference_points(int m, long long h) {
         free[k] = 0;
         W.push_back(dense[k]);
         for (std::size_t i = 0; i < dense.size(); ++i)
-            if (free[i]) d[i] = std::min(d[i], dist(dense[i], dense[k]));
+            if (free[i]) d[i] = (std::min)(d[i], dist(dense[i], dense[k]));
     }
     return W;
 }

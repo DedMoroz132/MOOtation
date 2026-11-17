@@ -177,7 +177,7 @@ private:
     double biggest(const double* x) const
     {
         double big = 0.0;
-        for (int i = 0; i < n; ++i) big = std::max(big, std::fabs(x[i]));
+        for (int i = 0; i < n; ++i) big = (std::max)(big, std::fabs(x[i]));
         return big;
     }
 

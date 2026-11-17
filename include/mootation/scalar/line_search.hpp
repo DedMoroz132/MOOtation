@@ -119,7 +119,7 @@ inline Result search(const std::function<void(double a, double& f, double& g)>& 
     double al = 0.0, fl = phi0, gl = g0;              // phi's values at the ends
     double au = 0.0, fu = phi0, gu = g0;
     double width = o.a_max - o.a_min, width1 = 2.0 * width;
-    double a = std::min(std::max(a0, o.a_min), o.a_max);
+    double a = (std::min)((std::max)(a0, o.a_min), o.a_max);
     for (;;) {
         double f, g;
         phi(a, f, g);
@@ -131,7 +131,7 @@ inline Result search(const std::function<void(double a, double& f, double& g)>& 
         if (psi <= 0.0 && std::fabs(g) <= o.eta * -g0) { res.info = Info::converged; return res; }
         if (a == o.a_max && psi <= 0.0 && dpsi < 0.0) { res.info = Info::at_max; return res; }
         if (a == o.a_min && (psi > 0.0 || dpsi >= 0.0)) { res.info = Info::at_min; return res; }
-        if (bracketed && std::fabs(au - al) <= o.xtol * std::max(al, au)) { res.info = Info::width; return res; }
+        if (bracketed && std::fabs(au - al) <= o.xtol * (std::max)(al, au)) { res.info = Info::width; return res; }
         if (res.nfev >= o.max_nfev) { res.info = Info::max_nfev; return res; }
         if (!std::isfinite(f) || !std::isfinite(g)) {    // LS-7: back toward a_l
             bracketed = true;
@@ -173,7 +173,7 @@ inline Result search(const std::function<void(double a, double& f, double& g)>& 
                 next = std::fabs(cc - a) > std::fabs(s - a) ? cc : s;
             }
             if (bracketed)
-                next = a > al ? std::min(a + 0.66 * (au - a), next) : std::max(a + 0.66 * (au - a), next);
+                next = a > al ? (std::min)(a + 0.66 * (au - a), next) : (std::max)(a + 0.66 * (au - a), next);
         } else {                                          // case 4
             if (bracketed) next = detail::cubic(au, Fu, Gu, a, Ft, Gt, ok);
             else next = a + 4.0 * (a - al);               // LS-1
@@ -192,13 +192,13 @@ inline Result search(const std::function<void(double a, double& f, double& g)>& 
             if (w >= 0.66 * width1) next = al + 0.5 * (au - al);
             width1 = width;
             width = w;
-            const double lo = std::min(al, au), hi = std::max(al, au);
+            const double lo = (std::min)(al, au), hi = (std::max)(al, au);
             if (!(next > lo && next < hi)) next = al + 0.5 * (au - al);   // LS-5
         } else {                                          // (2.2): delta in [1.1, 4]
             const double lo = a + 1.1 * (a - al_old), hi = a + 4.0 * (a - al_old);
-            next = std::min(std::max(next, std::min(lo, hi)), std::max(lo, hi));
+            next = (std::min)((std::max)(next, (std::min)(lo, hi)), (std::max)(lo, hi));
         }
-        a = std::min(std::max(next, o.a_min), o.a_max);
+        a = (std::min)((std::max)(next, o.a_min), o.a_max);
     }
 }
 

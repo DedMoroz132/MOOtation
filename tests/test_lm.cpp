@@ -755,7 +755,7 @@ int main()
         J(0, 2) = 0.5; J(1, 2) = 0.5; J(2, 2) = -0.5; J(3, 2) = -0.5;
         const LM::Diagnostics d = LM::diagnose(J, 0.5, 0.0);
         check(std::fabs(d.sv[0] - 4.0) < 1e-14 && std::fabs(d.sv[1] - 2.0) < 1e-14 &&
-                  std::fabs(d.sv[2] - 1.0) < 1e-14 && d.small == 0,
+                  std::fabs(d.sv[2] - 1.0) < 1e-14 && d.tiny == 0,
               "diagnose: the singular values 4, 2, 1");
         // s^2 = 2 cost / (m - n) = 1; (J^T J)^-1 = diag(1/16, 1/4, 1)
         check(std::fabs(d.cov(0, 0) - 1.0 / 16.0) < 1e-15 && std::fabs(d.cov(1, 1) - 0.25) < 1e-15 &&
@@ -769,7 +769,7 @@ int main()
             K(i, 2) = J(i, 0);
         }
         const LM::Diagnostics e = LM::diagnose(K, 0.5, 2.0);
-        check(e.small == 1 && e.sigma2 == 2.0 && e.sigma2_given, "diagnose: one small singular value; sigma2 given");
+        check(e.tiny == 1 && e.sigma2 == 2.0 && e.sigma2_given, "diagnose: one small singular value; sigma2 given");
     }
 
     // check_jacobian

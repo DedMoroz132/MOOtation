@@ -218,10 +218,10 @@ private:
     // ── normalize objectives of a set to [0,1] (Eq.10) ──────────────────────
     static std::vector<std::vector<double>> normalize(const std::vector<Sol>& S, int m) {
         std::vector<std::vector<double>> out(S.size(), std::vector<double>(m, 0.0));
-        std::vector<double> lo(m,  std::numeric_limits<double>::max());
-        std::vector<double> hi(m, -std::numeric_limits<double>::max());
+        std::vector<double> lo(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> hi(m, -(std::numeric_limits<double>::max)());
         for (const auto& s : S) for (int k = 0; k < m; ++k) {
-            lo[k] = std::min(lo[k], s.objs[k]); hi[k] = std::max(hi[k], s.objs[k]);
+            lo[k] = (std::min)(lo[k], s.objs[k]); hi[k] = (std::max)(hi[k], s.objs[k]);
         }
         for (std::size_t i = 0; i < S.size(); ++i)
             for (int k = 0; k < m; ++k) {
@@ -249,7 +249,7 @@ private:
         int clusters = n;
 
         while (clusters > target) {
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             int ba = -1, bb = -1;
             for (int a = 0; a < n; ++a) {
                 if (!alive[a]) continue;
@@ -299,7 +299,7 @@ private:
         for (int iter = 0; iter < 20; ++iter) {
             bool changed = false;
             for (int i = 0; i < n; ++i) {
-                int bc = 0; double bd = std::numeric_limits<double>::max();
+                int bc = 0; double bd = (std::numeric_limits<double>::max)();
                 for (int c = 0; c < K; ++c) {
                     double d = 0.0;
                     for (int j = 0; j < m; ++j) {
@@ -381,7 +381,7 @@ private:
     static double Ieps(const std::vector<double>& x2, const std::vector<double>& x1) {
         double e = -std::numeric_limits<double>::infinity();
         for (std::size_t j = 0; j < x2.size(); ++j)
-            e = std::max(e, x2[j] - x1[j]);
+            e = (std::max)(e, x2[j] - x1[j]);
         return e;
     }
 
@@ -461,8 +461,8 @@ private:
     }
 
     void update_ideal(const std::vector<Sol>& S) {
-        if (z_.empty()) z_.assign(m_, std::numeric_limits<double>::max());
-        for (const auto& s : S) for (int k = 0; k < m_; ++k) z_[k] = std::min(z_[k], s.objs[k]);
+        if (z_.empty()) z_.assign(m_, (std::numeric_limits<double>::max)());
+        for (const auto& s : S) for (int k = 0; k < m_; ++k) z_[k] = (std::min)(z_[k], s.objs[k]);
     }
 
     // ── MOEA/D-Tchebycheff environment selection on DP (HCCA-2) ──────────────
@@ -470,7 +470,7 @@ private:
     // replacement; returns new DP of size N (one solution per subproblem).
     void moead_update(std::vector<Sol>& cur_DP, const std::vector<Sol>& Q) {
         // z* = min over the CURRENT DP each generation (Eq.6): reset then take mins.
-        z_.assign(m_, std::numeric_limits<double>::max());
+        z_.assign(m_, (std::numeric_limits<double>::max)());
         update_ideal(cur_DP);
         update_ideal(Q);
         rnd::uniform_real_distribution<double> ur(0.0, 1.0);
@@ -533,9 +533,9 @@ private:
 
         // normalize (Eq.10) + cluster into N clusters
         auto norm = normalize(Q, m_);
-        int target = std::min((int)Q.size(), N_);
+        int target = (std::min)((int)Q.size(), N_);
         std::vector<int> label = agglomerative(norm, target);
-        int C = 0; for (int l : label) C = std::max(C, l + 1);
+        int C = 0; for (int l : label) C = (std::max)(C, l + 1);
 
         std::vector<std::vector<int>> clu(C);
         for (int i = 0; i < (int)label.size(); ++i) clu[label[i]].push_back(i);
@@ -553,7 +553,7 @@ private:
                 for (int c = 0; c < (int)clu.size(); ++c) {
                     if (clu[c].size() != 1) continue;
                     int xi = clu[c][0], nn = -1;
-                    double best = std::numeric_limits<double>::max();
+                    double best = (std::numeric_limits<double>::max)();
                     for (int j = 0; j < (int)norm.size(); ++j) {
                         if (j == xi) continue;
                         double d = euclid(norm[xi], norm[j]);
@@ -582,9 +582,9 @@ private:
         for (int c = 0; c < C; ++c) {
             double a = 1.0;
             for (int k = 0; k < m_; ++k) {
-                double lo =  std::numeric_limits<double>::max();
-                double hi = -std::numeric_limits<double>::max();
-                for (int i : clu[c]) { lo = std::min(lo, norm[i][k]); hi = std::max(hi, norm[i][k]); }
+                double lo =  (std::numeric_limits<double>::max)();
+                double hi = -(std::numeric_limits<double>::max)();
+                for (int i : clu[c]) { lo = (std::min)(lo, norm[i][k]); hi = (std::max)(hi, norm[i][k]); }
                 a *= (hi - lo);
             }
             area[c] = a; sumA += a;
@@ -592,12 +592,12 @@ private:
 
         // Num(C) (Eq.12): floor(area/sumA*(N-sN)), at least 1 per cluster.
         std::vector<int> num(C, 0);
-        int budget = std::max(0, N_ - sN);
+        int budget = (std::max)(0, N_ - sN);
         for (int c = 0; c < C; ++c) {
             int v = 1;
             if (sumA > 1e-300)
-                v = std::max(1, (int)std::floor(area[c] / sumA * (double)budget));
-            num[c] = std::min(v, (int)clu[c].size());
+                v = (std::max)(1, (int)std::floor(area[c] / sumA * (double)budget));
+            num[c] = (std::min)(v, (int)clu[c].size());
         }
 
         // keep Num(C) best by crowding distance per cluster.
@@ -647,9 +647,9 @@ private:
         std::vector<double> fit = conv_fitness(norm);
 
         // cluster Q into K clusters
-        int target = std::min((int)Q.size(), std::max(1, K));
+        int target = (std::min)((int)Q.size(), (std::max)(1, K));
         std::vector<int> label = agglomerative(norm, target);
-        int C = 0; for (int l : label) C = std::max(C, l + 1);
+        int C = 0; for (int l : label) C = (std::max)(C, l + 1);
         std::vector<std::vector<int>> clu(C);
         for (int i = 0; i < (int)label.size(); ++i) clu[label[i]].push_back(i);
 
@@ -719,7 +719,7 @@ private:
         if (FIpp_n < 0.0) FIpp_n = 0.0;
         if (FIpp_n > 1.0) FIpp_n = 1.0;
         int K = (int)std::lround(FIpp_n * (double)N_);   // round(FI'_PP*N) (Eq.8)
-        K = std::max(std::min(K, N_ - 3), 3);
+        K = (std::max)((std::min)(K, N_ - 3), 3);
         return K;
     }
 
@@ -742,7 +742,7 @@ private:
             if ((int)Q.size() >= N_) break;
         }
         int nQ = (int)Q.size();
-        std::vector<Sol> out; out.reserve(std::min(nQ, N_));
+        std::vector<Sol> out; out.reserve((std::min)(nQ, N_));
         if (nQ <= N_) { for (int v : Q) out.push_back(pool[v]); return out; }
 
         std::vector<Sol> Qs; Qs.reserve(nQ);
@@ -751,7 +751,7 @@ private:
 
         // k-means into N clusters -> t(p) = size of cluster p (1 -> 3, [38])
         auto label = kmeans(Fn, N_);
-        std::vector<int> csz(std::max(N_, nQ), 0);
+        std::vector<int> csz((std::max)(N_, nQ), 0);
         for (int l : label) ++csz[l];
         std::vector<int> t(nQ);
         for (int i = 0; i < nQ; ++i)
@@ -774,7 +774,7 @@ private:
         for (int i = 0; i < nQ; ++i) {
             row.clear();
             for (int j = 0; j < nQ; ++j) if (j != i) row.push_back(d[i][j]);
-            int tt = std::min(t[i], nQ - 1);
+            int tt = (std::min)(t[i], nQ - 1);
             if (tt < 1) tt = 1;
             std::nth_element(row.begin(), row.begin() + (tt - 1), row.end());
             r += row[tt - 1];
@@ -799,7 +799,7 @@ private:
         // iteratively remove the maximum D (ties broken at random) and
         // recompute D for the neighbours inside the removed point's niche
         while (na > N_) {
-            double best = -std::numeric_limits<double>::max();
+            double best = -(std::numeric_limits<double>::max)();
             for (int i = 0; i < nQ; ++i)
                 if (alive[i] && D[i] > best) best = D[i];
             std::vector<int> cands;
@@ -829,7 +829,7 @@ private:
         // adjust N_ to number of weights (Das–Dennis may not equal N exactly)
         N_ = (int)W_.size();
         // neighborhoods
-        Tnb_ = std::min(20, N_);      // HCCA-12: T = 20, as the sister CSMOEA
+        Tnb_ = (std::min)(20, N_);      // HCCA-12: T = 20, as the sister CSMOEA
         B_.assign(N_, {});
         for (int i = 0; i < N_; ++i) {
             std::vector<int> idx(N_); std::iota(idx.begin(), idx.end(), 0);
@@ -845,7 +845,7 @@ private:
         N_ = vault.pop_size();
         build_weights();              // may revise N_ to weight count
         int Nreq = vault.pop_size();
-        K_ = std::max(3, std::min(N_ - 3, (int)std::floor(0.5 * N_)));
+        K_ = (std::max)(3, (std::min)(N_ - 3, (int)std::floor(0.5 * N_)));
 
         // The vault's population as Sols (after a sync or a seeding).
         auto read_vault = [&](int n) {
@@ -889,7 +889,7 @@ private:
             DP_.push_back(base_dp[i % base_dp.size()]);
             PP_.push_back(base_pp[i % base_pp.size()]);
         }
-        z_.assign(m_, std::numeric_limits<double>::max());
+        z_.assign(m_, (std::numeric_limits<double>::max)());
         update_ideal(DP_); update_ideal(PP_);
     }
 
@@ -942,10 +942,10 @@ public:
         int scratch = vault.expand(1);
 
         // (Alg.1 l.4) M <- random N-K solutions from DP
-        int nM = std::max(0, N_ - K_);
+        int nM = (std::max)(0, N_ - K_);
         std::vector<int> didx(DP_.size()); std::iota(didx.begin(), didx.end(), 0);
         rnd::shuffle(didx.begin(), didx.end(), rng_);
-        nM = std::min(nM, (int)DP_.size());
+        nM = (std::min)(nM, (int)DP_.size());
 
         // (Alg.1 l.5-8) DE offspring Q1 from DP
         std::vector<Sol> Q1;

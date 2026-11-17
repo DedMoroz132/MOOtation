@@ -79,7 +79,7 @@ private:
         for (int j = 0; j < nv; ++j) {
             double lo    = bounds[j].first .value_or(0.0);
             double hi    = bounds[j].second.value_or(1.0);
-            double range = std::max(hi - lo, 1e-14);
+            double range = (std::max)(hi - lo, 1e-14);
             double diff  = (vault.get_variable(a, j) - vault.get_variable(b, j)) / range;
             sum += diff * diff;
         }
@@ -100,26 +100,26 @@ private:
         int m  = vault.objs_n();
 
         // Eq.3: normalise objectives within R (not P).
-        std::vector<double> fmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> fmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> fmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> fmax(m, -(std::numeric_limits<double>::max)());
         for (int idx : R) {
             const auto& o = vault.objectives_of(idx);
             for (int j = 0; j < m; ++j) {
-                fmin[j] = std::min(fmin[j], o[j]);
-                fmax[j] = std::max(fmax[j], o[j]);
+                fmin[j] = (std::min)(fmin[j], o[j]);
+                fmax[j] = (std::max)(fmax[j], o[j]);
             }
         }
         // Normalised objectives: f'_i(x) = (f_i(x) - fmin_i) / range_i
         auto fnorm = [&](int idx, int j) -> double {
-            double range = std::max(fmax[j] - fmin[j], 1e-14);
+            double range = (std::max)(fmax[j] - fmin[j], 1e-14);
             return (vault.objectives_of(idx)[j] - fmin[j]) / range;
         };
 
         // Eq.3: Iε+(y, x) = max_i (f'_i(y) - f'_i(x))
         auto indicator = [&](int y_idx, int x_idx) -> double {
-            double val = -std::numeric_limits<double>::max();
+            double val = -(std::numeric_limits<double>::max)();
             for (int j = 0; j < m; ++j)
-                val = std::max(val, fnorm(y_idx, j) - fnorm(x_idx, j));
+                val = (std::max)(val, fnorm(y_idx, j) - fnorm(x_idx, j));
             return val;
         };
 
@@ -140,7 +140,7 @@ private:
         for (int i = 0; i < sz; ++i)
             for (int j = 0; j < sz; ++j) {
                 if (i == j || !feas[i] || !feas[j]) continue;
-                I_max = std::max(I_max, std::abs(indicator(R[i], R[j])));
+                I_max = (std::max)(I_max, std::abs(indicator(R[i], R[j])));
             }
         if (I_max < 1e-14) I_max = 1.0;
 
@@ -208,8 +208,8 @@ public:
     void step(DataVault<Ind_t>& vault) {
         int mu = vault.pop_size();
         int T  = (T_ < 0) ? static_cast<int>(std::floor(0.1 * mu)) : T_;
-        T = std::max(T, 1);
-        T = std::min(T, mu);   // T = mu is allowed: R = the whole population
+        T = (std::max)(T, 1);
+        T = (std::min)(T, mu);   // T = mu is allowed: R = the whole population
                                // plus the offspring, i.e. the (mu+1) IBEA
                                // selection of §4.3
 

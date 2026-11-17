@@ -107,7 +107,7 @@ inline void evaluate(int which, const double* x, double* f)
     if (which >= 8) {
         const double x2 = x[1];
         if (which == 9) {
-            const double mx = std::max(0.0, (1.0 + kEps) * (1.0 - 4.0 * (2.0 * x1 - 1.0) * (2.0 * x1 - 1.0)));
+            const double mx = (std::max)(0.0, (1.0 + kEps) * (1.0 - 4.0 * (2.0 * x1 - 1.0) * (2.0 * x1 - 1.0)));
             f[0] = 0.5 * (mx + 2.0 * x1) * x2 + s[0];
             f[1] = 0.5 * (mx - 2.0 * x1 + 2.0) * x2 + s[1];
             f[2] = 1.0 - x2 + s[2];
@@ -128,7 +128,7 @@ inline void evaluate(int which, const double* x, double* f)
     if (which == 5 || which == 6) {
         const double N = parts(which);
         const double e = which == 5 ? (1.0 / (2.0 * N) + kEps) * std::fabs(dm::sin(2.0 * N * kPi * x1))
-                                    : std::max(0.0, 2.0 * (1.0 / (2.0 * N) + kEps) * dm::sin(2.0 * N * kPi * x1));
+                                    : (std::max)(0.0, 2.0 * (1.0 / (2.0 * N) + kEps) * dm::sin(2.0 * N * kPi * x1));
         f[0] = x1 + e + s[0];
         f[1] = 1.0 - x1 + e + s[1];
         return;

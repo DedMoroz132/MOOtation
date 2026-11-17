@@ -283,9 +283,9 @@ inline Out compute(const Rows& rows, const Context& c, const std::vector<std::st
             if (c.ref == nullptr) { out.set(name, Value::none()); continue; }
             if (n == 0) { out.set(name, Value::of(inf)); continue; }
             if (name == "igd") {
-                Vec near(c.ref_n);
-                indicators::igd_distances(F, n, c.ref, c.ref_n, m, near.data());
-                out.set(name, Value::of(np::mean(near.data(), near.size())));
+                Vec nearby(c.ref_n);
+                indicators::igd_distances(F, n, c.ref, c.ref_n, m, nearby.data());
+                out.set(name, Value::of(np::mean(nearby.data(), nearby.size())));
             } else {
                 out.set(name, Value::of(raw_front(name == "igdp" ? 0 : name == "gdp" ? 1 : 2)));
             }

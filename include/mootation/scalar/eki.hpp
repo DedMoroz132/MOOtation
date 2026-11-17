@@ -151,7 +151,7 @@ inline Result minimize(const Residuals& residuals, std::size_t m, const Vec& lo,
         for (Vec& uj : u)
             for (std::size_t i = 0; i < n; ++i) {
                 const double s = std::isfinite(lo[i]) && std::isfinite(hi[i]) ? hi[i] - lo[i]
-                                                                                : std::max(1.0, std::fabs(x0[i]));
+                                                                                : (std::max)(1.0, std::fabs(x0[i]));
                 uj[i] = x0[i] + o.sigma0 * s * rnd::normal01(g);
             }
     } else {

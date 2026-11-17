@@ -153,13 +153,13 @@ private:
             }
             if (nd.empty() == false) ref = nd;
         }
-        std::vector<double> fmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> fmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> fmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> fmax(m, -(std::numeric_limits<double>::max)());
         for (int v : ref) {
             const auto& o = vault.objectives_of(v);
             for (int j = 0; j < m; ++j) {
-                fmin[j] = std::min(fmin[j], o[j]);
-                fmax[j] = std::max(fmax[j], o[j]);
+                fmin[j] = (std::min)(fmin[j], o[j]);
+                fmax[j] = (std::max)(fmax[j], o[j]);
             }
         }
         std::vector<std::vector<double>> Fn(pool, std::vector<double>(m, 0.0));
@@ -184,7 +184,7 @@ private:
         double nf = vnorm(f);
         if (nf < 1e-30) return PI_ / 2.0;
         double c = f[axis] / nf;
-        c = std::max(-1.0, std::min(1.0, c));
+        c = (std::max)(-1.0, (std::min)(1.0, c));
         return dm::acos(c);
     }
 
@@ -196,7 +196,7 @@ private:
         double denom = vnorm(a) * vnorm(b);
         if (denom < 1e-30) return PI_ / 2.0;
         double c = std::abs(dot) / denom;
-        c = std::min(1.0, c);
+        c = (std::min)(1.0, c);
         return dm::acos(c);
     }
 
@@ -218,7 +218,7 @@ private:
             std::stable_sort(remaining.begin(), remaining.end(), [&](int p, int q) {
                 return angle_to_axis(Fn[p], axis) < angle_to_axis(Fn[q], axis);
             });
-            int take = std::min(cs, static_cast<int>(remaining.size()));
+            int take = (std::min)(cs, static_cast<int>(remaining.size()));
             clusters[axis].assign(remaining.begin(), remaining.begin() + take);
             remaining.erase(remaining.begin(), remaining.begin() + take);
         }
@@ -237,9 +237,9 @@ private:
         std::vector<char> alive(n, 1);
         for (int i = 0; i < n; ++i) { members[i] = {S[i]}; cen[i] = Fn[S[i]]; }
         int nclust = n;
-        int target = std::min(k, n);
+        int target = (std::min)(k, n);
         while (nclust > target) {
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             int ba = -1, bb = -1;
             for (int a = 0; a < n; ++a) {
                 if (!alive[a]) continue;
@@ -434,14 +434,14 @@ public:
             hcm(Sset, k, Fn, hc, hcen);
 
             // the cluster C_d nearest to axis i by (4).
-            int d = 0; double dmin = std::numeric_limits<double>::max();
+            int d = 0; double dmin = (std::numeric_limits<double>::max)();
             for (int t = 0; t < static_cast<int>(hcen.size()); ++t) {
                 double ang = angle_to_axis(hcen[t], i);      // centroid angle to e_i
                 if (ang < dmin) { dmin = ang; d = t; }
             }
             // p from C_d, nearest to axis i by (2) — diversity.
             {
-                int pbest = -1; double pmin = std::numeric_limits<double>::max();
+                int pbest = -1; double pmin = (std::numeric_limits<double>::max)();
                 for (int v : hc[d]) {
                     if (used[v]) continue;
                     double ang = angle_to_axis(Fn[v], i);
@@ -452,7 +452,7 @@ public:
             // from the other clusters, the best (minimum) c(.) — convergence.
             for (int t = 0; t < static_cast<int>(hc.size()); ++t) {
                 if (t == d) continue;
-                int qbest = -1; double qmin = std::numeric_limits<double>::max();
+                int qbest = -1; double qmin = (std::numeric_limits<double>::max)();
                 for (int v : hc[t]) {
                     if (used[v]) continue;
                     if (conv[v] < qmin) { qmin = conv[v]; qbest = v; }

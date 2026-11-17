@@ -210,7 +210,7 @@ private:
 
     static std::vector<double> unit(std::vector<double> v) {
         double n = 0; for (double x : v) n += x * x;
-        n = std::sqrt(std::max(n, 1e-300));
+        n = std::sqrt((std::max)(n, 1e-300));
         for (double& x : v) x /= n;
         return v;
     }
@@ -220,7 +220,7 @@ private:
         for (std::size_t i = 0; i < o.size(); ++i) { oo += o[i]*o[i]; zz += z[i]*z[i]; oz += o[i]*z[i]; }
         double num = oo * zz - oz * oz;            // ||o||²||z||² − (oᵀz)²
         if (num < 0) num = 0;
-        double den = std::sqrt(std::max(zz, 1e-300));
+        double den = std::sqrt((std::max)(zz, 1e-300));
         // ||o||₂·sin = sqrt(num)/||z||
         return std::sqrt(num) / den;               // = ||o||·sin(o,z)
     }
@@ -245,15 +245,15 @@ private:
         const int n = (int)P.size(), M = m_;
         std::vector<std::vector<double>> F = raw_objs(P);
         if (n == 0) return F;
-        std::vector<double> fmin(M, std::numeric_limits<double>::max()), fmax(M, -std::numeric_limits<double>::max());
-        for (const auto& f : F) for (int k = 0; k < M; ++k) { fmin[k] = std::min(fmin[k], f[k]); fmax[k] = std::max(fmax[k], f[k]); }
+        std::vector<double> fmin(M, (std::numeric_limits<double>::max)()), fmax(M, -(std::numeric_limits<double>::max)());
+        for (const auto& f : F) for (int k = 0; k < M; ++k) { fmin[k] = (std::min)(fmin[k], f[k]); fmax[k] = (std::max)(fmax[k], f[k]); }
         std::vector<int> chosen;
         for (int k = 0; k < M; ++k) {
             int b = 0; for (int i = 1; i < n; ++i) if (F[i][k] < F[b][k]) b = i;
             chosen.push_back(b);
         }
         for (int k = 0; k < M; ++k) {
-            int b = 0; double bs = std::numeric_limits<double>::max();
+            int b = 0; double bs = (std::numeric_limits<double>::max)();
             for (int i = 0; i < n; ++i) { double s = 0; for (int j = 0; j < M; ++j) if (j != k) s += F[i][j] * F[i][j]; if (s < bs) { bs = s; b = i; } }
             chosen.push_back(b);
         }
@@ -366,7 +366,7 @@ private:
             std::vector<int> idx(n); std::iota(idx.begin(), idx.end(), 0);
             std::stable_sort(idx.begin(), idx.end(), [&](int a, int b) {
                 double ma=0,mb=0; for(double v:F[a]) ma+=v; for(double v:F[b]) mb+=v; return ma<mb; });
-            std::vector<Sol> out; for (int k = 0; k < std::min(N_, n); ++k) out.push_back(pool[idx[k]]);
+            std::vector<Sol> out; for (int k = 0; k < (std::min)(N_, n); ++k) out.push_back(pool[idx[k]]);
             return out;
         }
 
@@ -449,8 +449,8 @@ private:
         int H = H_base_ + extra_density_;
         std::vector<std::vector<double>> dense;
         if (m_ >= 8) {
-            int Hb = std::max(2, H);              // dense boundary layer
-            int Hi = std::max(1, Hb / 2);         // sparse inner layer (Hb > Hi)
+            int Hb = (std::max)(2, H);              // dense boundary layer
+            int Hi = (std::max)(1, Hb / 2);         // sparse inner layer (Hb > Hi)
             dense = das_dennis::generate_two_layer(m_, Hb, Hi);
         } else {
             dense = das_dennis::generate(m_, H);  // on the simplex, Sum = 1
@@ -470,7 +470,7 @@ private:
         }
 
         // Keep n = n_keep_factor·N best by score; δ = n-th best (§IV-B).
-        int n_keep = std::max(N_, (int)std::lround(n_keep_factor_ * N_));
+        int n_keep = (std::max)(N_, (int)std::lround(n_keep_factor_ * N_));
         std::vector<int> ord(dense.size()); std::iota(ord.begin(), ord.end(), 0);
         if ((int)ord.size() > n_keep)
             std::nth_element(ord.begin(), ord.begin() + n_keep, ord.end(),
@@ -493,7 +493,7 @@ private:
         // §IV-B: θ = min(20, max(5, ceil(maxFEs/2e4))), maxFEs ≈ t_max·N.
         double maxFEs = (double)t_max_ * (double)N_;
         int th = (int)std::ceil(maxFEs / 2e4);
-        theta_ = std::min(20, std::max(5, th));
+        theta_ = (std::min)(20, (std::max)(5, th));
     }
 
     void init_refs() {

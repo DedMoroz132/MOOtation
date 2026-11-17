@@ -104,7 +104,7 @@ public:
             const double* a = P.data();
             const double* b = a + d;
             double both = 1.0;
-            for (std::size_t j = 0; j < d; ++j) both *= ref_[j] - std::max(a[j], b[j]);
+            for (std::size_t j = 0; j < d; ++j) both *= ref_[j] - (std::max)(a[j], b[j]);
             return incl(a, d) + incl(b, d) - both;
         }
         if (d == 2) return hv2(P, k);
@@ -121,7 +121,7 @@ public:
                 double* out = L.data();
                 for (std::size_t s = i + 1; s < k; ++s) {
                     const double* q = P.data() + s * d;
-                    for (std::size_t j = 0; j < e; ++j) *out++ = std::max(p[j], q[j]);
+                    for (std::size_t j = 0; j < e; ++j) *out++ = (std::max)(p[j], q[j]);
                 }
                 const std::size_t n = nds(L, k - i - 1, e);
                 excl -= hv(L, n, e);

@@ -163,13 +163,13 @@ private:
     void calc_bounds(DataVault<Ind_t>& vault, int n,
                      std::vector<double>& fmin, std::vector<double>& fmax) const {
         int m = vault.objs_n();
-        fmin.assign(m,  std::numeric_limits<double>::max());
-        fmax.assign(m, -std::numeric_limits<double>::max());
+        fmin.assign(m,  (std::numeric_limits<double>::max)());
+        fmax.assign(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
             for (int j = 0; j < m; ++j) {
-                fmin[j] = std::min(fmin[j], o[j]);
-                fmax[j] = std::max(fmax[j], o[j]);
+                fmin[j] = (std::min)(fmin[j], o[j]);
+                fmax[j] = (std::max)(fmax[j], o[j]);
             }
         }
     }
@@ -199,9 +199,9 @@ private:
 
         double hv_y = 1.0, hv_x = 1.0, hv_inter = 1.0;
         for (int j = 0; j < m; ++j) {
-            hv_y     *= std::max(r - fn_y[j], 0.0);
-            hv_x     *= std::max(r - fn_x[j], 0.0);
-            hv_inter *= std::max(r - std::max(fn_y[j], fn_x[j]), 0.0);
+            hv_y     *= (std::max)(r - fn_y[j], 0.0);
+            hv_x     *= (std::max)(r - fn_x[j], 0.0);
+            hv_inter *= (std::max)(r - (std::max)(fn_y[j], fn_x[j]), 0.0);
         }
         double hv_union = hv_y + hv_x - hv_inter;   // IH({y}∪{x})
 

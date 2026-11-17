@@ -71,7 +71,7 @@ public:
     // sphere. The angles are computed after dividing by the norms (Eq.6/8), so
     // the input scale does not matter.
     static double theta_min(const std::vector<std::vector<double>>& V0) {
-        double tmin = std::numeric_limits<double>::max();
+        double tmin = (std::numeric_limits<double>::max)();
         int N = static_cast<int>(V0.size());
         for (int i = 0; i < N; ++i)
             for (int j = i + 1; j < N; ++j) {
@@ -84,10 +84,10 @@ public:
                 double denom = std::sqrt(na) * std::sqrt(nb);
                 if (denom < 1e-14) continue;
                 // Eq.6/8: theta = arccos|a·b / (||a||·||b||)| — the acute angle.
-                double c = std::min(1.0, std::abs(dot) / denom);
-                tmin = std::min(tmin, dm::acos(c));
+                double c = (std::min)(1.0, std::abs(dot) / denom);
+                tmin = (std::min)(tmin, dm::acos(c));
             }
-        return (N <= 1 || tmin == std::numeric_limits<double>::max())
+        return (N <= 1 || tmin == (std::numeric_limits<double>::max)())
             ? (SRV_PI / 4.0) : tmin;
     }
 
@@ -96,7 +96,7 @@ public:
         double t = (G_max > 1)
             ? (SRV_PI - theta_min_c) * (G - 1) / (2.0 * G_max) + theta_min_c / 2.0
             : theta_min_c / 2.0;
-        return std::max(theta_min_c / 2.0, std::min(t, SRV_PI / 2.0));
+        return (std::max)(theta_min_c / 2.0, (std::min)(t, SRV_PI / 2.0));
     }
 
     // Wrapper: Pc = vault[0..n) (backward compatibility).
@@ -126,13 +126,13 @@ public:
         // f'_j(x) = (f_j(x) - z*_j) / (z^nad_j - z*_j)   [Eq. 2]
         // EdI(x)  = ||f'(x)||₂                              [Eq. 7]
         // f*(x)   = f'(x) / EdI(x)                          [Eq. 14]
-        std::vector<double> zstar(m,  std::numeric_limits<double>::max());
-        std::vector<double> znad (m, -std::numeric_limits<double>::max());
+        std::vector<double> zstar(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> znad (m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(Pc[i]);
             for (int j = 0; j < m; ++j) {
-                zstar[j] = std::min(zstar[j], o[j]);
-                znad [j] = std::max(znad [j], o[j]);
+                zstar[j] = (std::min)(zstar[j], o[j]);
+                znad [j] = (std::max)(znad [j], o[j]);
             }
         }
         // f_prime[i] = f'(x_i), fstar[i] = f*(x_i), edi[i] = EdI(x_i)
@@ -142,12 +142,12 @@ public:
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(Pc[i]);
             for (int j = 0; j < m; ++j) {
-                double range = std::max(znad[j] - zstar[j], 1e-14);
+                double range = (std::max)(znad[j] - zstar[j], 1e-14);
                 f_prime[i][j] = (o[j] - zstar[j]) / range;
                 edi[i] += f_prime[i][j] * f_prime[i][j];
             }
             edi[i] = std::sqrt(edi[i]);
-            double d = std::max(edi[i], 1e-14);
+            double d = (std::max)(edi[i], 1e-14);
             for (int j = 0; j < m; ++j) fstar[i][j] = f_prime[i][j] / d;
         }
 
@@ -159,7 +159,7 @@ public:
                 double dot = 0.0;
                 for (int k = 0; k < m; ++k) dot += fstar[i][k] * fstar[j][k];
                 float a = static_cast<float>(
-                    dm::acos(std::max(-1.0, std::min(1.0, dot))));
+                    dm::acos((std::max)(-1.0, (std::min)(1.0, dot))));
                 ang[i][j] = ang[j][i] = a;
             }
 
@@ -185,7 +185,7 @@ public:
             for (int j = 0; j < n; ++j) {
                 if (j == i) continue;
                 if (rho[j] > rho[i]) {
-                    best  = std::min(best, static_cast<double>(ang[i][j]));
+                    best  = (std::min)(best, static_cast<double>(ang[i][j]));
                     found = true;
                 }
             }
@@ -241,7 +241,7 @@ public:
         auto assign_all = [&]() -> int {
             int changed = 0;
             for (int i = 0; i < n; ++i) {
-                double best_cos = -std::numeric_limits<double>::max();
+                double best_cos = -(std::numeric_limits<double>::max)();
                 int    best_k   = 0;
                 for (int k = 0; k < n_free; ++k) {
                     double dot = 0.0;
@@ -277,7 +277,7 @@ public:
                     // Eq.14: normalize the centroid onto the unit hypersphere.
                     double norm = 0.0;
                     for (int j = 0; j < m; ++j) { nc[j] /= cnt; norm += nc[j]*nc[j]; }
-                    norm = std::sqrt(std::max(norm, 1e-28));
+                    norm = std::sqrt((std::max)(norm, 1e-28));
                     for (int j = 0; j < m; ++j) nc[j] /= norm;
                     C[k] = nc;
                 }

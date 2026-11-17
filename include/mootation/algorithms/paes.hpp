@@ -314,8 +314,8 @@ private:
         hi_.assign(m, -std::numeric_limits<double>::infinity());
         for (const auto& a : arch_)
             for (std::size_t j = 0; j < m; ++j) {
-                lo_[j] = std::min(lo_[j], a.f[j]);
-                hi_[j] = std::max(hi_[j], a.f[j]);
+                lo_[j] = (std::min)(lo_[j], a.f[j]);
+                hi_[j] = (std::max)(hi_[j], a.f[j]);
             }
     }
 

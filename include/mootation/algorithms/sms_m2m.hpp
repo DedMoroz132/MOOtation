@@ -205,7 +205,7 @@ private:
         V_.clear(); V_.reserve(W.size());
         for (auto& w : W) {
             double n2 = 0.0; for (double wi : w) n2 += wi*wi;
-            double nn = std::sqrt(std::max(n2, 1e-300));
+            double nn = std::sqrt((std::max)(n2, 1e-300));
             for (double& wi : w) wi /= nn;
             V_.push_back(std::move(w));
         }
@@ -267,9 +267,9 @@ private:
                 victim_local = last_local[0];
             } else {
                 // 2) reference point r_j = 1.1*max_j over ALL members (SMSM2M-4)
-                std::vector<double> ref(m, -std::numeric_limits<double>::max());
+                std::vector<double> ref(m, -(std::numeric_limits<double>::max)());
                 for (int i : members)
-                    for (int k = 0; k < m; ++k) ref[k] = std::max(ref[k], objs[i][k]);
+                    for (int k = 0; k < m; ++k) ref[k] = (std::max)(ref[k], objs[i][k]);
                 for (int k = 0; k < m; ++k)
                     ref[k] = (ref[k] > 0.0) ? ref[k]*1.1 : ref[k] + 1.0;
 
@@ -279,7 +279,7 @@ private:
                 last_objs.reserve(last_local.size());
                 for (int lp : last_local) last_objs.push_back(objs[members[lp]]);
                 const std::vector<double> contrib = hv::contributions_exact(last_objs, ref);
-                double worst_contrib = std::numeric_limits<double>::max();
+                double worst_contrib = (std::numeric_limits<double>::max)();
                 victim_local = last_local[0];
                 for (std::size_t t = 0; t < contrib.size(); ++t) {
                     if (contrib[t] < worst_contrib) {
@@ -310,9 +310,9 @@ private:
 
         // Eq.2 angles from the ORIGIN (§2.2: f ≥ 0); a negative objective is
         // shifted by the smallest M that makes it positive (SMSM2M-6).
-        std::vector<double> fmin(m, std::numeric_limits<double>::max());
+        std::vector<double> fmin(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < M_act; ++i)
-            for (int k = 0; k < m; ++k) fmin[k] = std::min(fmin[k], objs[i][k]);
+            for (int k = 0; k < m; ++k) fmin[k] = (std::min)(fmin[k], objs[i][k]);
         std::vector<double> shift(m, 0.0);
         for (int k = 0; k < m; ++k) shift[k] = (fmin[k] < 0.0) ? -fmin[k] : 0.0;
         std::vector<std::vector<double>> U(M_act, std::vector<double>(m));

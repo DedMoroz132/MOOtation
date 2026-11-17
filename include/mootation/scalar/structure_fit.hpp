@@ -90,7 +90,7 @@ inline void set_active_fit(Problem& P, const ActiveFit& a)
         Start from;
         from.has_x0 = true;
         for (std::size_t k : idx) from.x0.push_back(d.x_canon[k]);
-        const long long budget = a.fit_budget > 0 ? std::min(a.fit_budget, ctx.budget) : ctx.budget;
+        const long long budget = a.fit_budget > 0 ? (std::min)(a.fit_budget, ctx.budget) : ctx.budget;
         const auto seed = static_cast<unsigned>(rnd::below(ctx.rng, std::uint64_t{1} << 32));
         const Result r = run(in.name, sub, 1e-6, false, 0.0, a.pop_size, budget, seed, in.knobs, {}, 0, from);
         if (!r.variables.empty()) out.x = embed(d.x_canon, idx, r.variables[0]);    // FIT-3

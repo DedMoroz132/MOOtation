@@ -134,7 +134,7 @@ private:
         double denom = vnorm(a) * vnorm(b);
         if (denom < 1e-30) return M_PI / 2.0;
         double c = dot / denom;
-        c = std::max(-1.0, std::min(1.0, c));
+        c = (std::max)(-1.0, (std::min)(1.0, c));
         return dm::acos(c);
     }
 
@@ -226,13 +226,13 @@ public:
         int pool = n * 2;
 
         // ── Normalization (Alg.3): f' and fit = Σf' over the union S ───────
-        std::vector<double> zmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> zmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> zmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> zmax(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < pool; ++i) {
             const auto& o = vault.objectives_of(i);
             for (int j = 0; j < m; ++j) {
-                zmin[j] = std::min(zmin[j], o[j]);
-                zmax[j] = std::max(zmax[j], o[j]);
+                zmin[j] = (std::min)(zmin[j], o[j]);
+                zmax[j] = (std::max)(zmax[j], o[j]);
             }
         }
         std::vector<std::vector<double>> Fn(pool, std::vector<double>(m, 0.0));
@@ -266,7 +266,7 @@ public:
         if (static_cast<int>(P.size()) < N && !Fl.empty()) {
             int T = static_cast<int>(Fl.size());
             std::vector<char>   flag(T, 0);
-            std::vector<double> theta(T, std::numeric_limits<double>::max());
+            std::vector<double> theta(T, (std::numeric_limits<double>::max)());
             std::vector<int>    gamma(T, -1);
             const double sigma = (M_PI / 2.0) / (N + 1);
 
@@ -282,7 +282,7 @@ public:
                     std::fill(axis.begin(), axis.end(), 0.0);
                     axis[i] = 1.0;
                     int best = -1;
-                    double ba = std::numeric_limits<double>::max();
+                    double ba = (std::numeric_limits<double>::max)();
                     // Definition 3: argmin over the whole F_l (not only the
                     // members still unflagged); one solution that is the
                     // extreme of two axes is added once.
@@ -321,7 +321,7 @@ public:
                 for (int j = 0; j < T; ++j)
                     if (!flag[j] && theta[j] > bestmax) { bestmax = theta[j]; rho = j; }
                 // μ = argmin θ among the unselected
-                int mu = -1; double bestmin = std::numeric_limits<double>::max();
+                int mu = -1; double bestmin = (std::numeric_limits<double>::max)();
                 for (int j = 0; j < T; ++j)
                     if (!flag[j] && theta[j] < bestmin) { bestmin = theta[j]; mu = j; }
                 if (rho < 0) break;

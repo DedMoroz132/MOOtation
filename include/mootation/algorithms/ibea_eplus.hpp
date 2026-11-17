@@ -154,7 +154,7 @@ private:
             double bn = (range > 1e-14) ? (b[i] - fmin[i]) / range : 0.0;
             an += shift_a;
             bn += shift_b;
-            worst = std::max(worst, an - bn);
+            worst = (std::max)(worst, an - bn);
         }
         return worst;
     }
@@ -167,11 +167,11 @@ private:
     {
         double worst = -std::numeric_limits<double>::infinity();
         for (std::size_t i = 0; i < a.size(); ++i) {
-            if (!normalize_) { worst = std::max(worst, a[i] - b[i]); continue; }
+            if (!normalize_) { worst = (std::max)(worst, a[i] - b[i]); continue; }
             double range = fmax[i] - fmin[i];
             double an = (range > 1e-14) ? (a[i] - fmin[i]) / range : 0.0;
             double bn = (range > 1e-14) ? (b[i] - fmin[i]) / range : 0.0;
-            worst = std::max(worst, an - bn);
+            worst = (std::max)(worst, an - bn);
         }
         return worst;
     }
@@ -181,13 +181,13 @@ private:
                          std::vector<double>& fmax) const
     {
         int m = vault.objs_n();
-        fmin.assign(m,  std::numeric_limits<double>::max());
-        fmax.assign(m, -std::numeric_limits<double>::max());
+        fmin.assign(m,  (std::numeric_limits<double>::max)());
+        fmax.assign(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
             for (int k = 0; k < m; ++k) {
-                fmin[k] = std::min(fmin[k], o[k]);
-                fmax[k] = std::max(fmax[k], o[k]);
+                fmin[k] = (std::min)(fmin[k], o[k]);
+                fmax[k] = (std::max)(fmax[k], o[k]);
             }
         }
     }
@@ -447,7 +447,7 @@ public:
                     return vault.get_ind(a).fitness > vault.get_ind(b).fitness;
                 });
             }
-            const int k = std::max(1, static_cast<int>(std::ceil(p * n)));
+            const int k = (std::max)(1, static_cast<int>(std::ceil(p * n)));
             rnd::uniform_int_distribution<int> top(0, k - 1);
             return vault.variables_of(order[static_cast<std::size_t>(top(rng_))]);
         };

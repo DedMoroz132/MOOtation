@@ -247,12 +247,12 @@ private:
 
         // Prim: inTree, minimum edge to the tree.
         std::vector<char>   inTree(s, 0);
-        std::vector<double> minw(s, std::numeric_limits<double>::max());
+        std::vector<double> minw(s, (std::numeric_limits<double>::max)());
         std::vector<int>    parent(s, -1);
         minw[0] = 0.0;
         std::vector<double> sumSqrt(s, 0.0);
         for (int it = 0; it < s; ++it) {
-            int u = -1; double best = std::numeric_limits<double>::max();
+            int u = -1; double best = (std::numeric_limits<double>::max)();
             for (int v = 0; v < s; ++v)
                 if (!inTree[v] && minw[v] < best) { best = minw[v]; u = v; }
             if (u < 0) break;
@@ -299,7 +299,7 @@ private:
             if (nondom[i]) { Dcount[i] = 0; continue; }
             // j = nearest NONDOM. neighbor dominating i (Eq.3).
             int    jbest = -1;
-            double dbest = std::numeric_limits<double>::max();
+            double dbest = (std::numeric_limits<double>::max)();
             for (int j : NDS) {
                 if (!dominates(R[j], R[i])) continue;
                 if (D[i][j] < dbest) { dbest = D[i][j]; jbest = j; }
@@ -351,13 +351,13 @@ private:
         // Neighborhood radius of a dominated individual p = the distance to
         // its nearest dominating nondom. neighbor (§3.3, text after Alg.2).
         auto radius_of = [&](int p) -> double {
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             for (int j : NDS)
                 if (dominates(R[j], R[p]) && D[p][j] < best) best = D[p][j];
-            if (best == std::numeric_limits<double>::max()) {
+            if (best == (std::numeric_limits<double>::max)()) {
                 for (int j : NDS) if (D[p][j] < best) best = D[p][j];
             }
-            return (best == std::numeric_limits<double>::max()) ? 0.0 : best;
+            return (best == (std::numeric_limits<double>::max)()) ? 0.0 : best;
         };
 
         std::vector<char> removed(n, 0);
@@ -367,7 +367,7 @@ private:
 
         while ((int)S.size() < need) {
             // Findout_best: min. F among the remaining dominated (Alg.2 line 3).
-            int    p = -1; double fp = std::numeric_limits<double>::max();
+            int    p = -1; double fp = (std::numeric_limits<double>::max)();
             for (int i = 0; i < n; ++i)
                 if (!removed[i] && F[i] < fp) { fp = F[i]; p = i; }
             if (p < 0) break;
@@ -407,7 +407,7 @@ private:
             if (edges.empty()) { Q.pop_back(); continue; }
 
             // Find_minimum: minimum-weight edge L_{pq} (Alg.3 line 4).
-            int ep = -1, eq = -1; double emin = std::numeric_limits<double>::max();
+            int ep = -1, eq = -1; double emin = (std::numeric_limits<double>::max)();
             for (auto& e : edges) {
                 double w = D[e.first][e.second];
                 if (w < emin) { emin = w; ep = e.first; eq = e.second; }

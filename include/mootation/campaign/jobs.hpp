@@ -480,10 +480,10 @@ inline std::pair<std::int64_t, std::string> fit_pop(const std::string& name, std
         if (rule == "nearest") {
             std::set<std::int64_t> all = ok;
             if (const auto above = pop::nearest(m, pop).second) all.insert(*above);
-            std::int64_t near = *all.begin();
+            std::int64_t nearby = *all.begin();
             for (const std::int64_t s : all)                  // ascending: the smaller of two as near kept
-                if (std::llabs(s - pop) < std::llabs(near - pop)) near = s;
-            return {near, "pop " + std::to_string(pop) + " -> " + std::to_string(near) +
+                if (std::llabs(s - pop) < std::llabs(nearby - pop)) nearby = s;
+            return {nearby, "pop " + std::to_string(pop) + " -> " + std::to_string(nearby) +
                               " (nearest lattice size for M=" + M + ")"};
         }
         std::optional<std::int64_t> below;
@@ -507,7 +507,7 @@ inline std::pair<std::int64_t, std::string> fit_pop(const std::string& name, std
                                : kv->kind == Kind::Bool  ? (kv->b ? 1 : 0)
                                                          : kv->i;
         if (pop % k == 0) return {pop, ""};
-        std::int64_t fitted = std::max(k, (pop / k) * k);
+        std::int64_t fitted = (std::max)(k, (pop / k) * k);
         if (rule == "nearest" && pop - fitted > fitted + k - pop) fitted += k;
         return {fitted, "pop " + std::to_string(pop) + " -> " + std::to_string(fitted) + " (multiple of K=" +
                             std::to_string(k) + ")"};

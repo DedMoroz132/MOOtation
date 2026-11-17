@@ -113,10 +113,10 @@ public:
         blocks = {{0, 2, K}};
         for (int k = 0; k < K; ++k) linear.push_back(2 * k);
         double big = 0.0, tmin = kInf, tmax = 0.0;
-        for (double v : y) big = std::max(big, std::fabs(v));
+        for (double v : y) big = (std::max)(big, std::fabs(v));
         for (double v : t) {
-            if (v > 0.0) tmin = std::min(tmin, v);
-            tmax = std::max(tmax, v);
+            if (v > 0.0) tmin = (std::min)(tmin, v);
+            tmax = (std::max)(tmax, v);
         }
         s_lo_ = dm::log(tmin);
         s_hi_ = dm::log(tmax);

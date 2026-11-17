@@ -104,7 +104,7 @@ inline Result run_ma_chains(const Problem& P, double eq_tol, bool has_tol0, doub
     if (ls == "inner") inner = k.inner("inner");
     search::finite_box("ma_chains", P);
     const std::size_t n = P.lo.size();
-    const long long n_freq = std::max(1LL, std::llround(static_cast<double>(istr) * (1.0 - rlg) / rlg));   // MAC-4
+    const long long n_freq = (std::max)(1LL, std::llround(static_cast<double>(istr) * (1.0 - rlg) / rlg));   // MAC-4
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     strategy::round_stop_of(k, ev);                                                  // STRAT-16
     StopRule stop = strategy::stop_of(k, ev);                                        // stop_rule.hpp: a step a GA phase and its search
@@ -132,7 +132,7 @@ inline Result run_ma_chains(const Problem& P, double eq_tol, bool has_tol0, doub
     auto clip = [&](Vec& y) {
         for (std::size_t j = 0; j < n; ++j)
             y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
-                                               : std::min(P.hi[j], std::max(P.lo[j], y[j]));
+                                               : (std::min)(P.hi[j], (std::max)(P.lo[j], y[j]));
     };
     auto ndist = [&](const Vec& a, const Vec& b) {                                  // the normalized box
         double s = 0.0;
@@ -178,13 +178,13 @@ inline Result run_ma_chains(const Problem& P, double eq_tol, bool has_tol0, doub
                 for (std::size_t j = 0; j < n; ++j) y[j] = P.lo[j] + v[j] * w(j);
                 const std::size_t i = ev.index(y);
                 // feasibility first: a violating point is worse than any feasible one
-                return ev.cv(i) > 0.0 ? std::numeric_limits<double>::max() / 4.0 + ev.cv(i) : ev.F[i][0];
+                return ev.cv(i) > 0.0 ? (std::numeric_limits<double>::max)() / 4.0 + ev.cv(i) : ev.F[i][0];
             };
-            double fu = m.cv > 0.0 ? std::numeric_limits<double>::max() / 4.0 + m.cv : m.f;
+            double fu = m.cv > 0.0 ? (std::numeric_limits<double>::max)() / 4.0 + m.cv : m.f;
             double nearest = std::numeric_limits<double>::infinity();               // MAC-3
             for (std::size_t q = 0; q < pop.size(); ++q)
-                if (q != b) nearest = std::min(nearest, ndist(pop[q].x, m.x));
-            const double first = std::max(1e-12, std::isfinite(nearest) ? nearest / 2.0 : 0.1);
+                if (q != b) nearest = (std::min)(nearest, ndist(pop[q].x, m.x));
+            const double first = (std::max)(1e-12, std::isfinite(nearest) ? nearest / 2.0 : 0.1);
             if (ls == "sw" || ls == "ssw") {
                 chain_ls::SWOptions o;
                 o.subgroups = ls == "ssw";
@@ -227,7 +227,7 @@ inline Result run_ma_chains(const Problem& P, double eq_tol, bool has_tol0, doub
         }
         stop.mark(ev);
         // the budget: every evaluation of a phase is the evaluator's (charge), as before; the rule's other ends here
-        while (stop.go(std::numeric_limits<long long>::max(), ev.P)) {
+        while (stop.go((std::numeric_limits<long long>::max)(), ev.P)) {
             // 2. the steady-state GA for n_freq evaluations
             const double ga_from = ev.used();
             long long ga_idle = 0;                                                     // MAC-4: repeats are free
@@ -235,18 +235,18 @@ inline Result run_ma_chains(const Problem& P, double eq_tol, bool has_tol0, doub
                 const double step_from = ev.used();
                 const std::size_t a = static_cast<std::size_t>(rnd::below(rng, static_cast<std::uint64_t>(N)));
                 std::size_t b = a;
-                double far = -1.0;
+                double distant = -1.0;
                 for (long long c = 0; c < nass; ++c) {                                 // MAC-2
                     std::size_t q = static_cast<std::size_t>(rnd::below(rng, static_cast<std::uint64_t>(N)));
                     const double d = ndist(pop[q].x, pop[a].x);
-                    if (d > far) {
-                        far = d;
+                    if (d > distant) {
+                        distant = d;
                         b = q;
                     }
                 }
                 Vec z(n);
                 for (std::size_t j = 0; j < n; ++j) {                                   // BLX-alpha
-                    const double lo = std::min(pop[a].x[j], pop[b].x[j]), hi = std::max(pop[a].x[j], pop[b].x[j]);
+                    const double lo = (std::min)(pop[a].x[j], pop[b].x[j]), hi = (std::max)(pop[a].x[j], pop[b].x[j]);
                     const double I = hi - lo;
                     z[j] = lo - I * alpha + rnd::uniform01(rng) * (I * (1.0 + 2.0 * alpha));
                 }

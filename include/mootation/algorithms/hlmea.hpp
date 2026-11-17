@@ -187,15 +187,15 @@ private:
         double d=0,na=0,nb=0; for(std::size_t i=0;i<a.size();++i){d+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i];}
         double q=std::sqrt(na)*std::sqrt(nb); if(q<1e-300) return 1.0; return std::clamp(d/q,-1.0,1.0);
     }
-    static std::vector<double> unit(std::vector<double> f){ double n=0; for(double v:f) n+=v*v; n=std::sqrt(std::max(n,1e-300)); for(double&v:f) v/=n; return f; }
+    static std::vector<double> unit(std::vector<double> f){ double n=0; for(double v:f) n+=v*v; n=std::sqrt((std::max)(n,1e-300)); for(double&v:f) v/=n; return f; }
     bool dom(const Sol& a, const Sol& b) const {
         return detail::dominates(constraint_mode, a.objs, a.cv, b.objs, b.cv); }
     // HLMEA-5: [17] Eq.2 — angles from the origin; only a negative objective is
     // shifted (by −min f_i over the pool being allocated).
     void set_shift(const std::vector<Sol>& pool){
         z_.assign(m_,0.0);
-        for(int k=0;k<m_;++k){ double mn=std::numeric_limits<double>::max();
-            for(const auto& s:pool) mn=std::min(mn,s.objs[k]);
+        for(int k=0;k<m_;++k){ double mn=(std::numeric_limits<double>::max)();
+            for(const auto& s:pool) mn=(std::min)(mn,s.objs[k]);
             z_[k]=ideal_shift_ ? mn : ((mn<0.0)?mn:0.0); }
     }
     int assoc(const std::vector<double>& f) const {
@@ -254,7 +254,7 @@ private:
 
     void kmeans(const std::vector<Sol>& P, std::vector<int>& assign, int K){
         int n=(int)P.size(); int nv=(int)P[0].vars.size();
-        K=std::min(K,n);
+        K=(std::min)(K,n);
         std::vector<std::vector<double>> cen(K);
         std::vector<int> perm(n); std::iota(perm.begin(),perm.end(),0); rnd::shuffle(perm.begin(),perm.end(),rng_);
         for(int k=0;k<K;++k) cen[k]=P[perm[k]].vars;
@@ -273,7 +273,7 @@ private:
     static double hv_union(std::vector<std::vector<double>> q){
         if(q.empty()) return 0.0;
         int m=(int)q[0].size();
-        if(m==1){ double mx=0; for(auto&p:q) mx=std::max(mx,p[0]); return mx; }
+        if(m==1){ double mx=0; for(auto&p:q) mx=(std::max)(mx,p[0]); return mx; }
         std::stable_sort(q.begin(),q.end(),[m](const std::vector<double>&a,const std::vector<double>&b){return a[m-1]>b[m-1];});
         double vol=0; int n=(int)q.size();
         for(int i=0;i<n;++i){ double nx=(i+1<n)?q[i+1][m-1]:0.0; double th=q[i][m-1]-nx; if(th<=0) continue;
@@ -287,7 +287,7 @@ private:
     // the pool is c_old ∪ c_new, never one set at a time. See HLMEA-3.
     std::vector<double> hv_ref(const std::vector<std::vector<double>>& C) const {
         std::vector<double> ref(m_,-1e300);
-        for(auto&c:C) for(int k=0;k<m_;++k) ref[k]=std::max(ref[k],c[k]);
+        for(auto&c:C) for(int k=0;k<m_;++k) ref[k]=(std::max)(ref[k],c[k]);
         for(int k=0;k<m_;++k) ref[k]=(ref[k]>-1e299)?((ref[k]>0)?ref[k]*1.1:ref[k]+1.0):1.0;
         return ref;
     }
@@ -295,7 +295,7 @@ private:
                  const std::vector<double>& ref) const {
         if(C.empty()) return 0.0;
         std::vector<std::vector<double>> q;
-        for(auto&c:C){ std::vector<double> qi(m_); for(int k=0;k<m_;++k) qi[k]=std::max(0.0,ref[k]-c[k]); q.push_back(qi); }
+        for(auto&c:C){ std::vector<double> qi(m_); for(int k=0;k<m_;++k) qi[k]=(std::max)(0.0,ref[k]-c[k]); q.push_back(qi); }
         return hv_union(std::move(q));
     }
 
@@ -404,7 +404,7 @@ public:
                 for(int j=0;j<sz;++j){
                     int rr=rnd::uniform_int_distribution<int>(0,sz-1)(rng_);
                     double rv=rnd::uniform_real_distribution<double>(0,1)(rng_);
-                    double F0=(2*rv-1)*dm::pow(std::max(1e-12,1-rv), -dm::pow(1.0-(double)gen_/std::max(1,t_max_),0.8));
+                    double F0=(2*rv-1)*dm::pow((std::max)(1e-12,1-rv), -dm::pow(1.0-(double)gen_/(std::max)(1,t_max_),0.8));
                     std::vector<double> y(vault.vars_n());
                     for(int t=0;t<vault.vars_n();++t) y[t]=Pw[j].vars[t]+F0*(Pw[j].vars[t]-Pw[rr].vars[t]);
                     Q.push_back(eval(y,bd,vault,scratch,Pw[j].vars));
@@ -418,7 +418,7 @@ public:
             for(int w=0;w<W_;++w){
                 auto& Pw=subpop_[w]; int sz=(int)Pw.size(); if(sz==0) continue;
                 std::vector<int> kasg; kmeans(Pw,kasg,K_);
-                int Keff=0; for(int a:kasg) Keff=std::max(Keff,a+1);
+                int Keff=0; for(int a:kasg) Keff=(std::max)(Keff,a+1);
                 // cluster centres in objective space
                 std::vector<std::vector<double>> cs(Keff,std::vector<double>(m_,0.0)); std::vector<int> cc(Keff,0);
                 for(int i=0;i<sz;++i){ ++cc[kasg[i]]; for(int k=0;k<m_;++k) cs[kasg[i]][k]+=Pw[i].objs[k]; }

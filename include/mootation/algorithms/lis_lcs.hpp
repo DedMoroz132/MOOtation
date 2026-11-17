@@ -268,12 +268,12 @@ private:
     normalise(const std::vector<const Sol*>& P) const {
         int n = static_cast<int>(P.size());
         int m = (n > 0) ? static_cast<int>(P[0]->f.size()) : 0;
-        std::vector<double> fmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> fmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> fmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> fmax(m, -(std::numeric_limits<double>::max)());
         for (const Sol* s : P)
             for (int j = 0; j < m; ++j) {
-                fmin[j] = std::min(fmin[j], s->f[j]);
-                fmax[j] = std::max(fmax[j], s->f[j]);
+                fmin[j] = (std::min)(fmin[j], s->f[j]);
+                fmax[j] = (std::max)(fmax[j], s->f[j]);
             }
         std::vector<std::vector<double>> Fn(n, std::vector<double>(m, 0.0));
         for (int i = 0; i < n; ++i)
@@ -290,7 +290,7 @@ private:
                            const std::vector<double>& b) {
         double w = -std::numeric_limits<double>::infinity();
         for (std::size_t j = 0; j < a.size(); ++j)
-            w = std::max(w, a[j] - b[j]);
+            w = (std::max)(w, a[j] - b[j]);
         return w;
     }
 
@@ -325,7 +325,7 @@ private:
         for (int iter = 0; iter < 20; ++iter) {
             bool changed = false;
             for (int i = 0; i < n; ++i) {
-                int bc = 0; double bd = std::numeric_limits<double>::max();
+                int bc = 0; double bd = (std::numeric_limits<double>::max)();
                 for (int c = 0; c < K; ++c) {
                     double d = 0.0;
                     for (int j = 0; j < m; ++j) {
@@ -359,12 +359,12 @@ private:
         int n = static_cast<int>(Q.size());
         int m = (n > 0) ? static_cast<int>(Q[0]->f.size()) : 0;
         std::vector<double> cd(n, 0.0);
-        std::vector<double> fmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> fmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> fmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> fmax(m, -(std::numeric_limits<double>::max)());
         for (const Sol* s : Q)
             for (int j = 0; j < m; ++j) {
-                fmin[j] = std::min(fmin[j], s->f[j]);
-                fmax[j] = std::max(fmax[j], s->f[j]);
+                fmin[j] = (std::min)(fmin[j], s->f[j]);
+                fmax[j] = (std::max)(fmax[j], s->f[j]);
             }
         for (int j = 0; j < m; ++j) {
             double range = fmax[j] - fmin[j];
@@ -397,22 +397,22 @@ private:
 
     // ── Eq.6: g^tch(x|w,z*) = max_j w_j·|f_j(x) − z*_j| ────────────────────
     double gtch(const std::vector<double>& f, const std::vector<double>& w) const {
-        double g = -std::numeric_limits<double>::max();
+        double g = -(std::numeric_limits<double>::max)();
         for (std::size_t j = 0; j < f.size(); ++j) {
             double wj = (w[j] > 1e-6) ? w[j] : 1e-6;
-            g = std::max(g, wj * std::abs(f[j] - z_[j]));
+            g = (std::max)(g, wj * std::abs(f[j] - z_[j]));
         }
         return g;
     }
 
     void update_z(const std::vector<double>& f) {
-        for (std::size_t j = 0; j < f.size(); ++j) z_[j] = std::min(z_[j], f[j]);
+        for (std::size_t j = 0; j < f.size(); ++j) z_[j] = (std::min)(z_[j], f[j]);
     }
 
     // Eq.9 clamp: K = max(min([·], N−3), 3).
     int clamp_K(long v, int N) const {
-        long kmax = std::max(3, N - 3);
-        long k = std::max(3L, std::min(v, kmax));
+        long kmax = (std::max)(3, N - 3);
+        long k = (std::max)(3L, (std::min)(v, kmax));
         if (k > N) k = N;   // degenerately small N
         return static_cast<int>(k);
     }
@@ -511,7 +511,7 @@ private:
 
         // k-means into N clusters -> t(p) = size of cluster p (1 -> 3, [23])
         auto label = kmeans(Fn, N);
-        std::vector<int> csz(std::max(N, nQ), 0);
+        std::vector<int> csz((std::max)(N, nQ), 0);
         for (int l : label) ++csz[l];
         std::vector<int> t(nQ);
         for (int i = 0; i < nQ; ++i)
@@ -535,7 +535,7 @@ private:
         for (int i = 0; i < nQ; ++i) {
             row.clear();
             for (int j = 0; j < nQ; ++j) if (j != i) row.push_back(d[i][j]);
-            int tt = std::min(t[i], nQ - 1);
+            int tt = (std::min)(t[i], nQ - 1);
             if (tt < 1) tt = 1;
             std::nth_element(row.begin(), row.begin() + (tt - 1), row.end());
             r += row[tt - 1];
@@ -560,7 +560,7 @@ private:
         // iteratively remove the maximum D (ties broken at random) and
         // recompute D for the neighbours inside the removed point's niche (§3.3)
         while (na > N) {
-            double best = -std::numeric_limits<double>::max();
+            double best = -(std::numeric_limits<double>::max)();
             for (int i = 0; i < nQ; ++i)
                 if (alive[i] && D[i] > best) best = D[i];
             std::vector<int> cands;
@@ -597,7 +597,7 @@ private:
         while (static_cast<int>(W_.size()) < N)
             W_.push_back(W_[W_.size() % base]);
 
-        int T = std::min(T_nb_, N);
+        int T = (std::min)(T_nb_, N);
         B_.assign(N, {});
         std::vector<std::pair<double, int>> dist(N);
         for (int i = 0; i < N; ++i) {
@@ -664,7 +664,7 @@ public:
         const int N = vault.pop_size(), m = vault.objs_n();
         init_weights(N, m);
         K_ = clamp_K(std::lround(0.5 * N), N);     // Algorithm 1 line 2
-        z_.assign(m, std::numeric_limits<double>::max());
+        z_.assign(m, (std::numeric_limits<double>::max)());
         have_ei_pp_ = false;
         ei_pp_raw_  = 0.0;
 
@@ -683,7 +683,7 @@ public:
         const int N = vault.pop_size(), m = vault.objs_n();
         if (W_.empty()) init_weights(N, m);
         if (K_ <= 0) K_ = clamp_K(std::lround(0.5 * N), N);
-        z_.assign(m, std::numeric_limits<double>::max());
+        z_.assign(m, (std::numeric_limits<double>::max)());
         have_ei_pp_ = false;
         ei_pp_raw_  = 0.0;
 
@@ -717,7 +717,7 @@ public:
         const int K_l = K_;   // K of the previous generation (Eq.4: K_l)
 
         // ── 1) M_DP: (N−K) random DP individuals; OffspringPool_1 = DE + PM ─
-        int n1 = std::max(0, N - K_l);
+        int n1 = (std::max)(0, N - K_l);
         std::vector<int> permDP(dp_.size());
         std::iota(permDP.begin(), permDP.end(), 0);
         rnd::shuffle(permDP.begin(), permDP.end(), rng_);
@@ -784,10 +784,10 @@ public:
         for (int v : Q1) Qs1.push_back(lisP[v]);
         auto Fn1 = normalise(Qs1);
         auto cf  = conv_fitness(Fn1);                    // line 8 (Eq.2)
-        int KK = std::min(K_, static_cast<int>(Qs1.size()));
+        int KK = (std::min)(K_, static_cast<int>(Qs1.size()));
         auto lab1 = kmeans(Fn1, KK);                     // line 9
         std::vector<int>    bestI(KK, -1);
-        std::vector<double> bestCF(KK, std::numeric_limits<double>::max());
+        std::vector<double> bestCF(KK, (std::numeric_limits<double>::max)());
         for (int i = 0; i < static_cast<int>(Qs1.size()); ++i) {
             int c = lab1[i];
             if (c < KK && cf[i] < bestCF[c]) { bestCF[c] = cf[i]; bestI[c] = i; }
@@ -862,7 +862,7 @@ public:
             auto lab2 = kmeans(Fn2, N);                  // line 9
             auto cd   = crowding(Qs2, lab2);             // line 10 (Eq.10)
             std::vector<int>    bI(N, -1);
-            std::vector<double> bCD(N, -std::numeric_limits<double>::max());
+            std::vector<double> bCD(N, -(std::numeric_limits<double>::max)());
             for (int i = 0; i < static_cast<int>(Qs2.size()); ++i) {
                 int c = lab2[i];
                 if (c < N && cd[i] > bCD[c]) { bCD[c] = cd[i]; bI[c] = i; }

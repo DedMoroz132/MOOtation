@@ -182,16 +182,16 @@ private:
     std::vector<double> reference_point(DataVault<Ind_t>& vault, int n) {
         if (!ref_point_ext_.empty()) return ref_point_ext_;
         int m = vault.objs_n();
-        std::vector<double> rp(m, -std::numeric_limits<double>::max());
+        std::vector<double> rp(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
             for (int k = 0; k < m; ++k)
-                rp[k] = std::max(rp[k], o[k]);
+                rp[k] = (std::max)(rp[k], o[k]);
         }
         if (ref_delta_) {               // task 7, §5.3: r = nad + δ (nad − ideal)
             for (int k = 0; k < m; ++k) {
                 double lo = std::numeric_limits<double>::infinity();
-                for (int i = 0; i < n; ++i) lo = std::min(lo, vault.objectives_of(i)[k]);
+                for (int i = 0; i < n; ++i) lo = (std::min)(lo, vault.objectives_of(i)[k]);
                 const double span = rp[k] - lo;
                 rp[k] += *ref_delta_ * (span > 0.0 ? span : 1.0);
             }
@@ -207,8 +207,8 @@ private:
 
     // ── α coefficients (Theorem 3): α_u = Π_{j=1}^{u-1} (k−j)/(NF−j) ──────
     static std::vector<double> alpha_coeffs(int k, int NF) {
-        int keff = std::min(k, NF);
-        std::vector<double> alpha(std::max(keff, 1) + 1, 0.0);
+        int keff = (std::min)(k, NF);
+        std::vector<double> alpha((std::max)(keff, 1) + 1, 0.0);
         if (keff >= 1) alpha[1] = 1.0;
         for (int u = 2; u <= keff; ++u) {
             double denom = static_cast<double>(NF - (u - 1));
@@ -252,7 +252,7 @@ private:
             while (ptr < order.size() && pts[order[ptr]][d] <= lo)
                 child.push_back(order[ptr++]);
             double hi = (ptr < order.size())
-                        ? std::min(pts[order[ptr]][d], ref[d])
+                        ? (std::min)(pts[order[ptr]][d], ref[d])
                         : ref[d];
             if (hi > lo)
                 slice_rec(pts, ref, keff, level - 1, V * (hi - lo),
@@ -268,7 +268,7 @@ private:
         int NF = static_cast<int>(pts.size());
         fit.assign(NF, 0.0);
         if (NF == 0 || k <= 0) return;
-        int keff = std::min(k, NF);
+        int keff = (std::min)(k, NF);
         auto alpha = alpha_coeffs(k, NF);
         std::vector<int> cand(NF);
         std::iota(cand.begin(), cand.end(), 0);
@@ -286,16 +286,16 @@ private:
         fit.assign(NF, 0.0);
         if (NF == 0 || k <= 0) return;
 
-        std::vector<double> lo(m, std::numeric_limits<double>::max());
+        std::vector<double> lo(m, (std::numeric_limits<double>::max)());
         for (const auto& p : pts)
-            for (int j = 0; j < m; ++j) lo[j] = std::min(lo[j], p[j]);
+            for (int j = 0; j < m; ++j) lo[j] = (std::min)(lo[j], p[j]);
 
         double vol = 1.0;
         for (int j = 0; j < m; ++j)
-            vol *= std::max(0.0, ref[j] - lo[j]);
+            vol *= (std::max)(0.0, ref[j] - lo[j]);
         if (vol < 1e-30) return;                // degenerate box
 
-        int keff = std::min(k, NF);
+        int keff = (std::min)(k, NF);
         auto alpha = alpha_coeffs(k, NF);
 
         std::vector<rnd::uniform_real_distribution<double>> dists;
@@ -410,7 +410,7 @@ private:
                 // Worst (lowest fitness); random tie-break (§5, item 2).
                 double worst_fit = vault.get_ind(last_front[0]).fitness;
                 for (int li : last_front)
-                    worst_fit = std::min(worst_fit,
+                    worst_fit = (std::min)(worst_fit,
                                          vault.get_ind(li).fitness);
                 std::vector<int> ties;
                 for (int li = 0; li < static_cast<int>(last_front.size()); ++li)

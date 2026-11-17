@@ -117,7 +117,7 @@ inline House house_make(double* v, std::size_t st, std::size_t p, std::size_t l,
     double t = std::fabs(v[p * st]);
     bool tail_zero = true;
     for (std::size_t i = l; i < m; ++i) {
-        t = std::max(t, std::fabs(v[i * st]));
+        t = (std::max)(t, std::fabs(v[i * st]));
         if (v[i * st] != 0.0) tail_zero = false;
     }
     if (tail_zero) return h;                              // LSQ-5
@@ -187,7 +187,7 @@ struct QR {
 
     explicit QR(Matrix a) : A(std::move(a))
     {
-        const std::size_t m = A.rows, k = std::min(A.rows, A.cols);
+        const std::size_t m = A.rows, k = (std::min)(A.rows, A.cols);
         house.resize(k);
         for (std::size_t j = 0; j < k; ++j) {
             house[j] = house_make(&A(0, j), A.cols, j, j + 1, m);
@@ -228,7 +228,7 @@ inline bool least_squares(const Matrix& A, const std::vector<double>& b, std::ve
 // k. A's columns are held one after another while it is triangularized.
 inline std::vector<std::vector<double>> hfti(const Matrix& A0, std::vector<std::vector<double>> B)
 {
-    const std::size_t m = A0.rows, n = A0.cols, mu = std::min(m, n);
+    const std::size_t m = A0.rows, n = A0.cols, mu = (std::min)(m, n);
     std::vector<std::vector<double>> a(n, std::vector<double>(m));   // a[j]: column j
     for (std::size_t i = 0; i < m; ++i)
         for (std::size_t j = 0; j < n; ++j) a[j][i] = A0(i, j);
@@ -269,7 +269,7 @@ inline std::vector<std::vector<double>> hfti(const Matrix& A0, std::vector<std::
     }
     std::vector<std::vector<double>> X(B.size(), std::vector<double>(n, 0.0));
     if (mu == 0) return X;
-    const double tau = static_cast<double>(std::max(m, n)) * kEps * std::fabs(a[0][0]);
+    const double tau = static_cast<double>((std::max)(m, n)) * kEps * std::fabs(a[0][0]);
     std::size_t k = 0;                                                                // Step 13
     while (k < mu && std::fabs(a[k][k]) > tau) ++k;
     if (k == 0) return X;
@@ -440,7 +440,7 @@ inline LDPResult ldp(const Matrix& G, const std::vector<double>& h)
         double s = 0.0;
         for (std::size_t i = 0; i < n; ++i) s += G(j, i) * G(j, i);
         if (s > 0.0) w[j] = std::sqrt(s);
-        c = std::max(c, std::fabs(h[j] / w[j]));
+        c = (std::max)(c, std::fabs(h[j] / w[j]));
     }
     if (c == 0.0) return r;                              // h = 0: x = 0 is the solution
     Matrix E(n + 1, m);                                  // Step 1: E = [G^T; h^T]
@@ -548,11 +548,11 @@ inline LSIResult lsei(const Matrix& E, const std::vector<double>& f, const Matri
     for (std::size_t i = 0; i < mc; ++i)
         for (std::size_t j = 0; j < n; ++j) {
             A(j, i) = C(i, j);
-            cmax = std::max(cmax, std::fabs(C(i, j)));
+            cmax = (std::max)(cmax, std::fabs(C(i, j)));
         }
     std::vector<std::size_t> perm(mc);
     for (std::size_t i = 0; i < mc; ++i) perm[i] = i;
-    const std::size_t mu = std::min(n, mc);
+    const std::size_t mu = (std::min)(n, mc);
     std::vector<House> house(mu);
     for (std::size_t j = 0; j < mu; ++j) {
         std::size_t best = j;
@@ -589,7 +589,7 @@ inline LSIResult lsei(const Matrix& E, const std::vector<double>& f, const Matri
             s += A(j, i) * y1[j];
             scale += std::fabs(A(j, i) * y1[j]);
         }
-        if (std::fabs(s - dp[i]) > 1000.0 * kEps * std::max(1.0, scale)) {
+        if (std::fabs(s - dp[i]) > 1000.0 * kEps * (std::max)(1.0, scale)) {
             r.status = Status::incompatible;
             return r;
         }
@@ -632,7 +632,7 @@ inline LSIResult lsei(const Matrix& E, const std::vector<double>& f, const Matri
         r.status = sub.status;
     } else {
         for (std::size_t i = 0; i < mi; ++i)
-            if (ht[i] > 1000.0 * kEps * std::max(1.0, std::fabs(h[i]))) {
+            if (ht[i] > 1000.0 * kEps * (std::max)(1.0, std::fabs(h[i]))) {
                 r.status = Status::incompatible;
                 return r;
             }

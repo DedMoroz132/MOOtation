@@ -134,27 +134,27 @@ private:
         angle = 0.0;
         if (fp_norm < 1e-14) return 0;
         int    best     = 0;
-        double best_cos = -std::numeric_limits<double>::max();
+        double best_cos = -(std::numeric_limits<double>::max)();
         for (int r = 0; r < static_cast<int>(vecs.size()); ++r) {
             double dot = 0.0;
             for (std::size_t j = 0; j < fp.size(); ++j) dot += fp[j] * vecs[r][j];
             const double c = dot / fp_norm;   // the vectors are unit vectors
             if (c > best_cos) { best_cos = c; best = r; }
         }
-        angle = dm::acos(std::max(-1.0, std::min(1.0, best_cos)));
+        angle = dm::acos((std::max)(-1.0, (std::min)(1.0, best_cos)));
         return best;
     }
 
     // γ_v (Eq. 10): the smallest angle from each vector to the others.
     static std::vector<double> smallest_angles(const std::vector<std::vector<double>>& vecs) {
         const int n = static_cast<int>(vecs.size());
-        std::vector<double> gamma(n, std::numeric_limits<double>::max());
+        std::vector<double> gamma(n, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i)
             for (int j = 0; j < n; ++j) {
                 if (i == j) continue;
                 double dot = 0.0;
                 for (std::size_t k = 0; k < vecs[i].size(); ++k) dot += vecs[i][k] * vecs[j][k];
-                gamma[i] = std::min(gamma[i], dm::acos(std::max(-1.0, std::min(1.0, dot))));
+                gamma[i] = (std::min)(gamma[i], dm::acos((std::max)(-1.0, (std::min)(1.0, dot))));
             }
         return gamma;
     }
@@ -191,17 +191,17 @@ private:
     // with z_min/z_max over the n survivors in P_{t+1}.
     void adapt_reference_vectors(DataVault<Ind_t>& vault, int n) {
         int m = vault.objs_n();
-        std::vector<double> zmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> zmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> zmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> zmax(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
             for (int j = 0; j < m; ++j) {
-                zmin[j] = std::min(zmin[j], o[j]);
-                zmax[j] = std::max(zmax[j], o[j]);
+                zmin[j] = (std::min)(zmin[j], o[j]);
+                zmax[j] = (std::max)(zmax[j], o[j]);
             }
         }
         std::vector<double> range(m);
-        for (int j = 0; j < m; ++j) range[j] = std::max(zmax[j] - zmin[j], 1e-14);
+        for (int j = 0; j < m; ++j) range[j] = (std::max)(zmax[j] - zmin[j], 1e-14);
 
         for (int i = 0; i < static_cast<int>(V0_.size()); ++i) {
             double norm = 0.0;
@@ -224,13 +224,13 @@ private:
         const std::vector<double> gamma = smallest_angles(W);   // RVEA*-3
 
         const double t_frac = static_cast<double>(current_gen_) /
-                              static_cast<double>(std::max(t_max_, 1));
+                              static_cast<double>((std::max)(t_max_, 1));
 
         // Translation (Eq. 5): z_min over the pool.
-        std::vector<double> zmin(m, std::numeric_limits<double>::max());
+        std::vector<double> zmin(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < pool_size; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) zmin[j] = std::min(zmin[j], o[j]);
+            for (int j = 0; j < m; ++j) zmin[j] = (std::min)(zmin[j], o[j]);
         }
 
         // Partition (Eq. 6–7) and APD (Eq. 8–9).
@@ -239,7 +239,7 @@ private:
         std::vector<double> fp(m);
         for (int i = 0; i < pool_size; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) fp[j] = std::max(o[j] - zmin[j], 0.0);
+            for (int j = 0; j < m; ++j) fp[j] = (std::max)(o[j] - zmin[j], 0.0);
             const double fp_norm = norm_of(fp);
             double theta = 0.0;
             vec[i] = nearest(fp, fp_norm, W, theta);
@@ -283,7 +283,7 @@ private:
             if (value[a] != value[b]) return value[a] < value[b];
             return a < b;
         });
-        survivors.assign(order.begin(), order.begin() + std::min(n_keep, pool_size));
+        survivors.assign(order.begin(), order.begin() + (std::min)(n_keep, pool_size));
     }
 
     // ── Reference vector regeneration (Algorithm 4) on P_{t+1} ────────────
@@ -302,15 +302,15 @@ private:
         }
 
         // Lines 5 and 9: translation, then the maximal translated values.
-        std::vector<double> zmin(m, std::numeric_limits<double>::max());
+        std::vector<double> zmin(m, (std::numeric_limits<double>::max)());
         for (int i : nd) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) zmin[j] = std::min(zmin[j], o[j]);
+            for (int j = 0; j < m; ++j) zmin[j] = (std::min)(zmin[j], o[j]);
         }
         std::vector<double> zmax(m, 0.0);
         for (int i : nd) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) zmax[j] = std::max(zmax[j], o[j] - zmin[j]);
+            for (int j = 0; j < m; ++j) zmax[j] = (std::max)(zmax[j], o[j] - zmin[j]);
         }
 
         // Line 7: partition over V* alone.
@@ -406,7 +406,7 @@ public:
 
         // §IV-C-1: p_c = 1.0, p_m = 1/n (n is the number of real-valued variables).
         double pm = (pm_ >= 0.0) ? pm_
-                                 : 1.0 / static_cast<double>(std::max(1, vault.vars_n()));
+                                 : 1.0 / static_cast<double>((std::max)(1, vault.vars_n()));
 
         std::vector<double> pv1(vault.vars_n()), pv2(vault.vars_n()), c1, c2;
         for (int i = 0; i < n; i += 2) {
@@ -448,7 +448,7 @@ public:
 
         // ── adaptation of V (Algorithm 3; Alg. 1 line 10), as in rvea.hpp ─
         if (t_max_ > 0 && fr_ > 0.0) {
-            int period = std::max(1, static_cast<int>(std::round(fr_ * t_max_)));
+            int period = (std::max)(1, static_cast<int>(std::round(fr_ * t_max_)));
             if (current_gen_ % period == 0)
                 adapt_reference_vectors(vault, static_cast<int>(vault.active_n()));
         }

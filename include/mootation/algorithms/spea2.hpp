@@ -254,7 +254,7 @@ private:
                 int rm=0;
                 for(int ci=1;ci<sz;++ci){
                     const auto& a=sd[ci]; const auto& b=sd[rm];
-                    int len=static_cast<int>(std::min(a.size(),b.size()));
+                    int len=static_cast<int>((std::min)(a.size(),b.size()));
                     for(int kk=0;kk<len;++kk){
                         if(a[kk]<b[kk]){rm=ci;break;}
                         if(a[kk]>b[kk]) break;

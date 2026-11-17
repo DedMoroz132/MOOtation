@@ -177,7 +177,7 @@ private:
                       const std::vector<double>& x2,
                       const std::vector<double>& inv) const {
         double v = -std::numeric_limits<double>::infinity();
-        for (int i = 0; i < m_; ++i) v = std::max(v, (x1[i] - x2[i]) * inv[i]);
+        for (int i = 0; i < m_; ++i) v = (std::max)(v, (x1[i] - x2[i]) * inv[i]);
         return v;
     }
 
@@ -186,12 +186,12 @@ private:
     std::vector<double> pool_inv_range(const std::vector<Sol>& pool) const {
         std::vector<double> inv(m_, 1.0);
         if (!normalize_ || pool.empty()) return inv;
-        std::vector<double> lo(m_,  std::numeric_limits<double>::max());
-        std::vector<double> hi(m_, -std::numeric_limits<double>::max());
+        std::vector<double> lo(m_,  (std::numeric_limits<double>::max)());
+        std::vector<double> hi(m_, -(std::numeric_limits<double>::max)());
         for (const auto& s : pool)
             for (int i = 0; i < m_; ++i) {
-                lo[i] = std::min(lo[i], s.objs[i]);
-                hi[i] = std::max(hi[i], s.objs[i]);
+                lo[i] = (std::min)(lo[i], s.objs[i]);
+                hi[i] = (std::max)(hi[i], s.objs[i]);
             }
         for (int i = 0; i < m_; ++i) {
             double r = hi[i] - lo[i];
@@ -306,7 +306,7 @@ private:
         for (int i = 0; i < K; ++i) {
             if (taken[i]) { sim[i] = -1.0; continue; }
             for (int s : selected)
-                sim[i] = std::min(sim[i], lp_dist(nd[i].objs, nd[s].objs));
+                sim[i] = (std::min)(sim[i], lp_dist(nd[i].objs, nd[s].objs));
         }
 
         // line 4-9: iteratively add the most DIFFERENT (max Similarity).
@@ -319,7 +319,7 @@ private:
             // refresh Similarity against the newly added solution.
             for (int i = 0; i < K; ++i)
                 if (!taken[i])
-                    sim[i] = std::min(sim[i], lp_dist(nd[i].objs, nd[best].objs));
+                    sim[i] = (std::min)(sim[i], lp_dist(nd[i].objs, nd[best].objs));
         }
 
         std::vector<Sol> out; out.reserve(selected.size());

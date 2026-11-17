@@ -182,7 +182,7 @@ private:
     }
 
     void build_neighbourhood(int n) {
-        int T = std::min(T_eff_, n); B_.resize(n);
+        int T = (std::min)(T_eff_, n); B_.resize(n);
         for (int i = 0; i < n; ++i) {
             std::vector<std::pair<double,int>> dists; dists.reserve(n);
             for (int j = 0; j < n; ++j) {
@@ -202,7 +202,7 @@ private:
     double tche(const std::vector<double>& f, const std::vector<double>& w) const {
         double g = 0.0;
         for (std::size_t j = 0; j < f.size(); ++j)
-            g = std::max(g, w[j] * std::abs(f[j] - ideal_[j]));
+            g = (std::max)(g, w[j] * std::abs(f[j] - ideal_[j]));
         return g;
     }
     double tche_feas(const std::vector<double>& f, const std::vector<double>& w,
@@ -232,7 +232,7 @@ private:
             if (delta > 0.001)
                 utility_[i] = 1.0;
             else
-                utility_[i] = std::max(0.0, 0.95 + 0.05 * delta / 0.001) * utility_[i];
+                utility_[i] = (std::max)(0.0, 0.95 + 0.05 * delta / 0.001) * utility_[i];
 
             old_g_[i] = g_new;
         }
@@ -250,7 +250,7 @@ private:
         int m = vault.objs_n();
         std::vector<bool> in_I(n, false);
         std::vector<int>  I;
-        I.reserve(std::max(n / 5, m));
+        I.reserve((std::max)(n / 5, m));
 
         // Boundary subproblems: the weight with the maximal j-th component
         // (in the Das–Dennis lattice this is exactly the unit vector e_j).
@@ -269,7 +269,7 @@ private:
             if (!in_I[i]) candidates.push_back(i);
 
         for (int pick = 0; pick < extra && !candidates.empty(); ++pick) {
-            int t_size = std::min(10, static_cast<int>(candidates.size()));
+            int t_size = (std::min)(10, static_cast<int>(candidates.size()));
             rnd::uniform_int_distribution<int> dc(0, static_cast<int>(candidates.size())-1);
             int winner_idx = candidates[dc(rng_)];
             for (int t = 1; t < t_size; ++t) {
@@ -315,8 +315,8 @@ private:
         for (int j : P) g.emplace_back(tche(vault.objectives_of(j), W_[i]), j);
         std::stable_sort(g.begin(), g.end(),
                          [](const auto& a, const auto& b) { return a.first < b.first; });
-        const int top = std::max(1, static_cast<int>(std::ceil(de_p_ * static_cast<double>(P.size()))));
-        rnd::uniform_int_distribution<int> pick(0, std::min(top, static_cast<int>(P.size())) - 1);
+        const int top = (std::max)(1, static_cast<int>(std::ceil(de_p_ * static_cast<double>(P.size()))));
+        rnd::uniform_int_distribution<int> pick(0, (std::min)(top, static_cast<int>(P.size())) - 1);
         return g[static_cast<std::size_t>(pick(rng_))].second;
     }
 
@@ -375,7 +375,7 @@ private:
         // Step 3.4: update z.
         const auto& fy = vault.objectives_of(scratch);
         for (int j = 0; j < static_cast<int>(ideal_.size()); ++j)
-            ideal_[j] = std::min(ideal_[j], fy[j]);
+            ideal_[j] = (std::min)(ideal_[j], fy[j]);
 
         double cv_y = (constraint_mode == ConstraintMode::FEASIBILITY)
                       ? vault.get_cv(scratch) : 0.0;
@@ -409,9 +409,9 @@ private:
 
     void resolve_params(int n) {
         // Sec.III: T = 0.1N, n_r = 0.01N (unless set explicitly via setters).
-        T_eff_  = (T_  > 0) ? T_  : std::max(2, static_cast<int>(0.1  * n));
-        nr_eff_ = (nr_ > 0) ? nr_ : std::max(1, static_cast<int>(0.01 * n));
-        T_eff_  = std::min(T_eff_, n);
+        T_eff_  = (T_  > 0) ? T_  : (std::max)(2, static_cast<int>(0.1  * n));
+        nr_eff_ = (nr_ > 0) ? nr_ : (std::max)(1, static_cast<int>(0.01 * n));
+        T_eff_  = (std::min)(T_eff_, n);
     }
 
 public:
@@ -470,7 +470,7 @@ public:
         init_weights(n, m);
         build_neighbourhood(n);
 
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
 
         // Step 1.2: random initialisation.
         const auto& bounds = vault.get_bounds();
@@ -492,7 +492,7 @@ public:
         // Step 1.3: z_j = min_i f_j(x^i).
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) ideal_[j] = std::min(ideal_[j], o[j]);
+            for (int j = 0; j < m; ++j) ideal_[j] = (std::min)(ideal_[j], o[j]);
         }
 
         // Step 1.4: gen = 0, π^i = 1; snapshot old_g.
@@ -515,10 +515,10 @@ public:
         int m = vault.objs_n();
         resolve_params(n);
         if (W_.empty()) { init_weights(n, m); build_neighbourhood(n); }
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) ideal_[j] = std::min(ideal_[j], o[j]);
+            for (int j = 0; j < m; ++j) ideal_[j] = (std::min)(ideal_[j], o[j]);
         }
         utility_.assign(n, 1.0);
         old_g_.resize(n);

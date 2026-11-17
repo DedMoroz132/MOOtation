@@ -892,7 +892,7 @@ public:
             final.set("fe_first_feas", out.first_feasible < 0 ? V::null() : V::integer(out.first_feasible));
         if (p_.failing || out.n_failed) final.set("n_failed", V::integer(out.n_failed));
         if (p_.typed && !final.keys.empty())
-            final.set("dup_x_share", V::number(static_cast<double>(dup_x_) / static_cast<double>(std::max(out.fe, 1LL))));
+            final.set("dup_x_share", V::number(static_cast<double>(dup_x_) / static_cast<double>((std::max)(out.fe, 1LL))));
         if (!p_.cover_front.empty()) {
             // the bits' front covered: the first generation and evaluation at
             // which the population, and the inner archive, held every vector
@@ -1192,7 +1192,7 @@ private:
             const std::int64_t nominal = job_.evaluations ? job_.evaluations
                                          : spec_.budget_fe ? spec_.budget_fe : budget_;
             for (auto b : spec_.record_at)
-                if (b < std::min(budget_, nominal)) checkpoints_.insert(b);
+                if (b < (std::min)(budget_, nominal)) checkpoints_.insert(b);
         }
         for (const auto& k : p_.user_kinds) {
             n_genes_ += k == "bin" || k == "cat";
@@ -1460,7 +1460,7 @@ private:
             if (k == "bin" || k == "cat") continue;
             double v = core[r++];
             if (k == "int") {
-                v = std::min(std::max(std::nearbyint(v), std::ceil(p_.bounds[i].first)), std::floor(p_.bounds[i].second)) + 0.0;
+                v = (std::min)((std::max)(std::nearbyint(v), std::ceil(p_.bounds[i].first)), std::floor(p_.bounds[i].second)) + 0.0;
             } else if (k == "discrete") {
                 const auto& vals = p_.discrete_values[r - 1];
                 double best = vals[0];
@@ -1475,7 +1475,7 @@ private:
             if (k != "bin" && k != "cat") continue;
             const double gene = std::trunc(core[reals + g++]);
             if (k == "bin") u[i] = gene != 0.0 ? 1.0 : 0.0;
-            else u[i] = std::min(std::max(gene, 0.0), static_cast<double>(p_.cat_levels[i] - 1));
+            else u[i] = (std::min)((std::max)(gene, 0.0), static_cast<double>(p_.cat_levels[i] - 1));
         }
         return u;
     }
@@ -1568,14 +1568,14 @@ private:
             int gen = 0;
             ablations::Rows Fa, Xa;
             while (spent < budget) {
-                const std::size_t k = std::min(pop, budget - spent);
+                const std::size_t k = (std::min)(pop, budget - spent);
                 for (std::size_t i = spent; i < spent + k; ++i) {
                     std::vector<double> x(d);
                     for (std::size_t j = 0; j < d; ++j) x[j] = lo[j] + plan[i * d + j] * (hi[j] - lo[j]);
                     evaluate(x);
                 }
                 spent += k;
-                if (gen % std::max(1, record_every) == 0 || spent >= budget) {
+                if (gen % (std::max)(1, record_every) == 0 || spent >= budget) {
                     answer(Fa, Xa);
                     observe(gen, Fa, Xa);
                 }
@@ -1970,11 +1970,11 @@ private:
                 long long k = 0;
                 for (long long v : failed) k += last_fe_ < v && v <= fe_rec;
                 rec.set("fail_share", json::Value::number(static_cast<double>(k) /
-                                                          static_cast<double>(std::max(fe_rec - last_fe_, 1LL))));
+                                                          static_cast<double>((std::max)(fe_rec - last_fe_, 1LL))));
             }
         } else if (p_.failing || ledger_->n_failed()) {
             rec.set("fail_share", json::Value::number(static_cast<double>(ledger_->n_failed() - failed_at_record_) /
-                                                      static_cast<double>(std::max(fe_rec - last_fe_, 1LL))));
+                                                      static_cast<double>((std::max)(fe_rec - last_fe_, 1LL))));
             failed_at_record_ = ledger_->n_failed();
         }
         bool finite = true;

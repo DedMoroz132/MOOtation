@@ -482,7 +482,7 @@ public:
     SMPSOCore() = default;
 
     void set_seed(unsigned s) { rng_.seed(s); }
-    void set_t_max(int t)     { t_max_ = std::max(1, t); }
+    void set_t_max(int t)     { t_max_ = (std::max)(1, t); }
     void set_eta_mutation(double e) { eta_m_ = e; }
     void set_pm(double p)           { pm_ = p; }
     void set_bound_repair(ops::BoundRepair r)

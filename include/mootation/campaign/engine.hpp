@@ -435,7 +435,7 @@ inline void write_text_file(const std::filesystem::path& path, const std::string
         std::filesystem::rename(tmp, path, ec);
         if (!ec) return;
         std::this_thread::sleep_for(delay);
-        delay = std::min(2 * delay, std::chrono::milliseconds(250));
+        delay = (std::min)(2 * delay, std::chrono::milliseconds(250));
     }
     std::filesystem::rename(tmp, path);
 }
@@ -459,7 +459,7 @@ inline int read_workers(const std::filesystem::path& root, int fallback)
 inline void write_workers(const std::filesystem::path& root, int n)
 {
     std::filesystem::create_directories(root);
-    detail::write_text_file(root / kWorkersFile, std::to_string(std::max(0, n)) + "\n");
+    detail::write_text_file(root / kWorkersFile, std::to_string((std::max)(0, n)) + "\n");
 }
 
 // runner_state: the last heartbeat of this results root's runner with
@@ -777,7 +777,7 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
         detail::write_text_file(*root / kRunnerFile, json::dump(st, 1));
     };
     write_workers(*root, opt.workers);
-    const int ceiling = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
+    const int ceiling = (std::max)(1, static_cast<int>(std::thread::hardware_concurrency()));
     std::vector<std::thread> pool;
     std::string state = "running";
     {
@@ -791,7 +791,7 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
                 g.unlock();
                 const int asked = read_workers(*root, opt.workers);
                 g.lock();
-                want = std::min(asked, ceiling);
+                want = (std::min)(asked, ceiling);
                 const int wanted = static_cast<int>(std::min<std::size_t>(want, running.size() + (todo.size() - next)));
                 for (; active < wanted && !crash; ++active) pool.emplace_back(worker);
                 if (want == 0 && active == 0) {

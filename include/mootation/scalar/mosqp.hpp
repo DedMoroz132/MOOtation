@@ -87,7 +87,7 @@ inline void run_mosqp(Evaluator& ev, int n_objs, int n_eq, int pop_size, const M
 
     auto at = [&](const Vec& y) {
         Vec x(n);
-        for (std::size_t j = 0; j < n; ++j) x[j] = ev.lo[j] + std::min(1.0, std::max(0.0, y[j])) * width[j];
+        for (std::size_t j = 0; j < n; ++j) x[j] = ev.lo[j] + (std::min)(1.0, (std::max)(0.0, y[j])) * width[j];
         return ev.index(x);
     };
     auto y_of = [&](std::size_t i) {
@@ -97,7 +97,7 @@ inline void run_mosqp(Evaluator& ev, int n_objs, int n_eq, int pop_size, const M
     };
     auto viol = [&](std::size_t i) {
         double a = 0.0, b = 0.0;
-        for (std::size_t j = 0; j < k_in; ++j) a += std::max(ev.G[i][j], 0.0);
+        for (std::size_t j = 0; j < k_in; ++j) a += (std::max)(ev.G[i][j], 0.0);
         for (std::size_t j = 0; j < ne; ++j) b += std::fabs(ev.G[i][k_in + j]);
         return a + b;
     };
@@ -209,7 +209,7 @@ inline void run_mosqp(Evaluator& ev, int n_objs, int n_eq, int pop_size, const M
             const std::size_t i = at(z);
             if (ev.failed[i]) return 1e300;
             double s = 0.0, t = 0.0, u = 0.0;
-            for (std::size_t j = 0; j < k_in; ++j) s += std::max(ev.G[i][j], 0.0) * std::max(ev.G[i][j], 0.0);
+            for (std::size_t j = 0; j < k_in; ++j) s += (std::max)(ev.G[i][j], 0.0) * (std::max)(ev.G[i][j], 0.0);
             for (std::size_t j = 0; j < ne; ++j) t += ev.G[i][k_in + j] * ev.G[i][k_in + j];
             for (std::size_t j = 0; j < n; ++j) u += (z[j] - y[j]) * (z[j] - y[j]);
             return s + t + 1e-6 * u;
@@ -242,7 +242,7 @@ inline void run_mosqp(Evaluator& ev, int n_objs, int n_eq, int pop_size, const M
     // x_a dominates x_b in (f, g⁺, |h|) (§2.1)
     auto ext = [&](std::size_t i) {
         Vec v = ev.F[i];
-        for (std::size_t j = 0; j < k_in; ++j) v.push_back(std::max(ev.G[i][j], 0.0));
+        for (std::size_t j = 0; j < k_in; ++j) v.push_back((std::max)(ev.G[i][j], 0.0));
         for (std::size_t j = 0; j < ne; ++j) v.push_back(std::fabs(ev.G[i][k_in + j]));
         return v;
     };

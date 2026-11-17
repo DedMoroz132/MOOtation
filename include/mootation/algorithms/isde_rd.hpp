@@ -173,14 +173,14 @@ private:
         double d=0,na=0,nb=0; for(std::size_t i=0;i<a.size();++i){d+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i];}
         double q=std::sqrt(na)*std::sqrt(nb); if(q<1e-300) return 1.0; return std::clamp(d/q,-1.0,1.0);
     }
-    static std::vector<double> unit(std::vector<double> f){ double n=0; for(double v:f) n+=v*v; n=std::sqrt(std::max(n,1e-300)); for(double&v:f) v/=n; return f; }
+    static std::vector<double> unit(std::vector<double> f){ double n=0; for(double v:f) n+=v*v; n=std::sqrt((std::max)(n,1e-300)); for(double&v:f) v/=n; return f; }
     // ISDE-3: default — shift by the pool minimum of every objective; letter of
     // [4] Eq.2 (ideal_shift_=false) — angles from the origin, only a negative
     // objective is shifted (by −min f_i, [4] footnote 1).
     void set_shift(const std::vector<Sol>& pool){
         z_.assign(m_,0.0);
-        for(int k=0;k<m_;++k){ double mn=std::numeric_limits<double>::max();
-            for(const auto& s:pool) mn=std::min(mn,s.objs[k]);
+        for(int k=0;k<m_;++k){ double mn=(std::numeric_limits<double>::max)();
+            for(const auto& s:pool) mn=(std::min)(mn,s.objs[k]);
             z_[k]=ideal_shift_ ? mn : ((mn<0.0)?mn:0.0); }
     }
     int assoc(const std::vector<double>& f) const {
@@ -189,7 +189,7 @@ private:
     }
     double ws(const std::vector<double>& f, int k) const { double s=0; for(int i=0;i<m_;++i) s+=V_[k][i]*f[i]; return s; }
     static double dist(const std::vector<double>& p, const std::vector<double>& q){
-        double s=0; for(std::size_t j=0;j<p.size();++j){ double qq=std::max(p[j],q[j]); double d=p[j]-qq; s+=d*d; } return std::sqrt(s);
+        double s=0; for(std::size_t j=0;j<p.size();++j){ double qq=(std::max)(p[j],q[j]); double d=p[j]-qq; s+=d*d; } return std::sqrt(s);
     }
     double isdeplus(int idx, const std::vector<Sol>& G, int k) const {
         double wp=ws(G[idx].objs,k); double best=std::numeric_limits<double>::infinity();

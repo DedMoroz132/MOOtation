@@ -144,7 +144,7 @@ inline Vec carried(const Problem& P_from, const Problem& P_to, const Vec& x, dou
     if (y.size() != P_to.lo.size()) throw std::runtime_error("rescale changed the point's length");
     for (std::size_t j = 0; j < y.size(); ++j)
         y[j] = periodic::is(P_to.periodic, j) ? periodic::wrap_into(y[j], P_to.lo[j], P_to.hi[j])
-                                              : std::min(P_to.hi[j], std::max(P_to.lo[j], y[j]));
+                                              : (std::min)(P_to.hi[j], (std::max)(P_to.lo[j], y[j]));
     return y;
 }
 
@@ -237,11 +237,11 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
             stopped = stop.stopped_by("rule");
             break;
         }
-        long long allowance = cap > 0 ? std::min(cap, left)                                        // PARAM-4
+        long long allowance = cap > 0 ? (std::min)(cap, left)                                        // PARAM-4
                               : rounds > 0 ? left / (rounds - levels)
                               : rule == "ladder" ? left / static_cast<long long>(ladder.size() - static_cast<std::size_t>(levels))
                                                  : left / 10;
-        allowance = std::max(1LL, std::min(allowance, left));
+        allowance = (std::max)(1LL, (std::min)(allowance, left));
         const Problem Q = problem_at(P, L);
         Start st = start;
         if (levels > 0) {
@@ -319,7 +319,7 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
                 if (have_best && L >= L_best) L = (1.0 - dec) * L_best;
             }
         } else {                                                                     // idts
-            delta = std::max(theta * delta, dmin);
+            delta = (std::max)(theta * delta, dmin);
             L = (have_best ? L_best : L) - delta;
         }
     }

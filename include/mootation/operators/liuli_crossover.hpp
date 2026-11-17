@@ -168,7 +168,7 @@ inline void liuli_mutation(std::vector<double>& x,
         double old = x[h];                              // x̃ᶜ_h (before mutation)
         auto draw = [&]() {
             double u   = uni11(rng);                    // rand ∈ [−1,1] (LL-1)
-            double r   = std::max(uni01(rng), 1e-12);   // base, guard LL-5
+            double r   = (std::max)(uni01(rng), 1e-12);   // base, guard LL-5
             double rm  = 0.15 * u * (1.0 - dm::pow(r, -a));   // Eq.(6), exponent −a
             return old + rm * (hi - lo);
         };

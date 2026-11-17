@@ -95,7 +95,7 @@ public:
             if (m_ == 1 && finite_[i]) {
                 double cv = 0.0;
                 if (G)
-                    for (std::size_t k = 0; k < c; ++k) cv += std::max(G[i * c + k], 0.0);
+                    for (std::size_t k = 0; k < c; ++k) cv += (std::max)(G[i * c + k], 0.0);
                 if (log_.offer(F[i], cv, start_ + 1 + static_cast<long long>(i), grad_calls_)) {
                     best_x_.assign(X + i * d_, X + (i + 1) * d_);
                     record_x_.push_back(best_x_);

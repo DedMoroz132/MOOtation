@@ -269,7 +269,7 @@ private:
                 for(int i=1;i<sz;++i) {
                     const auto& da=sdists[worst];
                     const auto& db=sdists[i];
-                    int len=static_cast<int>(std::min(da.size(),db.size()));
+                    int len=static_cast<int>((std::min)(da.size(),db.size()));
                     for(int kk=0;kk<len;++kk) {
                         if(db[kk]<da[kk]){ worst=i; break; }
                         if(db[kk]>da[kk])   break;
@@ -379,7 +379,7 @@ private:
                          < vault.archive_get(static_cast<std::size_t>(b)).fitness;
                 });
             }
-            const int k = std::max(1, static_cast<int>(std::ceil(p * na)));
+            const int k = (std::max)(1, static_cast<int>(std::ceil(p * na)));
             rnd::uniform_int_distribution<int> top(0, k - 1);
             return vault.archive_variables_of(static_cast<std::size_t>(
                 order[static_cast<std::size_t>(top(rng_))]));

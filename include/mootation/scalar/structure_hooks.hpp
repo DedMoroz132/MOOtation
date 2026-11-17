@@ -101,8 +101,8 @@ inline std::pair<double, double> param_union(const Grammar& g)
     for (const auto& rs : g.rules)
         for (const Production& p : rs)
             for (std::size_t k = 0; k < p.n_params(); ++k) {
-                lo = any ? std::min(lo, p.param_lo[k]) : p.param_lo[k];
-                hi = any ? std::max(hi, p.param_hi[k]) : p.param_hi[k];
+                lo = any ? (std::min)(lo, p.param_lo[k]) : p.param_lo[k];
+                hi = any ? (std::max)(hi, p.param_hi[k]) : p.param_hi[k];
                 any = true;
             }
     return {lo, hi};
@@ -111,7 +111,7 @@ inline std::pair<double, double> param_union(const Grammar& g)
 inline int most_rules(const Grammar& g)
 {
     std::size_t r = 1;
-    for (const auto& rs : g.rules) r = std::max(r, rs.size());
+    for (const auto& rs : g.rules) r = (std::max)(r, rs.size());
     return static_cast<int>(r);
 }
 
@@ -141,7 +141,7 @@ struct TreeCodec {
             throw std::invalid_argument("tree genome: tree.max_size must be > 0 (the vector's length)");
         M = static_cast<std::size_t>(o.tree.max_size);
         for (const auto& rs : grammar.rules)
-            for (const Production& p : rs) K = std::max(K, p.n_params());
+            for (const Production& p : rs) K = (std::max)(K, p.n_params());
         const auto box = detail::param_union(grammar);
         param_lo = o.param_box_given ? o.param_lo : box.first;
         param_hi = o.param_box_given ? o.param_hi : box.second;
@@ -301,7 +301,7 @@ struct GECodec {
         if (g.codons.empty() || g.codons.size() > L)
             throw std::invalid_argument("GE genome: " + std::to_string(g.codons.size()) +
                                         " codons do not fit max_len = " + std::to_string(L));
-        const std::size_t kept = std::min(g.params.size(), P);
+        const std::size_t kept = (std::min)(g.params.size(), P);
         std::vector<double> x(n(), param_lo);
         x[0] = static_cast<double>(g.codons.size());
         x[1] = static_cast<double>(kept);
@@ -343,7 +343,7 @@ struct GECodec {
         write_params(g, d.tree);
         out.x_canon = pack(g);
         out.active.assign(n(), 0);
-        const std::size_t used = std::min(g.params.size(), P);
+        const std::size_t used = (std::min)(g.params.size(), P);
         for (std::size_t k = 0; k < used; ++k) out.active[2 + L + k] = 1;
         out.valid = true;
         return out;

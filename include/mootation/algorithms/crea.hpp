@@ -121,10 +121,10 @@ private:
     void update_ideal(DataVault<Ind_t>& vault, int pool) {
         int m = vault.objs_n();
         if (static_cast<int>(z_.size()) != m)
-            z_.assign(m, std::numeric_limits<double>::max());
+            z_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < pool; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) z_[j] = std::min(z_[j], o[j]);
+            for (int j = 0; j < m; ++j) z_[j] = (std::min)(z_[j], o[j]);
         }
     }
 
@@ -132,10 +132,10 @@ private:
     std::vector<std::vector<double>>
     normalize(DataVault<Ind_t>& vault, int pool) {
         int m = vault.objs_n();
-        std::vector<double> zmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> zmax(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < pool; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) zmax[j] = std::max(zmax[j], o[j]);
+            for (int j = 0; j < m; ++j) zmax[j] = (std::max)(zmax[j], o[j]);
         }
         std::vector<std::vector<double>> F(pool, std::vector<double>(m));
         for (int i = 0; i < pool; ++i) {
@@ -153,7 +153,7 @@ private:
                             const std::vector<double>& w) {
         double dot = 0.0, ww = 0.0;
         for (std::size_t j = 0; j < f.size(); ++j) { dot += f[j] * w[j]; ww += w[j] * w[j]; }
-        ww = std::max(ww, 1e-30);
+        ww = (std::max)(ww, 1e-30);
         double t = dot / ww;
         double s = 0.0;
         for (std::size_t j = 0; j < f.size(); ++j) {
@@ -166,10 +166,10 @@ private:
     // ── Fitness FT(x) (Eq.7): max_k f̃_k/λ_k ───────────────────────────────
     static double ft_value(const std::vector<double>& f,
                            const std::vector<double>& w) {
-        double best = -std::numeric_limits<double>::max();
+        double best = -(std::numeric_limits<double>::max)();
         for (std::size_t k = 0; k < f.size(); ++k) {
             double wk = (w[k] > 1e-6) ? w[k] : 1e-6;   // avoid division by zero
-            best = std::max(best, f[k] / wk);
+            best = (std::max)(best, f[k] / wk);
         }
         return best;
     }
@@ -218,14 +218,14 @@ public:
             else                        vault.set_variables(i, vars);
         }
         vault.sync();
-        z_.assign(m, std::numeric_limits<double>::max());
+        z_.assign(m, (std::numeric_limits<double>::max)());
         update_ideal(vault, n);                       // InitializeIdealPoint(P0)
     }
 
     void setup_seeded(DataVault<Ind_t>& vault) {
         int n = vault.pop_size(), m = vault.objs_n();
         if (W_.empty()) init_refs(m, n);
-        z_.assign(m, std::numeric_limits<double>::max());
+        z_.assign(m, (std::numeric_limits<double>::max)());
         update_ideal(vault, n);
     }
 
@@ -278,7 +278,7 @@ public:
         std::vector<std::vector<int>> clusters(Nc);
         for (int i = 0; i < pool; ++i) {
             int    best_j = 0;
-            double best_d = std::numeric_limits<double>::max();
+            double best_d = (std::numeric_limits<double>::max)();
             for (int j = 0; j < Nc; ++j) {
                 double d = perp_dist(F[i], W_[j]);
                 if (d < best_d) { best_d = d; best_j = j; }
@@ -308,7 +308,7 @@ public:
                 }
                 return ft_value(F[a], W_[j]) < ft_value(F[b], W_[j]);
             });
-            Nf = std::max(Nf, static_cast<int>(cl.size()));
+            Nf = (std::max)(Nf, static_cast<int>(cl.size()));
         }
         // Layers: F_l is the l-th member of every cluster (l = 0..Nf-1).
         std::vector<std::vector<int>> layers(Nf);

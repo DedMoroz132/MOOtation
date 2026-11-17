@@ -111,7 +111,8 @@ set(MOOTATION_TESTS
     test_continuous_symmetry
     test_max_seconds
     test_stop_rule
-    test_clocks)
+    test_clocks
+    test_windows_first)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
     add_executable(${_t} ${_t}.cpp)

@@ -290,7 +290,7 @@ inline Rows dtlz7(std::size_t M, std::size_t n)
         for (auto& c : cell) c = static_cast<std::size_t>(rnd::below(g, rec.size()));
         for (std::size_t i = 0; i < k; ++i) {
             for (std::size_t j = 0; j < d; ++j) row[j] = rec[cell[i * d + j]];
-            for (std::size_t j = 0; j < d; ++j) row[j] = std::min(row[j] + rnd::uniform01(g) * kDtlz7Cell, 1.0);
+            for (std::size_t j = 0; j < d; ++j) row[j] = (std::min)(row[j] + rnd::uniform01(g) * kDtlz7Cell, 1.0);
             push_row(pts, row.data());
         }
     }
@@ -642,8 +642,8 @@ inline Rows poly_interior(const std::vector<double>& V, std::size_t n, std::uint
     double lo[2] = {V[0], V[1]}, hi[2] = {V[0], V[1]};
     for (std::size_t k = 0; 2 * k < V.size(); ++k)
         for (int c = 0; c < 2; ++c) {
-            lo[c] = std::min(lo[c], V[2 * k + c]);
-            hi[c] = std::max(hi[c], V[2 * k + c]);
+            lo[c] = (std::min)(lo[c], V[2 * k + c]);
+            hi[c] = (std::max)(hi[c], V[2 * k + c]);
         }
     std::mt19937 g(seed);
     Rows P = rows_of(0, 2);
@@ -695,7 +695,7 @@ inline Rows ipolygon(std::size_t M, std::size_t n)
             double best = std::numeric_limits<double>::infinity();
             for (const auto& V : polys) {
                 const double dx = V[2 * m] - P.row(i)[0], dy = V[2 * m + 1] - P.row(i)[1];
-                best = std::min(best, std::sqrt(dx * dx + dy * dy));
+                best = (std::min)(best, std::sqrt(dx * dx + dy * dy));
             }
             F.row(i)[m] = best;
         }
@@ -715,7 +715,7 @@ inline bool cdtlz_feasible(Cons which, const double* f, std::size_t M)
     suite::dtlz::constraints(which, f, m, r * r, 1.0 / std::sqrt(static_cast<double>(M)), g.data());
     const std::size_t k = which == Cons::C3_DTLZ1 || which == Cons::C3_DTLZ4 ? M : 1;
     double worst = g[0];
-    for (std::size_t j = 1; j < k; ++j) worst = std::max(worst, g[j]);
+    for (std::size_t j = 1; j < k; ++j) worst = (std::max)(worst, g[j]);
     return worst <= 0.0;
 }
 
@@ -887,8 +887,8 @@ inline Rows dss_thinned(const Rows& F, std::size_t n)
     for (std::size_t j = 0; j < F.m; ++j) {
         lo[j] = hi[j] = F.row(0)[j];
         for (std::size_t i = 1; i < F.n; ++i) {
-            lo[j] = std::min(lo[j], F.row(i)[j]);
-            hi[j] = std::max(hi[j], F.row(i)[j]);
+            lo[j] = (std::min)(lo[j], F.row(i)[j]);
+            hi[j] = (std::max)(hi[j], F.row(i)[j]);
         }
     }
     return take(F, select::dss_order(F, n, lo, hi));
@@ -981,7 +981,7 @@ inline Rows dascmop(int i, double eta, double zeta, double gamma, std::size_t n)
     const double step = M == 2 ? gs[1] - gs[0] : (top - p.d) / 40.0;
     Rows out = rows_of(0, M);
     for (auto k : nd1) {
-        double lo = p.e == p.d ? p.d - dc::kEqEps : std::max(gg[k] - step, p.d), hi = gg[k];
+        double lo = p.e == p.d ? p.d - dc::kEqEps : (std::max)(gg[k] - step, p.d), hi = gg[k];
         for (int it = 0; it < 40; ++it) {
             const double mid = 0.5 * (lo + hi);
             point(x1[k], x2[k], mid, f.data());
@@ -1030,8 +1030,8 @@ inline Rows lir_least_feasible(int i, const std::vector<double>& f1)
     constexpr double kShift = suite::lircmop::kShift;
     Rows out = rows_of(0, 2);
     for (double a : f1) {
-        const double base = i <= 8 ? lir_shape(i, std::min(std::max(a - kShift, 0.0), 1.0)) + kShift
-                                   : (1.0 + kShift) * lir_shape(i, std::min(std::max(a / (1.0 + kShift), 0.0), 1.0));
+        const double base = i <= 8 ? lir_shape(i, (std::min)((std::max)(a - kShift, 0.0), 1.0)) + kShift
+                                   : (1.0 + kShift) * lir_shape(i, (std::min)((std::max)(a / (1.0 + kShift), 0.0), 1.0));
         std::size_t k = 0;
         for (; k <= 4000; ++k)
             if (lir_ok(i, a, base + 1e-3 * static_cast<double>(k))) break;
@@ -1120,13 +1120,13 @@ inline std::pair<double, double> doc_circle_ends(double p)
         return a * a + b * b <= 0.0225;
     };
     double ends[2];
-    const double far[2] = {0.0, 1.0};
+    const double distant[2] = {0.0, 1.0};
     for (int k = 0; k < 2; ++k) {
-        if (inside(far[k])) {
-            ends[k] = far[k];
+        if (inside(distant[k])) {
+            ends[k] = distant[k];
             continue;
         }
-        double lo = p, hi = far[k];
+        double lo = p, hi = distant[k];
         for (int it = 0; it < 200; ++it) {
             const double mid = 0.5 * (lo + hi);
             if (mid == lo || mid == hi) break;
@@ -1279,7 +1279,7 @@ inline Rows mmo(const std::string& name, std::size_t n)
             for (double f1 : linspace(0.0, 1.0, 200001)) {
                 const double f2 = f2_of(f1);
                 if (pieces.empty() || f2 < best) pieces.push_back(f1);
-                best = std::min(best, f2);
+                best = (std::min)(best, f2);
             }
             for (double at : linspace(0.0, static_cast<double>(pieces.size() - 1), k)) {
                 const double f1 = pieces[static_cast<std::size_t>(at)];   // .astype(int): truncated
@@ -1679,7 +1679,7 @@ inline Rows sample(const json::Value& spec, std::size_t n, const Data& data = {}
         Rows W = simplex(M(), n);
         for (std::size_t i = 0; i < W.n; ++i) {
             double lo = W.row(i)[0];
-            for (std::size_t j = 1; j < W.m; ++j) lo = std::min(lo, W.row(i)[j]);
+            for (std::size_t j = 1; j < W.m; ++j) lo = (std::min)(lo, W.row(i)[j]);
             for (std::size_t j = 0; j < W.m; ++j) W.row(i)[j] /= 1.0 + lo;
         }
         return W;
@@ -1688,7 +1688,7 @@ inline Rows sample(const json::Value& spec, std::size_t n, const Data& data = {}
         Rows U = sphere_oct(M(), n);
         for (std::size_t i = 0; i < U.n; ++i) {
             double hi = U.row(i)[0] * U.row(i)[0];
-            for (std::size_t j = 1; j < U.m; ++j) hi = std::max(hi, U.row(i)[j] * U.row(i)[j]);
+            for (std::size_t j = 1; j < U.m; ++j) hi = (std::max)(hi, U.row(i)[j] * U.row(i)[j]);
             const double d = std::sqrt(1.0 - 0.75 * hi);
             for (std::size_t j = 0; j < U.m; ++j) U.row(i)[j] /= d;
         }

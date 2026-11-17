@@ -131,7 +131,7 @@ private:
         double na = norm(a), nb = norm(b);
         if (!(na > 0.0) || !(nb > 0.0)) return 0.0;
         double c = dot(a, b) / (na * nb);
-        c = std::min(1.0, std::max(-1.0, c));
+        c = (std::min)(1.0, (std::max)(-1.0, c));
         return dm::acos(c);
     }
 
@@ -146,7 +146,7 @@ private:
             const std::vector<std::vector<double>>& X,
             const std::vector<std::vector<double>>& Y)
     {
-        const double INF = std::numeric_limits<double>::max();
+        const double INF = (std::numeric_limits<double>::max)();
         const int nx = static_cast<int>(X.size());
         const int ny = static_cast<int>(Y.size());
         std::vector<double> fit(nx, 0.0);
@@ -206,15 +206,15 @@ private:
         for (std::size_t k = 0; k < R.size(); ++k) {
             double nr = norm(R[k]);
             if (!(nr > 0.0)) continue;              // numerical guard (scale-free)
-            double best_perp = std::numeric_limits<double>::max();
+            double best_perp = (std::numeric_limits<double>::max)();
             double best_proj = 0.0;
             for (const auto& f : F) {
                 double proj  = dot(f, R[k]) / nr;   // ||F||·cos∠
                 double perp2 = dot(f, f) - proj * proj;
-                double perp  = std::sqrt(std::max(0.0, perp2));
+                double perp  = std::sqrt((std::max)(0.0, perp2));
                 if (perp < best_perp) { best_perp = perp; best_proj = proj; }
             }
-            best_proj = std::max(0.0, best_proj);   // guard: projection points backwards
+            best_proj = (std::max)(0.0, best_proj);   // guard: projection points backwards
             for (std::size_t j = 0; j < R[k].size(); ++j)
                 out[k][j] = R[k][j] / nr * best_proj;
         }
@@ -288,10 +288,10 @@ private:
     std::vector<int> mating_selection(DataVault<Ind_t>& vault, int n) {
         const int m = vault.objs_n();
         // line 3: f_i(p) ← f_i(p) − min_{q∈P} f_i(q)
-        std::vector<double> zmin(m, std::numeric_limits<double>::max());
+        std::vector<double> zmin(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) zmin[j] = std::min(zmin[j], o[j]);
+            for (int j = 0; j < m; ++j) zmin[j] = (std::min)(zmin[j], o[j]);
         }
         std::vector<std::vector<double>> Pt(n, std::vector<double>(m));
         for (int i = 0; i < n; ++i) {
@@ -324,13 +324,13 @@ private:
         const int NR = static_cast<int>(R0_.size());
 
         // Operation 1 (lines 1-8): z* and z^nad from P; translate A u P, scale R
-        std::vector<double> zmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> znad(m, -std::numeric_limits<double>::max());
+        std::vector<double> zmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> znad(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
             for (int j = 0; j < m; ++j) {
-                zmin[j] = std::min(zmin[j], o[j]);
-                znad[j] = std::max(znad[j], o[j]);
+                zmin[j] = (std::min)(zmin[j], o[j]);
+                znad[j] = (std::max)(znad[j], o[j]);
             }
         }
         for (int i = n; i < pool; ++i)                       // A ← A ∪ O
@@ -392,7 +392,7 @@ private:
         std::vector<char> is_con(nk, 0);
         for (const auto& r : Radj) {
             int    arg = 0;
-            double dm  = std::numeric_limits<double>::max();
+            double dm  = (std::numeric_limits<double>::max)();
             for (int i = 0; i < nk; ++i) {
                 double d = edist(r, AK[i]);
                 if (d < dm) { dm = d; arg = i; }
@@ -405,11 +405,11 @@ private:
             if (is_con[i]) { sel.push_back(i); in_sel[i] = 1; }
 
         // lines 15-17: top up to min(|R|,|A|) by max-min angle
-        const int target_a = std::min(NR, nk);
-        std::vector<double> minang(nk, std::numeric_limits<double>::max());
+        const int target_a = (std::min)(NR, nk);
+        std::vector<double> minang(nk, (std::numeric_limits<double>::max)());
         for (int i = 0; i < nk; ++i)
             for (int s : sel)
-                minang[i] = std::min(minang[i], acute_angle(AK[i], AK[s]));
+                minang[i] = (std::min)(minang[i], acute_angle(AK[i], AK[s]));
         while (static_cast<int>(sel.size()) < target_a) {
             int best = -1;
             for (int i = 0; i < nk; ++i)
@@ -417,7 +417,7 @@ private:
             if (best < 0) break;
             in_sel[best] = 1; sel.push_back(best);
             for (int i = 0; i < nk; ++i)
-                minang[i] = std::min(minang[i], acute_angle(AK[i], AK[best]));
+                minang[i] = (std::min)(minang[i], acute_angle(AK[i], AK[best]));
         }
 
         // Operation 3 (lines 19-24): R^valid -> R' -> top up from A' -> adjust on P
@@ -425,7 +425,7 @@ private:
         for (int i = 0; i < nk; ++i) {
             if (!is_con[i]) continue;
             int    arg = 0;
-            double dm  = std::numeric_limits<double>::max();
+            double dm  = (std::numeric_limits<double>::max)();
             for (std::size_t r = 0; r < Radj.size(); ++r) {
                 double d = edist(Radj[r], AK[i]);
                 if (d < dm) { dm = d; arg = static_cast<int>(r); }
@@ -437,12 +437,12 @@ private:
             if (validw[r]) Rp_.push_back(Radj[r]);
 
         const int ns = static_cast<int>(sel.size());         // lines 21-23
-        const int target_r = std::min(NR, ns);
+        const int target_r = (std::min)(NR, ns);
         std::vector<char>   used(ns, 0);
-        std::vector<double> mang(ns, std::numeric_limits<double>::max());
+        std::vector<double> mang(ns, (std::numeric_limits<double>::max)());
         for (int i = 0; i < ns; ++i)
             for (const auto& r : Rp_)
-                mang[i] = std::min(mang[i], acute_angle(r, AK[sel[i]]));
+                mang[i] = (std::min)(mang[i], acute_angle(r, AK[sel[i]]));
         while (static_cast<int>(Rp_.size()) < target_r) {
             int best = -1;
             for (int i = 0; i < ns; ++i)
@@ -451,7 +451,7 @@ private:
             used[best] = 1;
             Rp_.push_back(AK[sel[best]]);                    // R' ∪ {F(p)}
             for (int i = 0; i < ns; ++i)
-                mang[i] = std::min(mang[i], acute_angle(AK[sel[best]], AK[sel[i]]));
+                mang[i] = (std::min)(mang[i], acute_angle(AK[sel[best]], AK[sel[i]]));
         }
 
         std::vector<std::vector<double>> Pt(n, std::vector<double>(m));
@@ -481,10 +481,10 @@ private:
         // improves an objective's minimum, reference points and solutions sit
         // one offset apart. That is the letter of Alg.1, 3 and 5 and is kept. The offset is one generation's
         // improvement, so it matters early in a run and fades as it converges.
-        std::vector<double> zmin(m, std::numeric_limits<double>::max());
+        std::vector<double> zmin(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < pool; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) zmin[j] = std::min(zmin[j], o[j]);
+            for (int j = 0; j < m; ++j) zmin[j] = (std::min)(zmin[j], o[j]);
         }
         std::vector<std::vector<double>> Ft(pool, std::vector<double>(m));
         for (int i = 0; i < pool; ++i) {
@@ -539,11 +539,11 @@ public:
         if (X.empty() || Y.empty()) return 0.0;
         const int nx = static_cast<int>(X.size());
         std::vector<char>   contrib(nx, 0);
-        std::vector<double> dref(nx, std::numeric_limits<double>::max());
+        std::vector<double> dref(nx, (std::numeric_limits<double>::max)());
         double s = 0.0;
         for (const auto& y : Y) {
             int    arg = 0;
-            double dm  = std::numeric_limits<double>::max();
+            double dm  = (std::numeric_limits<double>::max)();
             for (int x = 0; x < nx; ++x) {
                 double d = edist(X[x], y);
                 if (d < dm) { dm = d; arg = x; }
@@ -569,13 +569,13 @@ public:
     std::vector<std::vector<double>> scaled_reference(DataVault<Ind_t>& vault,
                                                       int n) const {
         const int m = vault.objs_n();
-        std::vector<double> zmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> znad(m, -std::numeric_limits<double>::max());
+        std::vector<double> zmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> znad(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
             for (int j = 0; j < m; ++j) {
-                zmin[j] = std::min(zmin[j], o[j]);
-                znad[j] = std::max(znad[j], o[j]);
+                zmin[j] = (std::min)(zmin[j], o[j]);
+                znad[j] = (std::max)(znad[j], o[j]);
             }
         }
         std::vector<std::vector<double>> Rs = R0_;

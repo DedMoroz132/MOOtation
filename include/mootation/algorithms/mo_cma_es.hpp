@@ -166,7 +166,7 @@ private:
         std::vector<double> x(u.size());
         dist2 = 0.0;
         for (std::size_t j = 0; j < u.size(); ++j) {
-            const double c = std::min(1.0, std::max(0.0, u[j]));
+            const double c = (std::min)(1.0, (std::max)(0.0, u[j]));
             dist2 += (u[j] - c) * (u[j] - c);
             x[j] = lo_[j] + c * (hi_[j] - lo_[j]);
         }
@@ -276,7 +276,7 @@ private:
         std::vector<double> lo(m, inf), hi(m, -inf);
         for (int i = 0; i < n; ++i) {
             const auto& f = vault.get_ind(static_cast<std::size_t>(i)).fpen;
-            for (std::size_t k = 0; k < m; ++k) { lo[k] = std::min(lo[k], f[k]); hi[k] = std::max(hi[k], f[k]); }
+            for (std::size_t k = 0; k < m; ++k) { lo[k] = (std::min)(lo[k], f[k]); hi[k] = (std::max)(hi[k], f[k]); }
         }
         std::vector<double> r(m);
         for (std::size_t k = 0; k < m; ++k)                  // MOCMA-4
@@ -292,7 +292,7 @@ private:
         auto c = how_.compute(Fv, r, hvc_, rng_, &boundary);  // MOCMA-5 (exact)
         for (std::size_t t = 0; t < Fv.size(); ++t) if (boundary[t]) c[t] = inf;
         double least = inf;
-        for (double x : c) least = std::min(least, x);
+        for (double x : c) least = (std::min)(least, x);
         std::vector<int> tied;
         for (std::size_t t = 0; t < c.size(); ++t) if (c[t] == least) tied.push_back(last[t]);
         if (tied.size() == 1) return tied[0];

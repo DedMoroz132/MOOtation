@@ -65,7 +65,7 @@ namespace tiktak {
 inline double theta(long long i, long long n_star)
 {
     const double t = std::sqrt(static_cast<double>(i) / static_cast<double>(n_star));
-    return std::min(std::max(0.1, t), 0.995);
+    return (std::min)((std::max)(0.1, t), 0.995);
 }
 
 }   // namespace tiktak
@@ -86,7 +86,7 @@ inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double 
     if (!(share > 0.0 && share <= 1.0)) throw std::invalid_argument("tiktak: tiktak_share in (0, 1]");
     search::finite_box("tiktak", P);
     const std::size_t n = P.lo.size();
-    const long long n_star = std::max(1LL, std::llround(share * static_cast<double>(N)));            // TT-3
+    const long long n_star = (std::max)(1LL, std::llround(share * static_cast<double>(N)));            // TT-3
 
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     strategy::round_stop_of(k, ev);                                                  // STRAT-16
@@ -127,7 +127,7 @@ inline Result run_tiktak(const Problem& P, double eq_tol, bool has_tol0, double 
             StartSpec sp;
             sp.seed = start_seed(seed, static_cast<std::uint64_t>(i));
             sp.start = search::at(x);
-            sp.allowance = cap > 0 ? std::min(cap, rest) : std::max(1LL, rest / (n_star - i + 1));        // TT-6
+            sp.allowance = cap > 0 ? (std::min)(cap, rest) : (std::max)(1LL, rest / (n_star - i + 1));        // TT-6
             const std::vector<Result> res = strategy::round(ev, inner, {sp}, 1, pop_size);
             ++searches;
             stop.step(ev);

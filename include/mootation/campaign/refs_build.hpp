@@ -178,7 +178,7 @@ inline refs::Rows reference_front(const RegistryProblem& p, const ProblemRegistr
     if (kept.n == 0 || kept.n == total) return refs::front(base.front, n, data);
     const auto native = std::shared_ptr<suite::Native>(suite::make(spec_of(p.failing_region->spec)));
     refs::Rows ref = refs::rows_of(kept.n, static_cast<std::size_t>(base.n_obj));
-    std::vector<double> g(static_cast<std::size_t>(std::max(native->n_con, 1)));
+    std::vector<double> g(static_cast<std::size_t>((std::max)(native->n_con, 1)));
     for (std::size_t i = 0; i < kept.n; ++i) native->evaluate(kept.row(i), ref.row(i), g.data());
     return refs::detail::nondominated(ref);
 }
@@ -259,8 +259,8 @@ inline std::optional<refs::Frame> frame_of(const RegistryProblem& p, const Probl
                   std::vector<double>(F.m, -std::numeric_limits<double>::infinity())};
     for (std::size_t i = 0; i < F.n; ++i)
         for (std::size_t j = 0; j < F.m; ++j) {
-            f.ideal[j] = std::min(f.ideal[j], F.row(i)[j]);
-            f.nadir[j] = std::max(f.nadir[j], F.row(i)[j]);
+            f.ideal[j] = (std::min)(f.ideal[j], F.row(i)[j]);
+            f.nadir[j] = (std::max)(f.nadir[j], F.row(i)[j]);
         }
     return f;
 }
@@ -389,7 +389,7 @@ inline std::map<std::string, std::string> build_references(const ProblemRegistry
         }
     };
     std::vector<std::thread> pool;
-    const std::size_t n = std::max<std::size_t>(1, std::min(opt.workers, todo.size()));
+    const std::size_t n = std::max<std::size_t>(1, (std::min)(opt.workers, todo.size()));
     for (std::size_t t = 1; t < n; ++t) pool.emplace_back(work);
     work();
     for (auto& t : pool) t.join();

@@ -227,7 +227,7 @@ inline Vec cut_and_splice(const Problem& P, const symmetry::Blocks& g, const Vec
         for (std::size_t q = 0; q < d; ++q) {
             const std::size_t j = g.offset + s * d + q;
             const double v = from_a ? a[g.offset + atom * d + q] : b[g.offset + atom * d + q] - cb[q] + ca[q];
-            child[j] = std::min(P.hi[j], std::max(P.lo[j], v));
+            child[j] = (std::min)(P.hi[j], (std::max)(P.lo[j], v));
         }
     }
     return child;
@@ -289,13 +289,13 @@ struct Portfolio {
             return;
         }
         double top = Q[0];
-        for (double q : Q) top = std::max(top, q);
+        for (double q : Q) top = (std::max)(top, q);
         std::vector<std::size_t> best;
         for (std::size_t i = 0; i < K; ++i)
             if (Q[i] == top) best.push_back(i);
         const std::size_t star =
             best.size() == 1 ? best[0]
-                             : best[std::min(best.size() - 1,
+                             : best[(std::min)(best.size() - 1,
                                              static_cast<std::size_t>(rnd::uniform01(g) * static_cast<double>(best.size())))];
         const double pmax = 1.0 - static_cast<double>(K - 1) * pmin;                     // (5)
         for (std::size_t i = 0; i < K; ++i)
@@ -425,7 +425,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
         }
         for (std::size_t j = 0; j < n; ++j)
             y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
-                                               : std::min(P.hi[j], std::max(P.lo[j], y[j]));
+                                               : (std::min)(P.hi[j], (std::max)(P.lo[j], y[j]));
     };
     auto move = [&](Vec& y, std::mt19937& g) {
         shift(y, g);
@@ -434,7 +434,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
     auto clipped = [&](Vec y) {
         for (std::size_t j = 0; j < n; ++j)
             y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
-                                               : std::min(P.hi[j], std::max(P.lo[j], y[j]));
+                                               : (std::min)(P.hi[j], (std::max)(P.lo[j], y[j]));
         return y;
     };
     long long init_shifts = 0, init_seeded = 0;                                      // CGA-5
@@ -478,7 +478,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
             parents.push_back({0, 0});
         } else if (md || afpo) {
             auto any = [&]() {
-                return std::min(ps.size() - 1, static_cast<std::size_t>(rnd::uniform01(g) * static_cast<double>(ps.size())));
+                return (std::min)(ps.size() - 1, static_cast<std::size_t>(rnd::uniform01(g) * static_cast<double>(ps.size())));
             };
             auto tournament = [&]() {                                            // Segura: on f
                 const std::size_t a = any(), b = any();
@@ -495,8 +495,8 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
         } else {
             double lo_e = ps[0].f, hi_e = ps[0].f;
             for (const auto& m : ps) {
-                lo_e = std::min(lo_e, m.f);
-                hi_e = std::max(hi_e, m.f);
+                lo_e = (std::min)(lo_e, m.f);
+                hi_e = (std::max)(hi_e, m.f);
             }
             const double T = hi_e - lo_e;
             std::vector<double> w(ps.size());
@@ -560,18 +560,18 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
             if (mo >= 0) ++mport.calls[static_cast<std::size_t>(mo)];
             kid_x.push_back(xo);
             kid_m.push_back(mo);
-            kid_pf.push_back(K == 1 ? ps[0].f : std::min(ps[pr.first].f, ps[pr.second].f));
+            kid_pf.push_back(K == 1 ? ps[0].f : (std::min)(ps[pr.first].f, ps[pr.second].f));
         }
     };
     // 3. c in place of the highest member of ps where lower and none within cga_de of it
     auto settle = [&](std::vector<search::Found>& ps, const search::Found& c) {
         std::size_t worst = 0;
-        bool near = false;
+        bool nearby = false;
         for (std::size_t q = 0; q < ps.size(); ++q) {
             if (search::better(ps[worst], ps[q])) worst = q;
-            if (std::fabs(ps[q].f - c.f) < de) near = true;
+            if (std::fabs(ps[q].f - c.f) < de) nearby = true;
         }
-        if (near || !search::better(c, ps[worst])) return false;
+        if (nearby || !search::better(c, ps[worst])) return false;
         ps[worst] = c;
         return true;
     };
@@ -666,7 +666,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                 bool all = Y.size() == kids.size();
                 std::size_t at = 0;
                 for (std::size_t i = 0; i < isles.size(); ++i) {
-                    const std::size_t from = std::min(at, Y.size()), to = std::min(at + made[i], Y.size());
+                    const std::size_t from = (std::min)(at, Y.size()), to = (std::min)(at + made[i], Y.size());
                     const std::vector<search::Found> Yi(Y.begin() + static_cast<std::ptrdiff_t>(from),
                                                         Y.begin() + static_cast<std::ptrdiff_t>(to));
                     all = place(isles[i], Yi, first_kid + static_cast<long long>(at)) && all;
@@ -706,7 +706,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                 if (md_aligned) {
                     G = 0.0;
                     for (std::size_t a = 0; a < pop.size(); ++a)
-                        for (std::size_t b = a + 1; b < pop.size(); ++b) G = std::max(G, dist(pop[a].x, pop[b].x));
+                        for (std::size_t b = a + 1; b < pop.size(); ++b) G = (std::max)(G, dist(pop[a].x, pop[b].x));
                 }
                 D_I = md_di * G;
             }
@@ -739,10 +739,10 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                         }
                         log.add(Y[p].x, Y[p].f, first_kid + static_cast<long long>(p));
                         U.push_back(Y[p]);
-                        A.push_back(p < parents.size() ? std::max(age[parents[p].first], age[parents[p].second]) : 1);
+                        A.push_back(p < parents.size() ? (std::max)(age[parents[p].first], age[parents[p].second]) : 1);
                     }
                     if (md) {                                                            // Segura, Algorithm 2
-                        const double frac = std::max(0.0, 1.0 - ev.used() / (md_end * static_cast<double>(budget)));
+                        const double frac = (std::max)(0.0, 1.0 - ev.used() / (md_end * static_cast<double>(budget)));
                         const double D = D_I * frac;
                         std::vector<char> taken(U.size(), 0);
                         std::vector<search::Found> next;
@@ -757,7 +757,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                             for (std::size_t q = 0; q < U.size(); ++q) {
                                 if (taken[q]) continue;
                                 double dmin = std::numeric_limits<double>::infinity();
-                                for (const auto& m : next) dmin = std::min(dmin, dist(U[q].x, m.x));
+                                for (const auto& m : next) dmin = (std::min)(dmin, dist(U[q].x, m.x));
                                 cand.push_back(q);
                                 dcn.push_back(dmin);
                                 const bool feasible = U[q].cv <= 0.0;
@@ -773,7 +773,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                                 for (std::size_t f : front) repeat = repeat || (fv[f] == fv[a] && dcn[f] == dcn[a]);
                                 if (!dominated && !repeat) front.push_back(a);
                             }
-                            const std::size_t pick = front[std::min(front.size() - 1,
+                            const std::size_t pick = front[(std::min)(front.size() - 1,
                                                                     static_cast<std::size_t>(rnd::uniform01(rng) *
                                                                                              static_cast<double>(front.size())))];
                             taken[cand[pick]] = 1;
@@ -798,7 +798,7 @@ inline Result run_cluster_ga(const Problem& P, double eq_tol, bool has_tol0, dou
                             const std::size_t t = std::min<std::size_t>(static_cast<std::size_t>(tour), live.size());
                             std::vector<std::size_t> group(live);
                             for (std::size_t g = 0; g < t; ++g) {                        // a partial Fisher-Yates draw
-                                const std::size_t r = g + std::min(group.size() - g - 1,
+                                const std::size_t r = g + (std::min)(group.size() - g - 1,
                                                                    static_cast<std::size_t>(rnd::uniform01(rng) *
                                                                                             static_cast<double>(group.size() - g)));
                                 std::swap(group[g], group[r]);

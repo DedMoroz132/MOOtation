@@ -172,7 +172,7 @@ private:
         double denom = vnorm(a) * vnorm(b);
         if (denom < 1e-30) return M_PI / 2.0;
         double c = dot / denom;
-        c = std::max(-1.0, std::min(1.0, c));
+        c = (std::max)(-1.0, (std::min)(1.0, c));
         return dm::acos(c);
     }
 
@@ -189,7 +189,7 @@ private:
             double best = M_PI;
             for (int j = 0; j < H; ++j) {
                 if (i == j) continue;
-                best = std::min(best, angle(D_[i], D_[j]));
+                best = (std::min)(best, angle(D_[i], D_[j]));
             }
             a_[i] = (best < M_PI) ? best : (M_PI / 2.0);
         }
@@ -200,10 +200,10 @@ private:
     std::vector<std::vector<double>> normalized(DataVault<Ind_t>& vault, int n,
                                                 const std::vector<int>& ref) const {
         const int m = vault.objs_n();
-        std::vector<double> nad(m, -std::numeric_limits<double>::max());
+        std::vector<double> nad(m, -(std::numeric_limits<double>::max)());
         for (int v : ref) {
             const auto& o = vault.objectives_of(v);
-            for (int j = 0; j < m; ++j) nad[j] = std::max(nad[j], o[j]);
+            for (int j = 0; j < m; ++j) nad[j] = (std::max)(nad[j], o[j]);
         }
         std::vector<std::vector<double>> out(n, std::vector<double>(m, 0.0));
         for (int i = 0; i < n; ++i) {
@@ -218,7 +218,7 @@ private:
 
     void update_ideal(const std::vector<double>& f) {
         for (std::size_t j = 0; j < f.size(); ++j)
-            ideal_[j] = std::min(ideal_[j], f[j]);
+            ideal_[j] = (std::min)(ideal_[j], f[j]);
     }
 
     void rearrange(DataVault<Ind_t>& vault,
@@ -283,14 +283,14 @@ public:
         }
         vault.sync();
         // Alg.2 (auxiliary step): z* is initialized from EA.
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) update_ideal(vault.objectives_of(i));
     }
 
     void setup_seeded(DataVault<Ind_t>& vault) {
         int n = vault.pop_size(), m = vault.objs_n();
         if (D_.empty()) { D_ = das_dennis::generate_exact(m, n); compute_min_angles(); }
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) update_ideal(vault.objectives_of(i));
     }
 
@@ -318,7 +318,7 @@ public:
             for (int i = 0; i < n_ea; ++i)
                 for (int j = 0; j < n_ea; ++j)
                     if (i != j)
-                        c = std::max(c, std::abs(eps_plus(obj(i), obj(j))));
+                        c = (std::max)(c, std::abs(eps_plus(obj(i), obj(j))));
             for (int i = 0; i < n_ea; ++i) {
                 double s = 0.0;
                 for (int j = 0; j < n_ea; ++j)
@@ -408,7 +408,7 @@ public:
             std::vector<int> retained;
             int H = static_cast<int>(D_.size());
             for (int i = 0; i < H; ++i) {
-                int best = -1; double bd = std::numeric_limits<double>::max();
+                int best = -1; double bd = (std::numeric_limits<double>::max)();
                 for (int v : S) {
                     if (!inS[v]) continue;
                     double ang = angle(Fp[v], D_[i]);
@@ -427,7 +427,7 @@ public:
             if (need_remove > 0 && !rem.empty()) {
                 double c = 1e-12;
                 for (int i : rem) for (int j : rem) if (i != j)
-                    c = std::max(c, std::abs(eps_plus(Fp[i], Fp[j])));
+                    c = (std::max)(c, std::abs(eps_plus(Fp[i], Fp[j])));
                 std::vector<double> F(pool, 0.0);
                 for (int i : rem) {
                     double s = 0;
@@ -436,7 +436,7 @@ public:
                     F[i] = s;
                 }
                 for (int t = 0; t < need_remove; ++t) {
-                    int worst = -1; double wf = std::numeric_limits<double>::max();
+                    int worst = -1; double wf = (std::numeric_limits<double>::max)();
                     for (int v : rem) if (alive[v] && F[v] < wf) { wf = F[v]; worst = v; }
                     if (worst < 0) break;
                     alive[worst] = 0;

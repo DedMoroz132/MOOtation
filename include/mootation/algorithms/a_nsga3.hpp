@@ -122,7 +122,7 @@ private:
         std::vector<double> nn;
         int H = static_cast<int>(ref_points_.size());
         for (int i = 0; i < H; ++i) {
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             for (int j = 0; j < H; ++j) {
                 if (i == j) continue;
                 double d = 0.0;
@@ -130,11 +130,11 @@ private:
                     double t = ref_points_[i][k] - ref_points_[j][k];
                     d += t * t;
                 }
-                best = std::min(best, d);
+                best = (std::min)(best, d);
             }
-            if (best < std::numeric_limits<double>::max()) nn.push_back(std::sqrt(best));
+            if (best < (std::numeric_limits<double>::max)()) nn.push_back(std::sqrt(best));
         }
-        if (nn.empty()) return 1.0 / std::max(1, m);
+        if (nn.empty()) return 1.0 / (std::max)(1, m);
         std::stable_sort(nn.begin(), nn.end());
         return nn[nn.size() / 2];
     }
@@ -386,7 +386,7 @@ private:
                            const std::vector<int>& St) {
         int m = vault.objs_n();
         if (zmin_hist_.empty())
-            zmin_hist_.assign(m, std::numeric_limits<double>::max());
+            zmin_hist_.assign(m, (std::numeric_limits<double>::max)());
         if (extreme_hist_.empty())
             extreme_hist_.assign(m, {});
 
@@ -403,21 +403,21 @@ private:
         for (int v : Sf) {
             const auto& o = vault.objectives_of(v);
             for (int j = 0; j < m; ++j)
-                zmin_hist_[j] = std::min(zmin_hist_[j], o[j]);
+                zmin_hist_[j] = (std::min)(zmin_hist_[j], o[j]);
         }
 
         const double eps = 1e-6;
         auto asf = [&](const std::vector<double>& o, int axis) {
-            double val = -std::numeric_limits<double>::max();
+            double val = -(std::numeric_limits<double>::max)();
             for (int j = 0; j < m; ++j) {
                 double w = (axis == j) ? 1.0 : eps;
-                val = std::max(val, (o[j] - zmin_hist_[j]) / w);
+                val = (std::max)(val, (o[j] - zmin_hist_[j]) / w);
             }
             return val;
         };
         for (int i = 0; i < m; ++i) {
             std::vector<double> best = extreme_hist_[i];
-            double best_asf = best.empty() ? std::numeric_limits<double>::max()
+            double best_asf = best.empty() ? (std::numeric_limits<double>::max)()
                                            : asf(best, i);
             for (int v : Sf) {
                 const auto& o = vault.objectives_of(v);
@@ -482,14 +482,14 @@ private:
 
         // Per-objective fallback (§IV-C «nonnegative intercepts»).
         {
-            std::vector<double> nadir(m, -std::numeric_limits<double>::max());
+            std::vector<double> nadir(m, -(std::numeric_limits<double>::max)());
             for (int v : St) {
                 const auto& o = vault.objectives_of(v);
-                for (int j = 0; j < m; ++j) nadir[j] = std::max(nadir[j], o[j]);
+                for (int j = 0; j < m; ++j) nadir[j] = (std::max)(nadir[j], o[j]);
             }
             for (int j = 0; j < m; ++j)
                 if (degenerate || intercepts[j] <= 1e-12)
-                    intercepts[j] = std::max(nadir[j] - zstar[j], 1e-12);
+                    intercepts[j] = (std::max)(nadir[j] - zstar[j], 1e-12);
         }
 
         // Build normalized objectives (Eq.4; the intercepts are already in
@@ -519,7 +519,7 @@ private:
         int sz   = static_cast<int>(St.size());
 
         for (int si = 0; si < sz; ++si) {
-            double best_d   = std::numeric_limits<double>::max();
+            double best_d   = (std::numeric_limits<double>::max)();
             int    best_ref = 0;
             for (int r = 0; r < nref; ++r) {
                 const auto& rp = ref_points_[r];
@@ -577,8 +577,8 @@ private:
             }
             if (refs_with_fl.empty()) break;
 
-            int min_rho = std::numeric_limits<int>::max();
-            for (int r : refs_with_fl) min_rho = std::min(min_rho, rho[r]);
+            int min_rho = (std::numeric_limits<int>::max)();
+            for (int r : refs_with_fl) min_rho = (std::min)(min_rho, rho[r]);
 
             // All references with that minimum rho (and having Fl members).
             std::vector<int> candidates;
@@ -739,7 +739,7 @@ public:
         // Guard: user-supplied points may have arrived without init.
         if (is_original_.size() != ref_points_.size())
             init_adaptation_state(m, n);
-        cap_ = (cap_override_ > 0) ? cap_override_ : std::max(cap_, 2 * n);
+        cap_ = (cap_override_ > 0) ? cap_override_ : (std::max)(cap_, 2 * n);
 
         const auto& bounds = vault.get_bounds();
         rnd::uniform_real_distribution<double> dr(0.0, 1.0);
@@ -768,7 +768,7 @@ public:
         if (ref_points_.empty()) generate_reference_points(n, m);
         if (is_original_.size() != ref_points_.size())
             init_adaptation_state(m, n);
-        cap_ = (cap_override_ > 0) ? cap_override_ : std::max(cap_, 2 * n);
+        cap_ = (cap_override_ > 0) ? cap_override_ : (std::max)(cap_, 2 * n);
         auto fronts = fast_nondominated_sort(vault, n);
         (void)fronts;
     }

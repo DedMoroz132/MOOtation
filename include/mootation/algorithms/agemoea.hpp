@@ -179,16 +179,16 @@ private:
                                    const std::vector<int>& F1) const {
         int m = vault.objs_n();
         NormParams np;
-        np.zmin.assign(m, std::numeric_limits<double>::max());
+        np.zmin.assign(m, (std::numeric_limits<double>::max)());
         for (int v : F1) {
             const auto& o = vault.objectives_of(v);
-            for (int j = 0; j < m; ++j) np.zmin[j] = std::min(np.zmin[j], o[j]);
+            for (int j = 0; j < m; ++j) np.zmin[j] = (std::min)(np.zmin[j], o[j]);
         }
         // Extreme points via ASF.
         const double eps = 1e-6;
         std::vector<int> extreme(m, -1);
         for (int i = 0; i < m; ++i) {
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             for (int v : F1) {
                 const auto& o = vault.objectives_of(v);
                 double asf = 0.0;
@@ -240,13 +240,13 @@ private:
         }
         if (degenerate) {
             // Min-max fallback (§3.2): a_i = z_i^max − z_i^min over F1.
-            std::vector<double> nadir(m, -std::numeric_limits<double>::max());
+            std::vector<double> nadir(m, -(std::numeric_limits<double>::max)());
             for (int v : F1) {
                 const auto& o = vault.objectives_of(v);
-                for (int j = 0; j < m; ++j) nadir[j] = std::max(nadir[j], o[j]);
+                for (int j = 0; j < m; ++j) nadir[j] = (std::max)(nadir[j], o[j]);
             }
             for (int j = 0; j < m; ++j)
-                np.intercepts[j] = std::max(nadir[j] - np.zmin[j], 1e-12);
+                np.intercepts[j] = (std::max)(nadir[j] - np.zmin[j], 1e-12);
         }
         return np;
     }
@@ -260,7 +260,7 @@ private:
         for (int j = 0; j < m; ++j) {
             double denom = np.intercepts[j];
             fn[j] = (std::abs(denom) > 1e-12) ? (o[j] - np.zmin[j]) / denom : 0.0;
-            fn[j] = std::max(fn[j], 0.0);   // clamp ≥ 0
+            fn[j] = (std::max)(fn[j], 0.0);   // clamp ≥ 0
         }
         return fn;
     }
@@ -268,7 +268,7 @@ private:
     // ── Lp norm ────────────────────────────────────────────────────────────
     double lp_norm(const std::vector<double>& v, double p) const {
         double s = 0.0;
-        for (double x : v) s += dm::pow(std::max(x, 0.0), p);
+        for (double x : v) s += dm::pow((std::max)(x, 0.0), p);
         return dm::pow(s, 1.0 / p);
     }
 
@@ -290,7 +290,7 @@ private:
     // p = log(M) / (log(M) - log(Σ C_i))   (Eq.8)
     double estimate_p(const std::vector<std::vector<double>>& fn_F1, int m) const {
         int best_idx = -1;
-        double best_d = std::numeric_limits<double>::max();
+        double best_d = (std::numeric_limits<double>::max)();
         for (int i = 0; i < static_cast<int>(fn_F1.size()); ++i) {
             double sum = 0.0, norm2 = 0.0;
             for (int j = 0; j < m; ++j) {
@@ -299,7 +299,7 @@ private:
             }
             if (norm2 < 1e-28) continue;   // point at the ideal: degenerate
             double d2 = norm2 - (sum * sum) / static_cast<double>(m);
-            double dperp = std::sqrt(std::max(d2, 0.0));
+            double dperp = std::sqrt((std::max)(d2, 0.0));
             if (dperp < best_d) { best_d = dperp; best_idx = i; }
         }
         if (best_idx < 0) return 1.0;   // fallback: linear
@@ -317,7 +317,7 @@ private:
         double p = log_M / (log_M - log_sumC);
         // Numerical guard only: a valid ΣC within 1e-12 of M still gives a p
         // in the thousands.
-        return std::max(0.1, std::min(p, 20.0));
+        return (std::max)(0.1, (std::min)(p, 20.0));
     }
 
     // ── Survival score (Algorithm 2) ───────────────────────────────────────
@@ -367,12 +367,12 @@ private:
             // Greedy selection loop.
             while (!omega.empty()) {
                 int best_idx = -1;
-                double best_val = -std::numeric_limits<double>::max();
+                double best_val = -(std::numeric_limits<double>::max)();
 
                 for (int oi : omega) {
                     // diversity = min + min2 distances from oi to sigma.
-                    double min1 = std::numeric_limits<double>::max();
-                    double min2 = std::numeric_limits<double>::max();
+                    double min1 = (std::numeric_limits<double>::max)();
+                    double min2 = (std::numeric_limits<double>::max)();
                     for (int si : sigma) {
                         double d_val = dist[oi][si];
                         if (d_val < min1) { min2 = min1; min1 = d_val; }
@@ -381,7 +381,7 @@ private:
                     // AGE-3: with a single selected solution there is no
                     // second minimum; the one distance counts twice.
                     double diversity = min1 + (sigma.size() > 1 ? min2 : min1);
-                    double prox_oi   = std::max(prox[oi], 1e-14);
+                    double prox_oi   = (std::max)(prox[oi], 1e-14);
                     double value     = diversity / prox_oi;
                     if (value > best_val) { best_val = value; best_idx = oi; }
                 }
@@ -394,7 +394,7 @@ private:
         } else {
             // ── Dominated fronts: score = 1 / proximity ───────────────────
             for (int i = 0; i < sz; ++i) {
-                double prox = std::max(lp_norm(fn[i], p), 1e-14);
+                double prox = (std::max)(lp_norm(fn[i], p), 1e-14);
                 vault.get_ind(front[i]).survival_score = 1.0 / prox;
             }
         }
@@ -507,7 +507,7 @@ public:
                     return ia.survival_score > ib.survival_score;
                 });
             }
-            const int k = std::max(1, static_cast<int>(std::ceil(p * n)));
+            const int k = (std::max)(1, static_cast<int>(std::ceil(p * n)));
             rnd::uniform_int_distribution<int> top(0, k - 1);
             return vault.variables_of(order[static_cast<std::size_t>(top(rng_))]);
         };

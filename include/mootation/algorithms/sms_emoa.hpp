@@ -325,7 +325,7 @@ private:
         std::vector<double> r(m, -std::numeric_limits<double>::infinity());
         for (int i = 0; i < n; ++i) {
             const auto& f = vault.objectives_of(static_cast<std::size_t>(i));
-            for (std::size_t k = 0; k < m; ++k) r[k] = std::max(r[k], f[k]);
+            for (std::size_t k = 0; k < m; ++k) r[k] = (std::max)(r[k], f[k]);
         }
         if (!ref_delta_) {
             for (double& x : r) x += 1.0;                  // r = nad(Q) + 1
@@ -333,7 +333,7 @@ private:
             for (std::size_t k = 0; k < m; ++k) {
                 double lo = std::numeric_limits<double>::infinity();
                 for (int i = 0; i < n; ++i)
-                    lo = std::min(lo, vault.objectives_of(static_cast<std::size_t>(i))[k]);
+                    lo = (std::min)(lo, vault.objectives_of(static_cast<std::size_t>(i))[k]);
                 const double span = r[k] - lo;
                 r[k] += *ref_delta_ * (span > 0.0 ? span : 1.0);
             }
@@ -504,7 +504,7 @@ public:
                     return rank[static_cast<std::size_t>(x)] < rank[static_cast<std::size_t>(y)];
                 });
             }
-            const int k = std::max(1, static_cast<int>(std::ceil(p * n)));
+            const int k = (std::max)(1, static_cast<int>(std::ceil(p * n)));
             rnd::uniform_int_distribution<int> top(0, k - 1);
             return vault.variables_of(static_cast<std::size_t>(
                 order[static_cast<std::size_t>(top(rng_))]));

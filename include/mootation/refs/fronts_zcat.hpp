@@ -60,7 +60,7 @@ inline std::vector<std::size_t> choose(G& g, std::size_t N, std::size_t k)
     std::vector<std::size_t> idx(N);
     for (std::size_t i = 0; i < N; ++i) idx[i] = i;
     for (std::size_t i = 0; i < k && i < N; ++i) std::swap(idx[i], idx[i + static_cast<std::size_t>(rnd::below(g, N - i))]);
-    idx.resize(std::min(k, N));
+    idx.resize((std::min)(k, N));
     return idx;
 }
 
@@ -242,7 +242,7 @@ inline Rows front(int which, std::size_t M, std::size_t n)
         }
         for (std::size_t start = 0; start < pool.size() && need > 0; start += 256) {
             const std::vector<std::size_t> chunk(pool.begin() + static_cast<std::ptrdiff_t>(start),
-                                                 pool.begin() + static_cast<std::ptrdiff_t>(std::min(pool.size(), start + 256)));
+                                                 pool.begin() + static_cast<std::ptrdiff_t>((std::min)(pool.size(), start + 256)));
             const std::vector<char> b = dominated_elsewhere(which, M, take(Y, chunk), take(F, chunk));
             for (std::size_t k = 0; k < chunk.size() && need > 0; ++k)
                 if (!b[k]) {

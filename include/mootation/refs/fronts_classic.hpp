@@ -71,8 +71,8 @@ inline Minimum minimum_of(const std::function<double(double)>& g, double a, doub
             m.second_g = v[i];
             m.second_x = a + static_cast<double>(i) * h;
         }
-    double lo = std::max(a, a + (static_cast<double>(best) - 1.0) * h);
-    double hi = std::min(b, a + (static_cast<double>(best) + 1.0) * h);
+    double lo = (std::max)(a, a + (static_cast<double>(best) - 1.0) * h);
+    double hi = (std::min)(b, a + (static_cast<double>(best) + 1.0) * h);
     const double r = (std::sqrt(5.0) - 1.0) / 2.0;
     double c = hi - r * (hi - lo), d = lo + r * (hi - lo), gc = g(c), gd = g(d);
     for (int it = 0; it < 200 && hi - lo > 0.0; ++it) {
@@ -92,7 +92,7 @@ inline Minimum minimum_of(const std::function<double(double)>& g, double a, doub
         if (c == d) break;
     }
     m.x = gc < gd ? c : d;
-    m.g = std::min(gc, gd);
+    m.g = (std::min)(gc, gd);
     const double at_grid = a + static_cast<double>(best) * h;
     if (v[best] < m.g) {                                 // the grid point itself is lower
         m.x = at_grid;
@@ -218,7 +218,7 @@ inline void nondominated_2d(Rows& F, Rows& X)
     double low = std::numeric_limits<double>::infinity();
     for (std::size_t i : order) {
         if (F.row(i)[1] < low) keep.push_back(i);
-        low = std::min(low, F.row(i)[1]);
+        low = (std::min)(low, F.row(i)[1]);
     }
     F = take(F, keep);
     X = take(X, keep);
@@ -266,7 +266,7 @@ inline Rows grid_front(Which w)
     for (std::size_t i = 0; i < X.n; ++i)
         for (std::size_t t = 0; t < D.n; ++t) {
             double* y = Y.row(i * D.n + t);
-            for (std::size_t j = 0; j < d; ++j) y[j] = std::min(std::max(X.row(i)[j] + D.row(t)[j], lo), hi);
+            for (std::size_t j = 0; j < d; ++j) y[j] = (std::min)((std::max)(X.row(i)[j] + D.row(t)[j], lo), hi);
             suite::classic::evaluate(w, y, static_cast<int>(d), 2, G.row(i * D.n + t));
         }
     Rows FF = F, XX = X;

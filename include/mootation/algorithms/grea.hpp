@@ -89,14 +89,14 @@ private:
         int m = vault.objs_n();
         GridParams gp; gp.m = m; gp.div = div_;
         gp.lb.resize(m); gp.d.resize(m);
-        std::vector<double> fmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> fmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> fmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> fmax(m, -(std::numeric_limits<double>::max)());
         for (int i : subset) {
             const auto& o = vault.objectives_of(i);
-            for (int j=0;j<m;++j) { fmin[j]=std::min(fmin[j],o[j]); fmax[j]=std::max(fmax[j],o[j]); }
+            for (int j=0;j<m;++j) { fmin[j]=(std::min)(fmin[j],o[j]); fmax[j]=(std::max)(fmax[j],o[j]); }
         }
         for (int j=0;j<m;++j) {
-            double span = std::max(fmax[j]-fmin[j], 1e-14);
+            double span = (std::max)(fmax[j]-fmin[j], 1e-14);
             gp.lb[j] = fmin[j] - span/(2.0*div_);
             gp.d [j] = (fmax[j]+span/(2.0*div_) - gp.lb[j]) / div_;
             if (gp.d[j] < 1e-14) gp.d[j] = 1.0;
@@ -107,7 +107,7 @@ private:
     // G_k(x) ∈ [0, div-1].
     int grid_coord(double fk, const GridParams& gp, int k) const {
         int g = static_cast<int>((fk - gp.lb[k]) / gp.d[k]);
-        return std::max(0, std::min(div_-1, g));
+        return (std::max)(0, (std::min)(div_-1, g));
     }
 
     void compute_grid_coords(DataVault<Ind_t>& vault,
@@ -426,7 +426,7 @@ private:
 public:
     GrEACore() = default;
 
-    void set_div          (int d)    { div_   = std::max(1, d); }
+    void set_div          (int d)    { div_   = (std::max)(1, d); }
     void set_eta_crossover(double e) { eta_c_ = e; }
     void set_eta_mutation (double e) { eta_m_ = e; }
     void set_pm           (double p) { pm_ = p; }   // < 0: 1/n

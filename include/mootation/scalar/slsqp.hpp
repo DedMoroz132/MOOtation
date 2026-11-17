@@ -142,7 +142,7 @@ inline double violation(const std::vector<double>& c, std::size_t me)
 {
     double v = 0.0;
     for (std::size_t j = 0; j < c.size(); ++j)
-        v += j < me ? std::fabs(c[j]) : std::max(0.0, -c[j]);
+        v += j < me ? std::fabs(c[j]) : (std::max)(0.0, -c[j]);
     return v;
 }
 
@@ -151,7 +151,7 @@ inline double penalty(const std::vector<double>& c, const std::vector<double>& m
 {
     double v = 0.0;
     for (std::size_t j = 0; j < c.size(); ++j)
-        v += mu[j] * (j < me ? std::fabs(c[j]) : std::max(0.0, -c[j]));
+        v += mu[j] * (j < me ? std::fabs(c[j]) : (std::max)(0.0, -c[j]));
     return v;
 }
 
@@ -287,7 +287,7 @@ inline Result minimize(const NLP& p, std::vector<double> x, const Options& o)
         r.relaxed += st.relaxed;
         const double viol = detail::violation(c, me);
         double dmax = 0.0;
-        for (double v : st.d) dmax = std::max(dmax, std::fabs(v));
+        for (double v : st.d) dmax = (std::max)(dmax, std::fabs(v));
         if (dmax <= o.tol && viol <= o.tol) { r.status = Status::converged; break; }   // SQP-3
 
         double gd = 0.0;
@@ -299,7 +299,7 @@ inline Result minimize(const NLP& p, std::vector<double> x, const Options& o)
             mut.resize(m);
             for (std::size_t j = 0; j < m; ++j) {
                 const double l = std::fabs(st.lam[j]);
-                mut[j] = mus.empty() ? l : std::max(l, 0.5 * (mus[j] + l));
+                mut[j] = mus.empty() ? l : (std::max)(l, 0.5 * (mus[j] + l));
             }
             // Delta: phi(1) - phi(0) with f and c linear
             std::vector<double> cl(m);
@@ -343,7 +343,7 @@ inline Result minimize(const NLP& p, std::vector<double> x, const Options& o)
                                                 : mu * detail::violation(ct, me));
                 if (phi <= phi0 + eta * alpha * slope) { accepted = true; break; }
                 const double a = -slope * alpha * alpha / (2.0 * (phi - phi0 - slope * alpha));
-                alpha = std::isfinite(a) ? std::max(0.1 * alpha, a) : 0.1 * alpha;
+                alpha = std::isfinite(a) ? (std::max)(0.1 * alpha, a) : 0.1 * alpha;
             }
         }
         if (!accepted && o.line_search == LineSearch::accept && evaluated && !(xt == x)) {

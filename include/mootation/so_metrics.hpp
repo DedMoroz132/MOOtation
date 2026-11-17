@@ -228,13 +228,13 @@ inline int peaks_found(const std::vector<std::vector<double>>& X, const std::vec
     std::vector<std::size_t> seeds;
     for (std::size_t i : order) {
         if (!(std::fabs(height - F[i]) <= eps)) continue;
-        bool far = true;
+        bool distant = true;
         for (std::size_t s : seeds) {
             double d2 = 0.0;
             for (std::size_t j = 0; j < X[i].size(); ++j) d2 += (X[i][j] - X[s][j]) * (X[i][j] - X[s][j]);
-            far = far && std::sqrt(d2) > r;
+            distant = distant && std::sqrt(d2) > r;
         }
-        if (far) seeds.push_back(i);
+        if (distant) seeds.push_back(i);
     }
     return static_cast<int>(seeds.size());
 }

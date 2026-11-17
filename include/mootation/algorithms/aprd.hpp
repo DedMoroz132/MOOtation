@@ -262,13 +262,13 @@ private:
         while((int)sel.size()<cnt){
             int b=-1; double bd=-1.0;
             for(int i=0;i<n;++i){ if(used[i]) continue;
-                double mind=std::numeric_limits<double>::max();
+                double mind=(std::numeric_limits<double>::max)();
                 for(int s:sel){ double d=edist(pts[i],pts[s]); if(d<mind) mind=d; }
                 if(mind>bd){ bd=mind; b=i; } }
             if(b<0) break;
             sel.push_back(b); used[b]=1;
         }
-        for(int i=0;(int)sel.size()<cnt;++i) sel.push_back(sel[i%std::max(1,(int)sel.size())]);
+        for(int i=0;(int)sel.size()<cnt;++i) sel.push_back(sel[i%(std::max)(1,(int)sel.size())]);
         return sel;
     }
 
@@ -290,7 +290,7 @@ private:
         while((int)sel.size()<cnt){
             int b=-1; double bd=-1.0;
             for(int i=0;i<n;++i){ if(used[i]) continue;
-                double mina=std::numeric_limits<double>::max();
+                double mina=(std::numeric_limits<double>::max)();
                 for(int s:sel){ double a=angle_between(pts[i],pts[s]); if(a<mina) mina=a; }
                 if(mina>bd){ bd=mina; b=i; } }
             if(b<0) break;
@@ -345,10 +345,10 @@ private:
     }
     // L segment: bounds of the Arc projections onto L (§II-C, Fig.2).
     void refresh_L(){
-        Lmin_.assign(m_, std::numeric_limits<double>::max());
-        Lmax_.assign(m_,-std::numeric_limits<double>::max());
+        Lmin_.assign(m_, (std::numeric_limits<double>::max)());
+        Lmax_.assign(m_,-(std::numeric_limits<double>::max)());
         if(arc_.empty()){ Lmin_.clear(); Lmax_.clear(); return; }
-        for(const auto& s:arc_){ auto q=project(s.objs); for(int k=0;k<m_;++k){ Lmin_[k]=std::min(Lmin_[k],q[k]); Lmax_[k]=std::max(Lmax_[k],q[k]); } }
+        for(const auto& s:arc_){ auto q=project(s.objs); for(int k=0;k<m_;++k){ Lmin_[k]=(std::min)(Lmin_[k],q[k]); Lmax_[k]=(std::max)(Lmax_[k],q[k]); } }
     }
     std::vector<double> project_L(const std::vector<double>& f) const {
         auto q=project(f);
@@ -361,20 +361,20 @@ private:
         double dv=0,vv=0; for(int k=0;k<m_;++k){dv+=d[k]*V_[k];vv+=V_[k]*V_[k];}
         double c=(vv>1e-300)?dv/vv:0.0, s2=0;
         for(int k=0;k<m_;++k){ double pr=d[k]-c*V_[k]; s2+=pr*pr; }
-        return std::sqrt(std::max(s2,0.0));
+        return std::sqrt((std::max)(s2,0.0));
     }
     double pbi(const std::vector<double>& F, const std::vector<double>& Z) const {
         double vv=0; for(int k=0;k<m_;++k) vv+=V_[k]*V_[k];
-        double vn=std::sqrt(std::max(vv,1e-300));
+        double vn=std::sqrt((std::max)(vv,1e-300));
         if(pbi_printed_){   // APRD-12: Eq.7 d1 = |(F-Z)^T V|/|V|, Eq.8 d2 = |F - (Z - d1 V)|, V as is
             double dot=0; for(int k=0;k<m_;++k) dot+=(F[k]-Z[k])*V_[k];
             double d1=std::abs(dot)/vn;
             double s2=0; for(int k=0;k<m_;++k){ double r=F[k]-(Z[k]-d1*V_[k]); s2+=r*r; }
-            return d1 + theta_*std::sqrt(std::max(s2,0.0));
+            return d1 + theta_*std::sqrt((std::max)(s2,0.0));
         }
         double d1=0; for(int k=0;k<m_;++k) d1+=(F[k]-Z[k])*V_[k]/vn;
         double s2=0; for(int k=0;k<m_;++k){ double pr=F[k]-(Z[k]+d1*V_[k]/vn); s2+=pr*pr; }
-        return d1 + theta_*std::sqrt(std::max(s2,0.0));
+        return d1 + theta_*std::sqrt((std::max)(s2,0.0));
     }
 
     // NSGA-II ordering (best to worst) by NDS+CD over a list of Sol
@@ -473,7 +473,7 @@ private:
             auto zi=maxmin_euclid(mp,S[k]);
             for(int j=0;j<S[k];++j){
                 const std::vector<double>& Z = proj[bucket[k][zi[j]]];
-                int best=-1; double bg=std::numeric_limits<double>::max();
+                int best=-1; double bg=(std::numeric_limits<double>::max)();
                 for(int i:bucket[k]){
                     if(slot_exclusive_ && taken[i]) continue;
                     double g=pbi(R[i].objs,Z); if(g<bg){bg=g;best=i;} }

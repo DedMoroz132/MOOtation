@@ -147,8 +147,8 @@ private:
     std::vector<double>              old_g_;    // snapshot of g^tc for Δ^i
 
     int T_eff(int n) const {
-        int t = (T_ > 0) ? T_ : std::max(2, static_cast<int>(std::lround(0.1 * n)));
-        return std::min(t, n);
+        int t = (T_ > 0) ? T_ : (std::max)(2, static_cast<int>(std::lround(0.1 * n)));
+        return (std::min)(t, n);
     }
 
     // ── Alg.1: Das-Dennis + WS transformation ─────────────────────────────
@@ -158,7 +158,7 @@ private:
         for (auto& w : W_) {
             std::vector<double> t(m);
             double s = 0.0;
-            for (int j = 0; j < m; ++j) { t[j] = 1.0 / std::max(w[j], 1e-6); s += t[j]; }
+            for (int j = 0; j < m; ++j) { t[j] = 1.0 / (std::max)(w[j], 1e-6); s += t[j]; }
             for (int j = 0; j < m; ++j) w[j] = (s > 1e-30) ? t[j] / s : 1.0 / m;
         }
     }
@@ -234,7 +234,7 @@ private:
             if (self_in_pop && skipped_self == 0 && dist < 1e-30) { skipped_self = 1; continue; }
             d.push_back(dist);
         }
-        if (d.empty()) return std::numeric_limits<double>::max();
+        if (d.empty()) return (std::numeric_limits<double>::max)();
         std::stable_sort(d.begin(), d.end());
         int L = std::min<int>(m, static_cast<int>(d.size()));
         double prod = 1.0;
@@ -248,7 +248,7 @@ private:
         std::vector<double> w(m);
         double s = 0.0;
         for (int j = 0; j < m; ++j) {
-            double r = 1.0 / std::max(f[j] - ideal_[j], 1e-6);   // ε from Eq.6
+            double r = 1.0 / (std::max)(f[j] - ideal_[j], 1e-6);   // ε from Eq.6
             w[j] = r; s += r;
         }
         for (int j = 0; j < m; ++j) w[j] = (s > 1e-30) ? w[j] / s : 1.0 / m;
@@ -279,12 +279,12 @@ private:
         }
         vault.archive_push(scratch_slot);
         // §4.3: cap 1.5N; truncation by vicinity distance (remove the most crowded).
-        int cap = std::max(1, static_cast<int>(std::lround(ep_cap_rate_ * n)));
+        int cap = (std::max)(1, static_cast<int>(std::lround(ep_cap_rate_ * n)));
         while (static_cast<int>(vault.archive_size()) > cap) {
             int A = static_cast<int>(vault.archive_size());
             std::vector<const std::vector<double>*> pop(A);
             for (int i = 0; i < A; ++i) pop[i] = &vault.archive_objectives_of(i);
-            int worst = 0; double wsl = std::numeric_limits<double>::max();
+            int worst = 0; double wsl = (std::numeric_limits<double>::max)();
             for (int i = 0; i < A; ++i) {
                 double sl = sparsity_of(*pop[i], pop, true);
                 if (sl < wsl) { wsl = sl; worst = i; }
@@ -300,7 +300,7 @@ private:
             double old_g = old_g_[i];
             double delta = (old_g > 1e-30) ? (old_g - new_g) / old_g : 0.0;
             if (delta > 0.001) utility_[i] = 1.0;
-            else utility_[i] = std::max(0.0, 0.95 + 0.05 * delta / 0.001) * utility_[i];   // AWA-14
+            else utility_[i] = (std::max)(0.0, 0.95 + 0.05 * delta / 0.001) * utility_[i];   // AWA-14
             old_g_[i] = new_g;
         }
     }
@@ -319,12 +319,12 @@ private:
             for (int i = 1; i < n; ++i) if (W_[i][j] > W_[best][j]) best = i;
             if (!in_I[best]) { in_I[best] = 1; I.push_back(best); }
         }
-        int total = std::max(static_cast<int>(I.size()), n / 5);
+        int total = (std::max)(static_cast<int>(I.size()), n / 5);
         std::vector<int> candidates;
         candidates.reserve(n);
         for (int i = 0; i < n; ++i) if (!in_I[i]) candidates.push_back(i);
         while (static_cast<int>(I.size()) < total && !candidates.empty()) {
-            int t_size = std::min(10, static_cast<int>(candidates.size()));
+            int t_size = (std::min)(10, static_cast<int>(candidates.size()));
             rnd::uniform_int_distribution<int> dc(0, static_cast<int>(candidates.size()) - 1);
             int winner = candidates[dc(rng_)];
             for (int k = 1; k < t_size; ++k) {
@@ -442,7 +442,7 @@ private:
     }
 
     void awa(DataVault<Ind_t>& vault, int n) {
-        int nus = std::max(1, static_cast<int>(std::lround(rate_update_ * n)));
+        int nus = (std::max)(1, static_cast<int>(std::lround(rate_update_ * n)));
         if (vault.archive_size() == 0) return;
 
         std::vector<Entry> pop;
@@ -478,7 +478,7 @@ private:
             int sz = static_cast<int>(pop.size());
             std::vector<const std::vector<double>*> ptrs(sz);
             for (int i = 0; i < sz; ++i) ptrs[i] = &pop[i].objs;
-            int worst = 0; double wsl = std::numeric_limits<double>::max();
+            int worst = 0; double wsl = (std::numeric_limits<double>::max)();
             for (int i = 0; i < sz; ++i) {
                 double sl = sparsity_of(pop[i].objs, ptrs, true);
                 if (sl < wsl) { wsl = sl; worst = i; }
@@ -543,7 +543,7 @@ private:
     }
 
     void init_state(DataVault<Ind_t>& vault, int n, int m) {
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) update_ideal(vault.objectives_of(i));
         utility_.assign(n, 1.0);
         old_g_.resize(n);
@@ -561,8 +561,8 @@ public:
     void set_neighbourhood_size(int T)   { T_ = T; }
     void set_T                 (int T)   { T_ = T; }   // alias
     void set_delta             (double d){ delta_ = d; }
-    void set_nr                (int nr)  { nr_ = std::max(1, nr); }
-    void set_wag               (int w)   { wag_ = std::max(1, w); }
+    void set_nr                (int nr)  { nr_ = (std::max)(1, nr); }
+    void set_wag               (int w)   { wag_ = (std::max)(1, w); }
     void set_rate_evol         (double r){ rate_evol_ = r; }
     void set_feas_penalty      (double p){ feas_penalty_ = p; }
     void set_eta_crossover     (double e){ eta_c_ = e; }

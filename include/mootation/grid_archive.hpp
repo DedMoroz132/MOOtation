@@ -387,7 +387,7 @@ private:
             const double v = std::floor((f[j] - lo_[j]) / span_[j] / delta_);
             c[j] = (v >= -9223372036854775808.0 && v < 9223372036854775808.0)
                        ? static_cast<std::int64_t>(v)
-                       : std::numeric_limits<std::int64_t>::min();
+                       : (std::numeric_limits<std::int64_t>::min)();
         }
         return c;
     }
@@ -438,8 +438,8 @@ private:
         for (std::size_t s = 0; s < n_; ++s) {
             if (!alive_[s]) continue;
             for (std::size_t j = 0; j < m_; ++j) {
-                mn[j] = std::min(mn[j], F_[s * m_ + j]);
-                mx[j] = std::max(mx[j], F_[s * m_ + j]);
+                mn[j] = (std::min)(mn[j], F_[s * m_ + j]);
+                mx[j] = (std::max)(mx[j], F_[s * m_ + j]);
             }
         }
         lo_ = mn;

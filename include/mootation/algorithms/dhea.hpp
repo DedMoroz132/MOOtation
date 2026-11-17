@@ -149,7 +149,7 @@ private:
     std::vector<std::vector<double>> normalize(const std::vector<Sol>& P) const {
         int n=(int)P.size();
         std::vector<double> zmin(m_,1e300), zmax(m_,-1e300);
-        for(auto&s:P) for(int k=0;k<m_;++k){ zmin[k]=std::min(zmin[k],s.objs[k]); zmax[k]=std::max(zmax[k],s.objs[k]); }
+        for(auto&s:P) for(int k=0;k<m_;++k){ zmin[k]=(std::min)(zmin[k],s.objs[k]); zmax[k]=(std::max)(zmax[k],s.objs[k]); }
         std::vector<std::vector<double>> F(n,std::vector<double>(m_));
         for(int i=0;i<n;++i) for(int k=0;k<m_;++k){ double r=zmax[k]-zmin[k]; F[i][k]=(r>1e-12)?(P[i].objs[k]-zmin[k])/r:0.0; }
         return F;
@@ -197,7 +197,7 @@ private:
             std::vector<double> ang; ang.reserve(n);
             for(int j=0;j<n;++j) if(j!=i) ang.push_back(angle(F[i],F[j]));
             std::stable_sort(ang.begin(),ang.end());
-            int kk=std::min(m_,(int)ang.size()); double s=0; for(int t=0;t<kk;++t) s+=ang[t];
+            int kk=(std::min)(m_,(int)ang.size()); double s=0; for(int t=0;t<kk;++t) s+=ang[t];
             P[i].div = kk>0? s/kk : 0.0;
         }
     }
@@ -289,16 +289,16 @@ public:
         std::vector<int> ext=find_extremes(F);
 
         // dyn. decomposition: pivot = FPS on angle
-        int Npiv=std::min(N_,np);
+        int Npiv=(std::min)(N_,np);
         std::vector<char> isPiv(np,0); std::vector<int> piv;
         for(int e:ext){ if(!isPiv[e]){isPiv[e]=1;piv.push_back(e);} }
         std::vector<double> dmin(np,1e300);
-        for(int j=0;j<np;++j){ if(isPiv[j]) continue; double mn=1e300; for(int p:piv) mn=std::min(mn,angle(F[j],F[p])); dmin[j]=mn; }
+        for(int j=0;j<np;++j){ if(isPiv[j]) continue; double mn=1e300; for(int p:piv) mn=(std::min)(mn,angle(F[j],F[p])); dmin[j]=mn; }
         while((int)piv.size()<Npiv){
             int best=-1; double bd=-1; for(int j=0;j<np;++j){ if(isPiv[j]) continue; if(dmin[j]>bd){bd=dmin[j];best=j;} }
             if(best<0) break;
             isPiv[best]=1; piv.push_back(best);
-            for(int j=0;j<np;++j){ if(isPiv[j]) continue; dmin[j]=std::min(dmin[j],angle(F[j],F[best])); }
+            for(int j=0;j<np;++j){ if(isPiv[j]) continue; dmin[j]=(std::min)(dmin[j],angle(F[j],F[best])); }
         }
         // clustering: each non-pivot → the nearest pivot
         int P_=(int)piv.size();
@@ -312,7 +312,7 @@ public:
         std::vector<char> isExt(np,0); for(int e:ext) isExt[e]=1;
         std::vector<Sol> next; next.reserve(N_);
         std::vector<int> nextIdx; nextIdx.reserve(N_);   // rows of F kept (DHEA-5)
-        double Pt=dm::pow(std::min(1.0,(double)gen_/std::max(1,t_max_)),alpha_);
+        double Pt=dm::pow((std::min)(1.0,(double)gen_/(std::max)(1,t_max_)),alpha_);
         for(int c=0;c<P_ && (int)next.size()<N_;++c){
             auto& cl=cluster[c];
             // if the pivot is an extreme: auto-select the extreme
@@ -320,12 +320,12 @@ public:
             if(extInCl>=0){ Sol s=P[extInCl]; s.knee=true; next.push_back(s); nextIdx.push_back(extInCl); continue; }
             if((int)cl.size()==1){ Sol s=P[cl[0]]; s.knee=true; next.push_back(s); nextIdx.push_back(cl[0]); continue; }
             // local ideal
-            std::vector<double> li(m_,1e300); for(int idx:cl) for(int k=0;k<m_;++k) li[k]=std::min(li[k],P[idx].objs[k]);
+            std::vector<double> li(m_,1e300); for(int idx:cl) for(int k=0;k<m_;++k) li[k]=(std::min)(li[k],P[idx].objs[k]);
             int coincide=-1; for(int idx:cl){ bool eq=true; for(int k=0;k<m_;++k) if(std::abs(P[idx].objs[k]-li[k])>1e-12){eq=false;break;} if(eq){coincide=idx;break;} }
             if(coincide>=0){ Sol s=P[coincide]; s.knee=true; next.push_back(s); nextIdx.push_back(coincide); continue; }
             // Case III: hAPD. F_T=F'-li' (on the normalized ones). local nadir = max translated
-            std::vector<double> li2(m_,1e300); for(int idx:cl) for(int k=0;k<m_;++k) li2[k]=std::min(li2[k],F[idx][k]);
-            std::vector<double> w(m_,0.0); for(int idx:cl) for(int k=0;k<m_;++k) w[k]=std::max(w[k],F[idx][k]-li2[k]);
+            std::vector<double> li2(m_,1e300); for(int idx:cl) for(int k=0;k<m_;++k) li2[k]=(std::min)(li2[k],F[idx][k]);
+            std::vector<double> w(m_,0.0); for(int idx:cl) for(int k=0;k<m_;++k) w[k]=(std::max)(w[k],F[idx][k]-li2[k]);
             for(int k=0;k<m_;++k) if(w[k]<1e-12) w[k]=1e-12;
             int pivc=piv[c];
             // θ is computed in the cluster's LOCAL ideal frame (apex O at z^{l_ideal}) — the

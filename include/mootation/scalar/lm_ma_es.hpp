@@ -63,8 +63,8 @@ struct Options {
     double sigma0 = 0.3;
     int lambda = 0;                 // 0: 4 + floor(3 ln n)
     int m = 0;                      // 0: 4 + floor(3 ln n)
-    long long max_evals = std::numeric_limits<long long>::max();
-    long long max_iter = std::numeric_limits<long long>::max();
+    long long max_evals = (std::numeric_limits<long long>::max)();
+    long long max_iter = (std::numeric_limits<long long>::max)();
     double f_target = -std::numeric_limits<double>::infinity();
     double tol_sigma = 1e-12;       // LMMA-2: relative to sigma0
 };
@@ -106,7 +106,7 @@ inline Result minimize(const std::function<double(const std::vector<double>&)>& 
     std::vector<double> c_d(static_cast<std::size_t>(m)), c_c(static_cast<std::size_t>(m));
     for (int i = 0; i < m; ++i) {
         c_d[static_cast<std::size_t>(i)] = 1.0 / (dm::pow(1.5, i) * dn);
-        c_c[static_cast<std::size_t>(i)] = std::min(1.0, lambda / (dm::pow(4.0, i) * dn));
+        c_c[static_cast<std::size_t>(i)] = (std::min)(1.0, lambda / (dm::pow(4.0, i) * dn));
     }
 
     Result res;

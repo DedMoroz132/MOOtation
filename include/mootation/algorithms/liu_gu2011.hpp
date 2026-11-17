@@ -223,7 +223,7 @@ private:
         return std::clamp(dot/d,-1.0,1.0);
     }
     static std::vector<double> unit(const std::vector<double>& f){
-        double n=0; for(double v:f) n+=v*v; n=std::sqrt(std::max(n,1e-300));
+        double n=0; for(double v:f) n+=v*v; n=std::sqrt((std::max)(n,1e-300));
         std::vector<double> u(f.size()); for(std::size_t i=0;i<f.size();++i) u[i]=f[i]/n; return u;
     }
     static bool dominates(const std::vector<double>& a, const std::vector<double>& b){
@@ -237,8 +237,8 @@ private:
     }
 
     void upd_ideal_from(const std::vector<Sol>& P){
-        z_.assign(m_, std::numeric_limits<double>::max());
-        for(const auto& s:P) for(int k=0;k<m_;++k) z_[k]=std::min(z_[k],s.objs[k]);
+        z_.assign(m_, (std::numeric_limits<double>::max)());
+        for(const auto& s:P) for(int k=0;k<m_;++k) z_[k]=(std::min)(z_[k],s.objs[k]);
         if(P.empty()) z_.assign(m_,0.0);
     }
     int assoc(const std::vector<double>& f) const {
@@ -384,7 +384,7 @@ public:
             else { auto ord=nsga2_order(reg); for(int t=0;t<l_[k];++t) internal_[k].push_back(reg[ord[t]]); }
             // §II-B: "Randomly select 5·l_i individuals from the initial population"
             // — a random subset of the 5N pool, distinct members (LG-6).
-            int es=std::min(5*l_[k],(int)pool.size());
+            int es=(std::min)(5*l_[k],(int)pool.size());
             for(int i:sample_idx((int)pool.size(),es)) external_[k].push_back(pool[i]);
         }
         recompute_R();
@@ -410,7 +410,7 @@ public:
             std::vector<Sol> reg; for(int i:bk[k]) reg.push_back(pool[i]);
             if((int)reg.size()<=l_[k]) internal_[k]=reg;
             else { auto ord=nsga2_order(reg); for(int t=0;t<l_[k];++t) internal_[k].push_back(reg[ord[t]]); }
-            int es=std::min(5*l_[k],(int)pool.size());       // LG-6: distinct members
+            int es=(std::min)(5*l_[k],(int)pool.size());       // LG-6: distinct members
             for(int i:sample_idx((int)pool.size(),es)) external_[k].push_back(pool[i]);
             if(external_[k].empty() && !internal_[k].empty()) external_[k]=internal_[k];
         }
@@ -438,7 +438,7 @@ public:
             std::vector<std::pair<int,int>> rest;
             for(auto& pr:all_int) if(internal_[pr.first][pr.second].rank!=0) rest.push_back(pr);
             int need=N_-(int)mating.size();
-            for(int i:sample_idx((int)rest.size(),std::min(need,(int)rest.size()))) mating.push_back(rest[i]);
+            for(int i:sample_idx((int)rest.size(),(std::min)(need,(int)rest.size()))) mating.push_back(rest[i]);
             rnd::uniform_int_distribution<int> da(0,(int)all_int.size()-1);
             while((int)mating.size()<N_) mating.push_back(all_int[da(rng_)]);
         } else if((int)mating.size()>N_){

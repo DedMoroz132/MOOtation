@@ -257,8 +257,8 @@ public:
                 std::fill(a, a + w, 0.0);
                 continue;
             }
-            const double big = std::max(na, std::max(nb, nc)), small = std::min(na, std::min(nb, nc));
-            if (big - small > 64.0 * kEps * big) {               // not balanced yet (SYM-2)
+            const double big = (std::max)(na, (std::max)(nb, nc)), smallest = (std::min)(na, (std::min)(nb, nc));
+            if (big - smallest > 64.0 * kEps * big) {               // not balanced yet (SYM-2)
                 const double nu = dm::pow(na * nb * nc, 1.0 / 3.0);
                 for (int i = 0; i < I; ++i) a[i] = a[i] * (nu / na);
                 for (int j = 0; j < J; ++j) b[j] = b[j] * (nu / nb);

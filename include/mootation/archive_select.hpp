@@ -65,7 +65,7 @@ inline double minimum(double a, double b)
 {
     if (std::isnan(a)) return a;
     if (std::isnan(b)) return b;
-    return std::min(a, b);
+    return (std::min)(a, b);
 }
 
 // np.argmax of v (the first maximum; the first NaN if there is one)
@@ -124,14 +124,14 @@ inline bool almost_dominated(const Rows& G, std::size_t p, const std::vector<cha
     for (std::size_t q = 0; q < G.n; ++q) {
         if (q == p || (!among.empty() && !among[q])) continue;
         const double* gq = G.row(q);
-        bool near = true;
+        bool nearby = true;
         double loss = -std::numeric_limits<double>::infinity();
         for (std::size_t j = 0; j < G.m; ++j) {
             const double d = gp[j] - gq[j];
-            if (!(d >= -DRS_GAIN)) { near = false; break; }
-            loss = std::max(loss, d);
+            if (!(d >= -DRS_GAIN)) { nearby = false; break; }
+            loss = (std::max)(loss, d);
         }
-        if (near && loss > DRS_LOSS) return true;
+        if (nearby && loss > DRS_LOSS) return true;
     }
     return false;
 }
@@ -157,8 +157,8 @@ inline std::pair<Rows, std::vector<char>> set_aside(const Rows& F, const std::ve
                 for (std::size_t j = 0; j < F.m; ++j) {
                     const double x = F.v[i * F.m + j];
                     if (std::isnan(x)) nan_in[j] = 1;
-                    mn[j] = std::min(mn[j], x);
-                    mx[j] = std::max(mx[j], x);
+                    mn[j] = (std::min)(mn[j], x);
+                    mx[j] = (std::max)(mx[j], x);
                 }
             }
             for (std::size_t j = 0; j < F.m; ++j)
@@ -187,7 +187,7 @@ inline std::vector<std::size_t> dss_order(const Rows& F, std::size_t k,
                                           const std::vector<double>& nadir = {})
 {
     const std::size_t n = F.n, m = F.m;
-    k = std::min(k, n);
+    k = (std::min)(k, n);
     std::vector<std::size_t> order;
     if (k == 0) return order;
     Rows G;
@@ -258,7 +258,7 @@ inline void dplus_row(const Rows& C, std::size_t c, const Rows& R, double* out, 
 inline std::vector<std::size_t> greedy_igdp(const Rows& C, const Rows& R, std::size_t k)
 {
     const std::size_t n = C.n, r = R.n;
-    k = std::min(k, n);
+    k = (std::min)(k, n);
     std::vector<std::size_t> chosen;
     if (k == 0) return chosen;
     std::vector<double> row(r), tmp(r), buf(C.m);

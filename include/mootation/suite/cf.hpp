@@ -186,8 +186,8 @@ inline void pareto_point(int which, double* x)
         x[1] += x1 <= 0.5 ? 0.0 : x1 <= 0.75 ? 0.5 * x1 - 0.25 : 1.0;
     } else if (which == 6 || which == 7) {
         const double u = 1.0 - x1;
-        x[1] += std::sqrt(std::max(0.0, 0.5 * u - u * u));
-        x[3] += std::sqrt(std::max(0.0, 0.25 * std::sqrt(u) - 0.5 * u));
+        x[1] += std::sqrt((std::max)(0.0, 0.5 * u - u * u));
+        x[3] += std::sqrt((std::max)(0.0, 0.25 * std::sqrt(u) - 0.5 * u));
     }
 }
 

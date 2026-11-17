@@ -356,11 +356,11 @@ inline Vec cauchy(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, cons
         tt = next < order.size() ? t[order[next]] : kInf;
         dt = tt - told;
     }
-    dtmin = std::max(dtmin, 0.0);
+    dtmin = (std::max)(dtmin, 0.0);
     if (!std::isfinite(dtmin)) dtmin = 0.0;           // every variable at a bound: d = 0
     told += dtmin;
     for (std::size_t i = 0; i < n; ++i)               // on the path P(x - t g, l, u) (LB-9)
-        if (d[i] != 0.0) xc[i] = std::min(std::max(x[i] + told * d[i], lo[i]), hi[i]);
+        if (d[i] != 0.0) xc[i] = (std::min)((std::max)(x[i] + told * d[i], lo[i]), hi[i]);
     for (std::size_t i = 0; i < c.size(); ++i) c[i] += dtmin * p[i];
     return xc;
 }
@@ -421,7 +421,7 @@ inline Vec subspace(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, co
     Vec xbar = xc;                                    // MN: the projection of x^c + Z d^u
     for (std::size_t a = 0; a < t; ++a) {
         const std::size_t i = Z[a];
-        xbar[i] = std::min(std::max(xc[i] + du[a], lo[i]), hi[i]);
+        xbar[i] = (std::min)((std::max)(xc[i] + du[a], lo[i]), hi[i]);
     }
     double gd = 0.0;
     for (std::size_t i = 0; i < n; ++i) gd += g[i] * (xbar[i] - x[i]);
@@ -429,12 +429,12 @@ inline Vec subspace(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, co
     double a_star = 1.0;                              // (5.8)
     for (std::size_t a = 0; a < t; ++a) {
         const std::size_t i = Z[a];
-        if (du[a] > 0.0 && hi[i] < kInf) a_star = std::min(a_star, (hi[i] - xc[i]) / du[a]);
-        else if (du[a] < 0.0 && lo[i] > -kInf) a_star = std::min(a_star, (lo[i] - xc[i]) / du[a]);
+        if (du[a] > 0.0 && hi[i] < kInf) a_star = (std::min)(a_star, (hi[i] - xc[i]) / du[a]);
+        else if (du[a] < 0.0 && lo[i] > -kInf) a_star = (std::min)(a_star, (lo[i] - xc[i]) / du[a]);
     }
     xbar = xc;
     for (std::size_t a = 0; a < t; ++a)               // (5.9), in the box against rounding (LB-9)
-        xbar[Z[a]] = std::min(std::max(xc[Z[a]] + a_star * du[a], lo[Z[a]]), hi[Z[a]]);
+        xbar[Z[a]] = (std::min)((std::max)(xc[Z[a]] + a_star * du[a], lo[Z[a]]), hi[Z[a]]);
     return xbar;
 }
 
@@ -450,7 +450,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
         for (std::size_t i = 0; i < n; ++i) {
             if (!(lo[i] <= hi[i])) throw std::invalid_argument("lbfgsb: lo_i <= hi_i is needed");
             if (x[i] < lo[i] || x[i] > hi[i]) tally.out();
-            x[i] = std::min(std::max(x[i], lo[i]), hi[i]);   // x_0 projected onto the box
+            x[i] = (std::min)((std::max)(x[i], lo[i]), hi[i]);   // x_0 projected onto the box
         }
     }
     Result res;
@@ -482,7 +482,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
     for (;;) {
         double pg = 0.0;                              // BLNZ (6.1)
         for (std::size_t i = 0; i < n; ++i)
-            pg = std::max(pg, std::fabs(std::min(std::max(x[i] - g[i], lo[i]), hi[i]) - x[i]));
+            pg = (std::max)(pg, std::fabs((std::min)((std::max)(x[i] - g[i], lo[i]), hi[i]) - x[i]));
         if (pg < o.pgtol) { res.status = Status::pgtol; break; }
         if (res.iterations >= o.max_iter) { res.status = Status::max_iter; break; }
         if (res.nfev >= o.max_nfev) { res.status = Status::max_nfev; break; }
@@ -502,8 +502,8 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
         }
         double amax = kInf;                           // the step to the nearest bound along d
         for (std::size_t i = 0; i < n; ++i) {
-            if (d[i] > 0.0 && hi[i] < kInf) amax = std::min(amax, (hi[i] - x[i]) / d[i]);
-            else if (d[i] < 0.0 && lo[i] > -kInf) amax = std::min(amax, (lo[i] - x[i]) / d[i]);
+            if (d[i] > 0.0 && hi[i] < kInf) amax = (std::min)(amax, (hi[i] - x[i]) / d[i]);
+            else if (d[i] < 0.0 && lo[i] > -kInf) amax = (std::min)(amax, (lo[i] - x[i]) / d[i]);
         }
         Vec xa(n), ga_(n), xt = x, gt = g;            // the trial; the best one (LB-6)
         double ft = f;
@@ -513,7 +513,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
                 for (std::size_t i = 0; i < n; ++i) {
                     const double v = x[i] + a * d[i];
                     if (v < lo[i] || v > hi[i]) tally.out();
-                    xa[i] = std::min(std::max(v, lo[i]), hi[i]);
+                    xa[i] = (std::min)((std::max)(v, lo[i]), hi[i]);
                 }
             }
             fa = eval(xa, ga_);
@@ -529,7 +529,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
         lo_opts.mu = o.alpha;
         lo_opts.eta = o.beta;
         lo_opts.a_max = amax;
-        const line_search::Result ls = line_search::search(phi, f, gd, std::min(1.0, amax), lo_opts);
+        const line_search::Result ls = line_search::search(phi, f, gd, (std::min)(1.0, amax), lo_opts);
         if (ls.info == line_search::Info::converged && ls.f <= ft) {   // the point the search accepted
             ft = ls.f;
             xt = xa;
@@ -559,7 +559,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
             B.theta = yy / sy;                        // step 7
             B.form();
         }
-        if (o.ftol > 0.0 && (fold - f) / std::max({std::fabs(fold), std::fabs(f), 1.0}) <= o.ftol) {
+        if (o.ftol > 0.0 && (fold - f) / (std::max)({std::fabs(fold), std::fabs(f), 1.0}) <= o.ftol) {
             res.status = Status::ftol;
             break;
         }

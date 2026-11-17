@@ -122,7 +122,7 @@ private:
 
     // ── Build neighbourhood B(i) for all subproblems (Step 1.2) ───────────
     void build_neighbourhoods(int n) {
-        int T_eff = std::min(T_, n);
+        int T_eff = (std::min)(T_, n);
         B_.resize(n);
         for (int i = 0; i < n; ++i) {
             std::vector<std::pair<double, int>> dists;
@@ -161,7 +161,7 @@ private:
     // ── Ideal point update (Step 2.3) ──────────────────────────────────────
     void update_ideal(const std::vector<double>& f) {
         for (std::size_t j = 0; j < f.size(); ++j)
-            ideal_[j] = std::min(ideal_[j], f[j]);
+            ideal_[j] = (std::min)(ideal_[j], f[j]);
     }
 
     // ── EP update via vault.archive_* (Step 2.5) ─────────────────────────
@@ -328,7 +328,7 @@ public:
         vault.sync();
 
         // Step 1.4: z_j = min_i f_j(x^i)  (§V-E).
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i)
             update_ideal(vault.objectives_of(i));
 
@@ -356,7 +356,7 @@ public:
 
         if (W_.empty()) { generate_weight_vectors(n, m); build_neighbourhoods(n); }
 
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) update_ideal(vault.objectives_of(i));
 
         vault.archive_clear();

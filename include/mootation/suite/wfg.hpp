@@ -46,10 +46,10 @@ inline double s_multi(double y, int A, double B, double C)
 
 inline double b_flat(double y, double A, double B, double C)
 {
-    const double t1 = std::min(0.0, std::floor(y - B)) * (A * (B - y) / B);
-    const double t2 = std::min(0.0, std::floor(C - y)) * ((1.0 - A) * (y - C) / (1.0 - C));
+    const double t1 = (std::min)(0.0, std::floor(y - B)) * (A * (B - y) / B);
+    const double t2 = (std::min)(0.0, std::floor(C - y)) * ((1.0 - A) * (y - C) / (1.0 - C));
     const double v = A + t1 - t2;
-    return std::max(0.0, std::min(1.0, v));
+    return (std::max)(0.0, (std::min)(1.0, v));
 }
 
 inline double b_param(double y, double u, double A, double B, double C)
@@ -172,7 +172,7 @@ inline Vec calc_x(const Vec& t, bool degenerate)
     Vec x(M);
     for (std::size_t i = 0; i + 1 < M; ++i) {
         const double A = degenerate && i > 0 ? 0.0 : 1.0;
-        x[i] = std::max(tM, A) * (t[i] - 0.5) + 0.5;
+        x[i] = (std::max)(tM, A) * (t[i] - 0.5) + 0.5;
     }
     x[M - 1] = tM;
     return x;

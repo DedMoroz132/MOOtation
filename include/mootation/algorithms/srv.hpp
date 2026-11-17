@@ -146,17 +146,17 @@ private:
         }
 
         // ── Normalise objectives in St → f'(x), EdI(x) ───────────────────────
-        std::vector<double> zstar(m, std::numeric_limits<double>::max());
-        std::vector<double> znad (m,-std::numeric_limits<double>::max());
+        std::vector<double> zstar(m, (std::numeric_limits<double>::max)());
+        std::vector<double> znad (m,-(std::numeric_limits<double>::max)());
         for (int v : St) {
             const auto& o = vault.objectives_of(v);
-            for (int j=0;j<m;++j){ zstar[j]=std::min(zstar[j],o[j]); znad[j]=std::max(znad[j],o[j]); }
+            for (int j=0;j<m;++j){ zstar[j]=(std::min)(zstar[j],o[j]); znad[j]=(std::max)(znad[j],o[j]); }
         }
         auto f_prime = [&](int v) -> std::vector<double> {
             const auto& o = vault.objectives_of(v);
             std::vector<double> fp(m);
             for(int j=0;j<m;++j){
-                double range=std::max(znad[j]-zstar[j],1e-14);
+                double range=(std::max)(znad[j]-zstar[j],1e-14);
                 fp[j]=(o[j]-zstar[j])/range;
             }
             return fp;
@@ -183,7 +183,7 @@ private:
             std::vector<double> v = V0_[RVs.size()];
             double nrm = 0.0;
             for (double x : v) nrm += x * x;
-            nrm = std::sqrt(std::max(nrm, 1e-28));
+            nrm = std::sqrt((std::max)(nrm, 1e-28));
             for (double& x : v) x /= nrm;
             RVs.push_back(std::move(v));
         }
@@ -199,7 +199,7 @@ private:
         std::vector<int> assoc(pool, 0);  // RV association for each x in St
         std::vector<double> d1(pool, 0.0);
         auto fstar = [&](const std::vector<double>& fp) -> std::vector<double> {
-            double e = std::max(edi(fp), 1e-14);
+            double e = (std::max)(edi(fp), 1e-14);
             std::vector<double> fs(m); for(int j=0;j<m;++j) fs[j]=fp[j]/e; return fs;
         };
 
@@ -207,7 +207,7 @@ private:
             auto fp  = f_prime(v);
             auto fs  = fstar(fp);
             // Association to closest RV
-            double best_cos = -std::numeric_limits<double>::max();
+            double best_cos = -(std::numeric_limits<double>::max)();
             for (int r=0; r<N; ++r) {
                 double dot=0.0; for(int j=0;j<m;++j) dot+=fs[j]*RVs[r][j];
                 if(dot>best_cos){best_cos=dot; assoc[v]=r;}
@@ -243,7 +243,7 @@ private:
         // Build levels: SIc_k = {x : ic_rank[x] == k-1}
         // Max rank = max subset size
         int max_rank = 0;
-        for (int v : St) max_rank = std::max(max_rank, ic_rank[v]);
+        for (int v : St) max_rank = (std::max)(max_rank, ic_rank[v]);
 
         std::vector<int> survivors;
         survivors.reserve(N);

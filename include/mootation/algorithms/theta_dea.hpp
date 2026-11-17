@@ -231,7 +231,7 @@ private:
         // Step 10: z* is the minimum found over the whole history (§III-A).
         for (int v : st) {
             const auto& o = vault.objectives_of(v);
-            for (int j = 0; j < m; ++j) zstar_[j] = std::min(zstar_[j], o[j]);
+            for (int j = 0; j < m; ++j) zstar_[j] = (std::min)(zstar_[j], o[j]);
         }
 
         // The PREVIOUS generation's nadir range feeds the ASF (Eq. 10:
@@ -240,14 +240,14 @@ private:
         // generation»).
         std::vector<double> prev_range(m);
         for (int j = 0; j < m; ++j)
-            prev_range[j] = std::max(znad_[j] - zstar_[j], 1e-12);
+            prev_range[j] = (std::max)(znad_[j] - zstar_[j], 1e-12);
 
         // Extreme points: argmin ASF(x, w_j) over S_t (Eq. 10), with
         // w_{j,i} = 1 when i == j and 10^{-6} otherwise.
         const double eps_w = 1e-6;
         std::vector<int> extreme(m, -1);
         for (int i = 0; i < m; ++i) {
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             for (int v : st) {
                 const auto& o = vault.objectives_of(v);
                 double asf = 0.0;
@@ -306,9 +306,9 @@ private:
         } else {
             // Roll back all components: max f_i over the non-dominated S_t.
             for (int i = 0; i < m; ++i) {
-                double mx = -std::numeric_limits<double>::max();
+                double mx = -(std::numeric_limits<double>::max)();
                 for (int v : first_front)
-                    mx = std::max(mx, vault.objectives_of(v)[i]);
+                    mx = (std::max)(mx, vault.objectives_of(v)[i]);
                 znad_[i] = mx;
             }
         }
@@ -317,7 +317,7 @@ private:
         np.zmin = zstar_;
         np.denom.assign(m, 1.0);
         for (int j = 0; j < m; ++j)
-            np.denom[j] = std::max(znad_[j] - zstar_[j], 1e-12);
+            np.denom[j] = (std::max)(znad_[j] - zstar_[j], 1e-12);
         return np;
     }
 
@@ -331,7 +331,7 @@ private:
             // f − z* >= 0 by construction, since z* is the global minimum;
             // the clamp is a numerical guard. Values above 1 are allowed —
             // Eq. 9 is not clamped.
-            f[j] = std::max((o[j] - np.zmin[j]) / np.denom[j], 0.0);
+            f[j] = (std::max)((o[j] - np.zmin[j]) / np.denom[j], 0.0);
         }
         return f;
     }
@@ -368,7 +368,7 @@ private:
         int N = static_cast<int>(ref_points_.size());
         for (int v : st) {
             auto fp = fn(vault, v, np);
-            double best_d2 = std::numeric_limits<double>::max();
+            double best_d2 = (std::numeric_limits<double>::max)();
             int    best_r  = 0;
             double best_d1 = 0.0;
             for (int r = 0; r < N; ++r) {
@@ -473,13 +473,13 @@ private:
     // Alg. 1, Steps 3–4: initialize z* and z^nad from the initial population P_0.
     void init_ideal_nadir(DataVault<Ind_t>& vault, int n) {
         int m = vault.objs_n();
-        zstar_.assign(m,  std::numeric_limits<double>::max());
-        znad_ .assign(m, -std::numeric_limits<double>::max());
+        zstar_.assign(m,  (std::numeric_limits<double>::max)());
+        znad_ .assign(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
             for (int j = 0; j < m; ++j) {
-                zstar_[j] = std::min(zstar_[j], o[j]);
-                znad_[j]  = std::max(znad_[j],  o[j]);
+                zstar_[j] = (std::min)(zstar_[j], o[j]);
+                znad_[j]  = (std::max)(znad_[j],  o[j]);
             }
         }
     }
@@ -578,7 +578,7 @@ public:
 
         // Table V: p_c = 1.0, p_m = 1/n, with n the number of real variables.
         double pm = (pm_ >= 0.0) ? pm_
-                                 : 1.0 / static_cast<double>(std::max(1, vault.vars_n()));
+                                 : 1.0 / static_cast<double>((std::max)(1, vault.vars_n()));
 
         // ── breed n offspring ─────────────────────────────────────────────
         // §III-C: «two parent solutions are randomly selected from the

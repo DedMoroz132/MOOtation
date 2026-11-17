@@ -108,7 +108,7 @@ private:
     static std::vector<double> violations(DataVault<Ind_t>& vault, int v)
     {
         std::vector<double> g = vault.limits_of(static_cast<std::size_t>(v));
-        for (double& x : g) x = std::max(0.0, x);
+        for (double& x : g) x = (std::max)(0.0, x);
         return g;
     }
 

@@ -169,7 +169,7 @@ private:
         return constraint_mode == ConstraintMode::NONE || e.cv <= 0.0;
     }
 
-    static double mesh(double delta) { return std::min(delta, delta * delta); }
+    static double mesh(double delta) { return (std::min)(delta, delta * delta); }
 
     std::vector<double> denorm(const std::vector<double>& u) const
     {
@@ -255,7 +255,7 @@ private:
             bool extends = list_.empty();                                    // line 4
             for (std::size_t i = 0; i < a.f.size() && !extends; ++i) {
                 double best = std::numeric_limits<double>::infinity();
-                for (const auto& e : list_) best = std::min(best, e.f[i]);
+                for (const auto& e : list_) best = (std::min)(best, e.f[i]);
                 extends = a.f[i] < best;
             }
             a.delta = extends ? delta_k / tau_ : delta_k;                     // line 5 / 7
@@ -267,7 +267,7 @@ private:
     std::size_t select_incumbent() const
     {
         double dmax = 0.0;
-        for (const auto& e : list_) dmax = std::max(dmax, e.delta);
+        for (const auto& e : list_) dmax = (std::max)(dmax, e.delta);
         std::vector<std::size_t> top;
         for (std::size_t i = 0; i < list_.size(); ++i)
             if (list_[i].delta == dmax) top.push_back(i);
@@ -296,7 +296,7 @@ private:
                 if (t == 0) g = 2.0 * (list_[o[1]].f[i] - list_[o[0]].f[i]) / span;
                 else if (t == L - 1) g = 2.0 * (list_[o[L - 1]].f[i] - list_[o[L - 2]].f[i]) / span;
                 else g = (list_[o[t + 1]].f[i] - list_[o[t - 1]].f[i]) / span;
-                gamma[o[t]] = std::max(gamma[o[t]], g);
+                gamma[o[t]] = (std::max)(gamma[o[t]], g);
             }
         }
         std::size_t best = top.front();
@@ -333,14 +333,14 @@ private:
         std::vector<std::vector<double>> P;
         for (const auto& d : dirs) {
             double inf = 0.0;
-            for (double t : d) inf = std::max(inf, std::abs(t));
+            for (double t : d) inf = (std::max)(inf, std::abs(t));
             if (!(inf > 0.0)) continue;
             std::vector<double> u = x;
             bool inside = true, moved = false;
             for (std::size_t r = 0; r < n; ++r) {
                 double z = std::round(d[r] / inf * steps);
-                z = std::min(z, std::floor((1.0 - x[r]) / delta));    // DMM-7: the last
-                z = std::max(z, std::ceil(-x[r] / delta));            // mesh point inside
+                z = (std::min)(z, std::floor((1.0 - x[r]) / delta));    // DMM-7: the last
+                z = (std::max)(z, std::ceil(-x[r] / delta));            // mesh point inside
                 moved = moved || z != 0.0;
                 u[r] = x[r] + delta * z;
                 inside = inside && u[r] >= 0.0 && u[r] <= 1.0;
@@ -468,7 +468,7 @@ public:
     {
         if (list_.empty()) return false;
         double dmax = 0.0;
-        for (const auto& e : list_) dmax = std::max(dmax, e.delta);
+        for (const auto& e : list_) dmax = (std::max)(dmax, e.delta);
         return mesh(dmax) < tol_;
     }
 

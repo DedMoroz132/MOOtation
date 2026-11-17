@@ -155,14 +155,14 @@ private:
     // componentwise max over the first non-dominated front.
     std::vector<double> compute_nadir(DataVault<Ind_t>& vault, int n) {
         int m = vault.objs_n();
-        std::vector<double> nad(m, -std::numeric_limits<double>::max());
+        std::vector<double> nad(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             bool dom = false;
             for (int j = 0; j < n; ++j)
                 if (i != j && dominates(vault, j, i)) { dom = true; break; }
             if (dom) continue;
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) nad[j] = std::max(nad[j], o[j]);
+            for (int j = 0; j < m; ++j) nad[j] = (std::max)(nad[j], o[j]);
         }
         return nad;
     }
@@ -185,15 +185,15 @@ private:
         int m = vault.objs_n();
 
         // Line 1: z* and z^nad of P.
-        std::vector<double> zcur(m, std::numeric_limits<double>::max());
+        std::vector<double> zcur(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) zcur[j] = std::min(zcur[j], o[j]);
+            for (int j = 0; j < m; ++j) zcur[j] = (std::min)(zcur[j], o[j]);
         }
         std::vector<double> nad = compute_nadir(vault, n);
 
         // Line 2: persistent ideal.
-        for (int j = 0; j < m; ++j) zmin_[j] = std::min(zmin_[j], zcur[j]);
+        for (int j = 0; j < m; ++j) zmin_[j] = (std::min)(zmin_[j], zcur[j]);
 
         // Line 3: store z^nad in record (length REC_).
         record_.push_back(nad);
@@ -237,9 +237,9 @@ private:
                     zmax_[j] = 2.0 * nad[j] - zmax_[j];            // Line 13
                     mark_[j] = REC_;                               // Line 14
                 } else if (v[j] <= 0.0 && mark_[j] == 0) {         // Line 15
-                    double a = -std::numeric_limits<double>::max();
+                    double a = -(std::numeric_limits<double>::max)();
                     for (const auto& r : record_)                  // Line 16
-                        a = std::max(a, r[j]);
+                        a = (std::max)(a, r[j]);
                     zmax_[j] = (zmax_[j] + a) / 2.0;               // Line 17
                     mark_[j] = REC_;                               // Line 18
                 }
@@ -320,10 +320,10 @@ public:
         for (int i = 0; i < n; ++i) vault.get_ind(i).rank = 1;
 
         // Alg. 3 Line 4: z^min ← z*, z^max ← z^nad of the initial population.
-        zmin_.assign(m, std::numeric_limits<double>::max());
+        zmin_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) zmin_[j] = std::min(zmin_[j], o[j]);
+            for (int j = 0; j < m; ++j) zmin_[j] = (std::min)(zmin_[j], o[j]);
         }
         zmax_ = compute_nadir(vault, n);
     }
@@ -335,10 +335,10 @@ public:
         mark_.assign(m, 0);
         store_l2(vault, 0, n);
         for (int i = 0; i < n; ++i) vault.get_ind(i).rank = 1;
-        zmin_.assign(m, std::numeric_limits<double>::max());
+        zmin_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) zmin_[j] = std::min(zmin_[j], o[j]);
+            for (int j = 0; j < m; ++j) zmin_[j] = (std::min)(zmin_[j], o[j]);
         }
         zmax_ = compute_nadir(vault, n);
     }
@@ -400,12 +400,12 @@ public:
         }
 
         // ── Line 11: R2 ranking (Alg. 2), ASF with r = 0, tie-break L2 ─────
-        std::vector<int> rank(pool, std::numeric_limits<int>::max());
+        std::vector<int> rank(pool, (std::numeric_limits<int>::max)());
         std::vector<int> order(pool);
         std::vector<double> mu(pool);
         for (const auto& w : W_) {
             for (int i = 0; i < pool; ++i) {
-                double best = -std::numeric_limits<double>::max();
+                double best = -(std::numeric_limits<double>::max)();
                 for (int j = 0; j < m; ++j) {
                     double wj = (w[j] > 1e-6) ? w[j] : 1e-6;   // footnote 4
                     // Eq.8 / footnote 3 print |v_i - r_i| with r = 0. The bars
@@ -417,7 +417,7 @@ public:
                     // improvement as a loss; on ZDT1 it froze the search at
                     // IGD 0.26 (FE-trajectory audit 2026-09-05). The signed
                     // value is used: identical whenever f' >= 0.
-                    best = std::max(best, Fn[i][j] / wj);
+                    best = (std::max)(best, Fn[i][j] / wj);
                 }
                 mu[i] = best;
             }

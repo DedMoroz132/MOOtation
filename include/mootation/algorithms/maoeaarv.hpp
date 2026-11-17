@@ -133,13 +133,13 @@ private:
         if (K == 0) return;
 
         // z_nad, z* over members.
-        std::vector<double> znad(m, -std::numeric_limits<double>::max());
-        std::vector<double> zstar(m,  std::numeric_limits<double>::max());
+        std::vector<double> znad(m, -(std::numeric_limits<double>::max)());
+        std::vector<double> zstar(m,  (std::numeric_limits<double>::max)());
         for (int v : members) {
             const auto& o = vault.objectives_of(v);
             for (int j = 0; j < m; ++j) {
-                znad[j]  = std::max(znad[j],  o[j]);
-                zstar[j] = std::min(zstar[j], o[j]);
+                znad[j]  = (std::max)(znad[j],  o[j]);
+                zstar[j] = (std::min)(zstar[j], o[j]);
             }
         }
 
@@ -151,7 +151,7 @@ private:
         // C_m = 1 if f_m(Xk) > f_m(Xq), else 0
         // i.e. sum of objectives where Xk is worse than Xq, summed over all q≠k.
         int knee_idx = members[0];
-        double knee_score = std::numeric_limits<double>::max();
+        double knee_score = (std::numeric_limits<double>::max)();
         for (int ki = 0; ki < K; ++ki) {
             int k = members[ki];
             const auto& fk = vault.objectives_of(k);
@@ -230,7 +230,7 @@ private:
 
         while (n_clusters > k) {
             // Find two active clusters with smallest single-linkage distance.
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             int best_a = -1, best_b = -1;
 
             // Collect active labels.
@@ -255,7 +255,7 @@ private:
                     for (int ia : groups[la])
                         for (int ib : groups[lb]) {
                             double d = dist(ia, ib);
-                            agg = (linkage_ == Linkage::Complete) ? std::max(agg, d) : agg + d;
+                            agg = (linkage_ == Linkage::Complete) ? (std::max)(agg, d) : agg + d;
                         }
                     if (linkage_ == Linkage::Average)
                         agg /= static_cast<double>(groups[la].size() * groups[lb].size());

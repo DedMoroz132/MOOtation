@@ -283,7 +283,7 @@ inline void evaluate(int id, std::size_t n, std::size_t m, const Vec& x, Vec& f,
     }
     case 8:
         for (std::size_t i = 0; i < 15; ++i) {
-            const double u = static_cast<double>(i + 1), v = 16.0 - u, w = std::min(u, v);
+            const double u = static_cast<double>(i + 1), v = 16.0 - u, w = (std::min)(u, v);
             const double d = v * x[1] + w * x[2];
             f[i] = detail::bard_y()[i] - (x[0] + u / d);
             if (jac) { at(i, 0) = -1.0; at(i, 1) = u * v / (d * d); at(i, 2) = u * w / (d * d); }
@@ -581,7 +581,7 @@ inline void evaluate(int id, std::size_t n, std::size_t m, const Vec& x, Vec& f,
         break;
     case 31:
         for (std::size_t i = 0; i < n; ++i) {
-            const std::size_t lo = i >= 5 ? i - 5 : 0, hi = std::min(n - 1, i + 1);
+            const std::size_t lo = i >= 5 ? i - 5 : 0, hi = (std::min)(n - 1, i + 1);
             double s = 0.0;
             for (std::size_t j = lo; j <= hi; ++j)
                 if (j != i) {

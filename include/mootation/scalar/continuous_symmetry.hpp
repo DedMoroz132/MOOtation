@@ -182,7 +182,7 @@ inline double largest_sine(const std::vector<std::vector<double>>& A, const std:
         }
         double s = 0.0;
         for (double t : r) s += t * t;
-        worst = std::max(worst, std::sqrt(s));
+        worst = (std::max)(worst, std::sqrt(s));
     }
     return worst;
 }
@@ -218,7 +218,7 @@ inline TangentCheck tangent_check(const Problem& P, const std::vector<double>& x
     r.tangent_rank = QT.size();
     r.gauge_rank = QG.size();
     r.max_sine = QT.size() != QG.size() ? 1.0
-                                        : std::max(detail::largest_sine(QT, QG), detail::largest_sine(QG, QT));
+                                        : (std::max)(detail::largest_sine(QT, QG), detail::largest_sine(QG, QT));
     return r;
 }
 

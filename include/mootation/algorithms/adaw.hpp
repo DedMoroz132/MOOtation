@@ -133,11 +133,11 @@ private:
     std::vector<std::vector<int>>    B_;       // neighbourhoods [N][T]
 
     int T_eff(int n) const {
-        int t = (T_ > 0) ? T_ : std::max(2, static_cast<int>(std::lround(0.1 * n)));
-        return std::min(t, n);
+        int t = (T_ > 0) ? T_ : (std::max)(2, static_cast<int>(std::lround(0.1 * n)));
+        return (std::min)(t, n);
     }
     int nr_eff(int n) const {
-        return (nr_ > 0) ? nr_ : std::max(1, static_cast<int>(std::lround(0.01 * n)));
+        return (nr_ > 0) ? nr_ : (std::max)(1, static_cast<int>(std::lround(0.01 * n)));
     }
 
     void generate_weight_vectors(int n, int m) {
@@ -171,9 +171,9 @@ private:
     // ── Tchebycheff divided by the weight (§4): g = max_j (f_j − z*_j)/w_j ─
     double tchebycheff(const std::vector<double>& f,
                        const std::vector<double>& w) const {
-        double g = -std::numeric_limits<double>::max();
+        double g = -(std::numeric_limits<double>::max)();
         for (std::size_t j = 0; j < f.size(); ++j) {
-            double val = (f[j] - ideal_[j]) / std::max(w[j], 1e-6);
+            double val = (f[j] - ideal_[j]) / (std::max)(w[j], 1e-6);
             if (val > g) g = val;
         }
         return g;
@@ -199,7 +199,7 @@ private:
         std::vector<double> w(m);
         double s = 0.0;
         for (int j = 0; j < m; ++j) {
-            w[j] = std::max(f[j] - ideal_[j], 1e-12);
+            w[j] = (std::max)(f[j] - ideal_[j], 1e-12);
             s += w[j];
         }
         for (int j = 0; j < m; ++j) w[j] = (s > 1e-30) ? w[j] / s : 1.0 / m;
@@ -220,12 +220,12 @@ private:
         if (n <= 1) return 0;
         int m = static_cast<int>(F[0].size());
         // normalization by the set's min/max
-        std::vector<double> lo(m, std::numeric_limits<double>::max()),
-                            hi(m, -std::numeric_limits<double>::max());
+        std::vector<double> lo(m, (std::numeric_limits<double>::max)()),
+                            hi(m, -(std::numeric_limits<double>::max)());
         for (const auto& f : F)
             for (int j = 0; j < m; ++j) {
-                lo[j] = std::min(lo[j], f[j]);
-                hi[j] = std::max(hi[j], f[j]);
+                lo[j] = (std::min)(lo[j], f[j]);
+                hi[j] = (std::max)(hi[j], f[j]);
             }
         std::vector<std::vector<double>> Fn(n, std::vector<double>(m));
         for (int i = 0; i < n; ++i)
@@ -234,7 +234,7 @@ private:
                 Fn[i][j] = (rng > 1e-14) ? (F[i][j] - lo[j]) / rng : 0.0;
             }
         // r = the median distance to the k-th (k=m) nearest neighbour
-        int k = std::min(m, n - 1);
+        int k = (std::min)(m, n - 1);
         std::vector<double> kth(n);
         std::vector<std::vector<double>> D(n, std::vector<double>(n, 0.0));
         for (int i = 0; i < n; ++i) {
@@ -400,12 +400,12 @@ private:
         // The considered set here is A ∪ P, because r_a is compared against
         // archive-to-population distances. Both operands must share one frame.
         const int m = vault.objs_n();
-        std::vector<double> lo(m, std::numeric_limits<double>::max()),
-                            hi(m, -std::numeric_limits<double>::max());
+        std::vector<double> lo(m, (std::numeric_limits<double>::max)()),
+                            hi(m, -(std::numeric_limits<double>::max)());
         auto observe = [&](const std::vector<double>& f) {
             for (int j = 0; j < m; ++j) {
-                lo[j] = std::min(lo[j], f[j]);
-                hi[j] = std::max(hi[j], f[j]);
+                lo[j] = (std::min)(lo[j], f[j]);
+                hi[j] = (std::max)(hi[j], f[j]);
             }
         };
         for (int i = 0; i < A; ++i) observe(vault.archive_objectives_of(i));
@@ -432,11 +432,11 @@ private:
         // within the archive.
         double ra = 1.0;
         if (A >= 2) {
-            std::vector<double> nn(A, std::numeric_limits<double>::max());
+            std::vector<double> nn(A, (std::numeric_limits<double>::max)());
             for (int a = 0; a < A; ++a)
                 for (int b = 0; b < A; ++b) {
                     if (a == b) continue;
-                    nn[a] = std::min(nn[a], edist(AFn[a], AFn[b]));
+                    nn[a] = (std::min)(nn[a], edist(AFn[a], AFn[b]));
                 }
             std::stable_sort(nn.begin(), nn.end());
             ra = nn[A / 2];
@@ -462,7 +462,7 @@ private:
             std::vector<double> wq = optimal_weight(AF[a]);
             // the T neighbouring weights of w_q in the current working set.
             int sz = static_cast<int>(entries.size());
-            int Tn = std::min(T, sz);
+            int Tn = (std::min)(T, sz);
             std::vector<std::pair<double, int>> dist(sz);
             for (int i = 0; i < sz; ++i)
                 dist[i] = { weight_dist(wq, entries[i].w), i };
@@ -520,10 +520,10 @@ private:
                 // among the solutions carrying the most weights, remove the
                 // weight argmax g(p,w_i) (Eq.7); on a tie between solutions,
                 // the one whose worst weight is worse.
-                int del = -1; double worst_g = -std::numeric_limits<double>::max();
+                int del = -1; double worst_g = -(std::numeric_limits<double>::max)();
                 for (int g = 0; g < ng; ++g) {
                     if (count[g] != maxc) continue;
-                    int gi = -1; double gw = -std::numeric_limits<double>::max();
+                    int gi = -1; double gw = -(std::numeric_limits<double>::max)();
                     for (int i = 0; i < sz; ++i) {
                         if (group[i] != g) continue;
                         double v = tchebycheff(entries[i].objs, entries[i].w);
@@ -553,7 +553,7 @@ private:
     }
 
     void init_state(DataVault<Ind_t>& vault, int n, int m) {
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) update_ideal(vault.objectives_of(i));
         for (int i = 0; i < n; ++i)
             vault.get_ind(i).scalar_fitness =
@@ -567,7 +567,7 @@ public:
     void set_neighbourhood_size(int T)   { T_ = T; }
     void set_T                 (int T)   { T_ = T; }   // alias
     void set_delta             (double d){ delta_ = d; }
-    void set_nr                (int nr)  { nr_ = std::max(1, nr); }
+    void set_nr                (int nr)  { nr_ = (std::max)(1, nr); }
     void set_feas_penalty      (double p){ feas_penalty_ = p; }
     void set_eta_crossover     (double e){ eta_c_ = e; }
     void set_pc           (double p) { pc_ = p; }
@@ -634,12 +634,12 @@ public:
             evolve_subproblem(vault, i, n);
 
         // Steps 18-20: archive maintenance every generation while |A| > N_A.
-        int cap = std::max(1, static_cast<int>(std::lround(archive_rate_ * n)));
+        int cap = (std::max)(1, static_cast<int>(std::lround(archive_rate_ * n)));
         maintain_archive(vault, cap);
 
         // Steps 21-25: weight update every 5% of generations, not in the last 10%.
         ++current_gen_;
-        int wag = std::max(1, static_cast<int>(std::lround(0.05 * t_max_)));
+        int wag = (std::max)(1, static_cast<int>(std::lround(0.05 * t_max_)));
         if (current_gen_ % wag == 0 &&
             current_gen_ < static_cast<int>(0.9 * t_max_)) {
             weight_update(vault, n);

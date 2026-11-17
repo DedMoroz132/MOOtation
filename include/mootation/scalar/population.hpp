@@ -147,7 +147,7 @@ void drive_normalized(Method& es, Evaluator& ev, double tol)
                     X[k][j] = ev.lo[j] + periodic::wrap01(Y[k][j]) * (ev.hi[j] - ev.lo[j]);
                     continue;
                 }
-                const double yc = std::min(1.0, std::max(0.0, Y[k][j]));
+                const double yc = (std::min)(1.0, (std::max)(0.0, Y[k][j]));
                 if (yc != Y[k][j]) tally.out();
                 d2[k] += (Y[k][j] - yc) * (Y[k][j] - yc);
                 X[k][j] = ev.lo[j] + yc * (ev.hi[j] - ev.lo[j]);

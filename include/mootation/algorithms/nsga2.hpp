@@ -426,7 +426,7 @@ public:
                     return ia.crowding_distance > ib.crowding_distance;
                 });
             }
-            const int k = std::max(1, static_cast<int>(std::ceil(p * n)));
+            const int k = (std::max)(1, static_cast<int>(std::ceil(p * n)));
             rnd::uniform_int_distribution<int> top(0, k - 1);
             return vault.variables_of(order[static_cast<std::size_t>(top(rng_))]);
         };
@@ -447,7 +447,7 @@ public:
                 bv = m.b;
                 return;
             }
-            const int p = mating_each_ ? std::min(k, n - 1) : mate(vault, dist_int);
+            const int p = mating_each_ ? (std::min)(k, n - 1) : mate(vault, dist_int);
             for (int j = 0; j < vault.vars_n(); ++j) x[j] = vault.get_variable(p, j);
             if (bin) bv = vault.binary_variables_of(static_cast<std::size_t>(p));
         };
@@ -579,7 +579,7 @@ protected:
         others_.resize(static_cast<std::size_t>(n - 1));
         for (int i = 0, k = 0; i < n; ++i)
             if (i != a) others_[static_cast<std::size_t>(k++)] = i;
-        const int cf = std::min(niche_cf_, n - 1);
+        const int cf = (std::min)(niche_cf_, n - 1);
         const auto& xa = vault.variables_of(a);
         int nearest = -1;
         double best = std::numeric_limits<double>::infinity();

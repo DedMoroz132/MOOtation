@@ -79,15 +79,15 @@ struct Member {
 inline std::vector<std::vector<double>> hyperplane_normalize(const std::vector<std::vector<double>>& F)
 {
     const std::size_t n = F.size(), m = F.empty() ? 0 : F[0].size();
-    std::vector<double> z(m, std::numeric_limits<double>::max()), nad(m, -std::numeric_limits<double>::max());
+    std::vector<double> z(m, (std::numeric_limits<double>::max)()), nad(m, -(std::numeric_limits<double>::max)());
     for (const auto& f : F)
-        for (std::size_t k = 0; k < m; ++k) { z[k] = std::min(z[k], f[k]); nad[k] = std::max(nad[k], f[k]); }
+        for (std::size_t k = 0; k < m; ++k) { z[k] = (std::min)(z[k], f[k]); nad[k] = (std::max)(nad[k], f[k]); }
     std::vector<std::size_t> ext(m, 0);
     for (std::size_t i = 0; i < m; ++i) {
-        double best = std::numeric_limits<double>::max();
+        double best = (std::numeric_limits<double>::max)();
         for (std::size_t r = 0; r < n; ++r) {
-            double a = -std::numeric_limits<double>::max();
-            for (std::size_t k = 0; k < m; ++k) a = std::max(a, (F[r][k] - z[k]) / (k == i ? 1.0 : 1e-6));
+            double a = -(std::numeric_limits<double>::max)();
+            for (std::size_t k = 0; k < m; ++k) a = (std::max)(a, (F[r][k] - z[k]) / (k == i ? 1.0 : 1e-6));
             if (a < best) { best = a; ext[i] = r; }
         }
     }
@@ -116,7 +116,7 @@ inline std::vector<std::vector<double>> hyperplane_normalize(const std::vector<s
         for (std::size_t k = 0; k < m; ++k) icpt[k] = xs[k] > 1e-12 ? 1.0 / xs[k] : -1.0;
     }
     for (std::size_t k = 0; k < m; ++k)
-        if (singular || icpt[k] <= 1e-12) icpt[k] = std::max(nad[k] - z[k], 1e-12);
+        if (singular || icpt[k] <= 1e-12) icpt[k] = (std::max)(nad[k] - z[k], 1e-12);
     std::vector<std::vector<double>> G(n, std::vector<double>(m));
     for (std::size_t r = 0; r < n; ++r)
         for (std::size_t k = 0; k < m; ++k) G[r][k] = (F[r][k] - z[k]) / icpt[k];
@@ -127,8 +127,8 @@ inline std::vector<std::vector<double>> hyperplane_normalize(const std::vector<s
 inline std::vector<std::vector<double>> translate(const std::vector<std::vector<double>>& F)
 {
     const std::size_t m = F.empty() ? 0 : F[0].size();
-    std::vector<double> z(m, std::numeric_limits<double>::max());
-    for (const auto& f : F) for (std::size_t k = 0; k < m; ++k) z[k] = std::min(z[k], f[k]);
+    std::vector<double> z(m, (std::numeric_limits<double>::max)());
+    for (const auto& f : F) for (std::size_t k = 0; k < m; ++k) z[k] = (std::min)(z[k], f[k]);
     std::vector<std::vector<double>> G = F;
     for (auto& g : G) for (std::size_t k = 0; k < m; ++k) g[k] -= z[k];
     return G;
@@ -158,7 +158,7 @@ inline double angle(const std::vector<double>& f, const std::vector<double>& v)
 {
     const double nf = std::sqrt(dot(f, f)), nv = std::sqrt(dot(v, v));
     if (nf <= 0.0 || nv <= 0.0) return 0.0;
-    return dm::acos(std::max(-1.0, std::min(1.0, dot(f, v) / (nf * nv))));
+    return dm::acos((std::max)(-1.0, (std::min)(1.0, dot(f, v) / (nf * nv))));
 }
 
 inline bool dominates(const std::vector<double>& a, const std::vector<double>& b)
@@ -199,10 +199,10 @@ public:
             e.pt = vault.point_of(v);
             P_.push_back(std::move(e));
         }
-        gamma_.assign(W.size(), std::numeric_limits<double>::max());
+        gamma_.assign(W.size(), (std::numeric_limits<double>::max)());
         for (std::size_t a = 0; a < W.size(); ++a)
             for (std::size_t b = 0; b < W.size(); ++b)
-                if (a != b) gamma_[a] = std::min(gamma_[a], angle(W[a], W[b]));
+                if (a != b) gamma_[a] = (std::min)(gamma_[a], angle(W[a], W[b]));
         std::vector<std::vector<double>> F;
         for (const auto& e : P_) F.push_back(e.f);
         const auto G = normalize(F);
@@ -214,7 +214,7 @@ public:
     template <typename Ind_t, typename RNG>
     void step(DataVault<Ind_t>& vault, RNG& rng, double t_frac)
     {
-        t_frac_ = std::max(0.0, std::min(1.0, t_frac));
+        t_frac_ = (std::max)(0.0, (std::min)(1.0, t_frac));
         const std::size_t mu = P_.size();
         rnd::uniform_int_distribution<std::size_t> any(0, mu - 1);
         const std::size_t a = any(rng);
@@ -243,10 +243,10 @@ public:
             }
             d.push_back({s, i});
         }
-        std::partial_sort(d.begin(), d.begin() + static_cast<std::ptrdiff_t>(std::min(L, mu)), d.end());
+        std::partial_sort(d.begin(), d.begin() + static_cast<std::ptrdiff_t>((std::min)(L, mu)), d.end());
         std::vector<char> gone(mu, 0);
         bool winner = false, explorer = true;
-        for (std::size_t q = 0; q < std::min(L, mu); ++q) {
+        for (std::size_t q = 0; q < (std::min)(L, mu); ++q) {
             const std::size_t i = d[q].second;
             if (P_[i].j != u.j) continue;
             explorer = false;                                      // lines 14-16
@@ -287,7 +287,7 @@ private:
     int assign(const std::vector<double>& g) const
     {
         std::size_t best = 0;
-        double bv = std::numeric_limits<double>::max();
+        double bv = (std::numeric_limits<double>::max)();
         for (std::size_t k = 0; k < W.size(); ++k) {
             double v;
             if (rule == Rule::Rvea) v = angle(g, W[k]);
@@ -309,7 +309,7 @@ private:
     {
         if (rule == Rule::Rvea) {
             const double M = static_cast<double>(g.size());
-            const double pen = M * dm::pow(t_frac_, alpha) * angle(g, W[j]) / std::max(gamma_[j], 1e-12);
+            const double pen = M * dm::pow(t_frac_, alpha) * angle(g, W[j]) / (std::max)(gamma_[j], 1e-12);
             return (1.0 + pen) * std::sqrt(dot(g, g));
         }
         double d1, d2;

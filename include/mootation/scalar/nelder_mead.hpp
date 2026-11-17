@@ -77,7 +77,7 @@ inline Result minimize(const std::function<double(const std::vector<double>&)>& 
         ops::RepairTally tally;
         for (std::size_t i = 0; i < n; ++i) {
             if (x[i] < lo[i] || x[i] > hi[i]) tally.out();
-            x[i] = std::min(hi[i], std::max(lo[i], x[i]));
+            x[i] = (std::min)(hi[i], (std::max)(lo[i], x[i]));
         }
     };
     struct Vertex {
@@ -118,8 +118,8 @@ inline Result minimize(const std::function<double(const std::vector<double>&)>& 
     while (r.iterations < o.max_iter) {
         double df = 0.0, dx = 0.0;                          // (T1)
         for (std::size_t k = 1; k <= n; ++k) {
-            df = std::max(df, std::fabs(s[k].f - s[0].f));
-            for (std::size_t i = 0; i < n; ++i) dx = std::max(dx, std::fabs(s[k].x[i] - s[0].x[i]));
+            df = (std::max)(df, std::fabs(s[k].f - s[0].f));
+            for (std::size_t i = 0; i < n; ++i) dx = (std::max)(dx, std::fabs(s[k].x[i] - s[0].x[i]));
         }
         if (df <= o.tol && dx <= o.tol) { r.converged = true; break; }
         ++r.iterations;

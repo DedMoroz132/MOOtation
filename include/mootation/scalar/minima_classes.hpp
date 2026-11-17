@@ -74,7 +74,7 @@ inline MinimaClasses classify_minima(const std::vector<strategy::Minimum>& minim
         for (std::size_t j = 0; j < u.size(); ++j) {
             const double w = hi[j] - lo[j];
             const double s = std::isfinite(w) && w > 0.0 ? w : 1.0;
-            d = std::max(d, std::fabs(u[j] - v[j]) / s);
+            d = (std::max)(d, std::fabs(u[j] - v[j]) / s);
         }
         return d;
     };
@@ -94,7 +94,7 @@ inline MinimaClasses classify_minima(const std::vector<strategy::Minimum>& minim
                 out.pairs.push_back(c);
                 continue;
             }
-            const double top = std::max(minima[a].f, minima[b].f);
+            const double top = (std::max)(minima[a].f, minima[b].f);
             double worst = -std::numeric_limits<double>::infinity();
             std::vector<double> z(xa.size());
             for (int i = 1; i <= nodes; ++i) {
@@ -102,7 +102,7 @@ inline MinimaClasses classify_minima(const std::vector<strategy::Minimum>& minim
                 for (std::size_t j = 0; j < z.size(); ++j) z[j] = xa[j] + t * (xb[j] - xa[j]);
                 const double v = f(z);
                 ++out.evaluations;
-                worst = std::max(worst, std::isfinite(v) ? v : std::numeric_limits<double>::infinity());   // MC-4
+                worst = (std::max)(worst, std::isfinite(v) ? v : std::numeric_limits<double>::infinity());   // MC-4
             }
             c.barrier = worst - top;
             if (worst <= top + tol) {

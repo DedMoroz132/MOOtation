@@ -104,7 +104,7 @@ struct Options {
     double tau_gmin = 0.1;
     double tau_rfix = 0.1;          // B3
     double tau_rforce = 0.1;
-    long long max_evals = std::numeric_limits<long long>::max();
+    long long max_evals = (std::numeric_limits<long long>::max)();
 };
 
 enum class Stop { max_iter, no_decrease, small_df, small_dx, budget };
@@ -131,7 +131,7 @@ inline double phi(const std::vector<double>& r)
     return 0.5 * s;
 }
 
-inline double scaled(double v, double x, double scale) { return std::fabs(v) * std::max(std::fabs(x), scale); }
+inline double scaled(double v, double x, double scale) { return std::fabs(v) * (std::max)(std::fabs(x), scale); }
 
 }   // namespace detail
 
@@ -191,8 +191,8 @@ inline Result minimize(const Residuals& residuals, const std::vector<double>& x0
                 return finish(Stop::budget);
             }
             std::vector<double> xm = x, xp = x;
-            xm[k] = std::max(x[k] - h[k], lo[k]);
-            xp[k] = std::min(x[k] + h[k], hi[k]);
+            xm[k] = (std::max)(x[k] - h[k], lo[k]);
+            xp[k] = (std::min)(x[k] + h[k], hi[k]);
             const double fm = eval(xm, rm), fp = eval(xp, rp);
             const double d = xp[k] - xm[k];
             const bool ok = d > 0.0 && std::isfinite(fm) && std::isfinite(fp);
@@ -224,9 +224,9 @@ inline Result minimize(const Residuals& residuals, const std::vector<double>& x0
         // 4) the active set: B1, B2 (from the second iteration), B3
         std::vector<int> a(n, Flag::Free);
         for (std::size_t k = 0; k < n; ++k) {
-            if (x[k] <= lo[k] + 10.0 * eps * std::max(std::fabs(lo[k]), o.x_scale))
+            if (x[k] <= lo[k] + 10.0 * eps * (std::max)(std::fabs(lo[k]), o.x_scale))
                 a[k] = g[k] < 0.0 ? Flag::FreeLower : Flag::Lower;
-            else if (x[k] >= hi[k] - 10.0 * eps * std::max(std::fabs(hi[k]), o.x_scale))
+            else if (x[k] >= hi[k] - 10.0 * eps * (std::max)(std::fabs(hi[k]), o.x_scale))
                 a[k] = g[k] > 0.0 ? Flag::FreeUpper : Flag::Upper;
         }
         bool converged_free = false;
@@ -234,10 +234,10 @@ inline Result minimize(const Residuals& residuals, const std::vector<double>& x0
             double gbar = 0.0, dbar = 0.0;
             for (std::size_t k = 0; k < n; ++k) {
                 if (a[k] == Flag::Free || a[k] == Flag::FreeLower || a[k] == Flag::FreeUpper)
-                    gbar = std::max(gbar, detail::scaled(g[k], x[k], o.x_scale));
-                dbar = std::max(dbar, std::fabs(delta_prev[k]) / std::max(std::fabs(x[k]), o.x_scale));
+                    gbar = (std::max)(gbar, detail::scaled(g[k], x[k], o.x_scale));
+                dbar = (std::max)(dbar, std::fabs(delta_prev[k]) / (std::max)(std::fabs(x[k]), o.x_scale));
             }
-            const double fs = std::max(std::fabs(f), o.f_scale);
+            const double fs = (std::max)(std::fabs(f), o.f_scale);
             gbar /= fs;
             converged_free = gbar <= o.tau_sg || (dbar <= o.tau_ss && gbar <= o.tau_gmin) ||
                              (std::fabs(dphi_exp) / fs <= o.tau_sf && std::fabs(dphi_act) / fs <= o.tau_sf &&
@@ -249,7 +249,7 @@ inline Result minimize(const Residuals& residuals, const std::vector<double>& x0
             for (std::size_t k = 0; k < n; ++k) {
                 if (a[k] == Flag::Free) {
                     ++n_free;
-                    g_max_free = std::max(g_max_free, detail::scaled(g[k], x[k], o.x_scale));
+                    g_max_free = (std::max)(g_max_free, detail::scaled(g[k], x[k], o.x_scale));
                 }
                 if (a[k] == Flag::FreeLower || a[k] == Flag::FreeUpper) ++n_rls;
             }
@@ -293,7 +293,7 @@ inline Result minimize(const Residuals& residuals, const std::vector<double>& x0
             std::vector<double> w;
             eigen::symmetric(Hr, w, V);
             double wmax = 0.0;
-            for (double v : w) wmax = std::max(wmax, std::fabs(v));
+            for (double v : w) wmax = (std::max)(wmax, std::fabs(v));
             const double cut = o.beta_nsj * std::sqrt(eps) * wmax;
             for (std::size_t j = 0; j < nf; ++j) {
                 if (!(w[j] > cut)) continue;
@@ -330,7 +330,7 @@ inline Result minimize(const Residuals& residuals, const std::vector<double>& x0
                 xt = x;
                 for (std::size_t k = 0; k < n; ++k) xt[k] = x[k] + sigma * delta[k];
                 const double ft = eval(xt, rt);
-                if (ft <= f + o.c_ls * sigma * std::min(0.0, dg)) {
+                if (ft <= f + o.c_ls * sigma * (std::min)(0.0, dg)) {
                     x_ls = xt;
                     r_ls = rt;
                     f_ls = ft;
@@ -360,13 +360,13 @@ inline Result minimize(const Residuals& residuals, const std::vector<double>& x0
 
         // 10) the sampling scale
         for (std::size_t k = 0; k < n; ++k)
-            h[k] = success ? std::min(h[k] * o.alpha_lss, hmax[k]) : std::max(h[k] / o.alpha_lss, o.h_min);
+            h[k] = success ? (std::min)(h[k] * o.alpha_lss, hmax[k]) : (std::max)(h[k] / o.alpha_lss, o.h_min);
 
         // 11) termination
         no_decrease = f < f_prev ? 0 : no_decrease + 1;
-        small_df = std::fabs(f_prev - f) / std::max(f, o.f_scale) < o.tol_f ? small_df + 1 : 0;
+        small_df = std::fabs(f_prev - f) / (std::max)(f, o.f_scale) < o.tol_f ? small_df + 1 : 0;
         double dx = 0.0;
-        for (std::size_t k = 0; k < n; ++k) dx = std::max(dx, std::fabs(x[k] - x_prev[k]) / std::max(std::fabs(x[k]), o.x_scale));
+        for (std::size_t k = 0; k < n; ++k) dx = (std::max)(dx, std::fabs(x[k] - x_prev[k]) / (std::max)(std::fabs(x[k]), o.x_scale));
         small_dx = dx < o.tol_x ? small_dx + 1 : 0;
         if (res.iterations >= o.max_iter) return finish(Stop::max_iter);
         if (no_decrease >= o.n_no_decrease) return finish(Stop::no_decrease);

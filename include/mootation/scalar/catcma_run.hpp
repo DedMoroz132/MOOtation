@@ -67,7 +67,7 @@ inline Result run_catcma(const Problem& P, double eq_tol, bool has_tol0, double 
     if (start.has_x0) {
         if (start.x0.size() != n) throw std::invalid_argument("catcma: x0 has another length");
         for (std::size_t j = 0; j < nco; ++j)
-            mean[j] = std::min(1.0, std::max(0.0, (start.x0[j] - P.lo[j]) / (P.hi[j] - P.lo[j])));
+            mean[j] = (std::min)(1.0, (std::max)(0.0, (start.x0[j] - P.lo[j]) / (P.hi[j] - P.lo[j])));
     }
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     std::mt19937 rng(seed);
@@ -81,14 +81,14 @@ inline Result run_catcma(const Problem& P, double eq_tol, bool has_tol0, double 
                 Vec x(n);
                 double out = 0.0;                                                    // CCR-1
                 for (std::size_t j = 0; j < nco; ++j) {
-                    const double u = pts[i].x[j], c = std::min(1.0, std::max(0.0, u));
+                    const double u = pts[i].x[j], c = (std::min)(1.0, (std::max)(0.0, u));
                     out += (u - c) * (u - c);
                     x[j] = P.lo[j] + c * (P.hi[j] - P.lo[j]);
                 }
                 for (std::size_t q = 0; q < nca; ++q) x[nco + q] = static_cast<double>(pts[i].c[q]);
                 const std::size_t at = ev.index(x);
                 const double v = ev.F[at][0];
-                f[i] = std::isfinite(v) ? v + out : std::numeric_limits<double>::max();   // a failure last
+                f[i] = std::isfinite(v) ? v + out : (std::numeric_limits<double>::max)();   // a failure last
             }
             cma.tell(f);
             ++generations;

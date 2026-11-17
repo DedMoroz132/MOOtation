@@ -159,9 +159,9 @@ private:
         bool any_added = false;
         for (auto& x : L2) {
             if (!feasible(x)) continue;                                        // MG-3
-            double far = std::numeric_limits<double>::infinity();
-            for (const auto& y : list_) far = std::min(far, dist(x.x, y.x) - y.r);
-            if (list_.empty() || far > 0.0) {                                  // lines 1-2
+            double distant = std::numeric_limits<double>::infinity();
+            for (const auto& y : list_) distant = (std::min)(distant, dist(x.x, y.x) - y.r);
+            if (list_.empty() || distant > 0.0) {                                  // lines 1-2
                 x.alpha = alpha0_; x.r = r0_; x.active = true;
                 added_active.push_back(list_.size());
                 list_.push_back(std::move(x));
@@ -362,7 +362,7 @@ public:
         const auto act = add(std::move(got));
         if (!act.empty()) {                                                      // success
             failures_ = 0;
-            for (std::size_t i : act) list_[i].r = std::max(list_[i].r, list_[i].alpha);
+            for (std::size_t i : act) list_[i].r = (std::max)(list_[i].r, list_[i].alpha);
         } else if (!added_) {                                                    // unsuccessful
             ++failures_;
             list_[c].alpha *= 0.5;

@@ -233,8 +233,8 @@ public:
             for (int i = 0; i < n; ++i) x[i] = rnd::normal01(g);
             return;
         }
-        const Vec small = fit_small();
-        embed_into(small, x);
+        const Vec small_net = fit_small();
+        embed_into(small_net, x);
     }
 
     // the H - 1 unit network's fit from 8 starts, the least cost
@@ -272,20 +272,20 @@ public:
     }
 
     // the small network (H - 1 units, then v_0) embedded into H units (variant)
-    void embed_into(const Vec& small, double* x) const
+    void embed_into(const Vec& small_net, double* x) const
     {
         const int w = d + 2, units = H - 1;
-        std::copy(small.begin(), small.begin() + units * w, x);
+        std::copy(small_net.begin(), small_net.begin() + units * w, x);
         double* added = x + units * w;
         if (variant == "duplicate") {                 // gamma_lambda: unit 1 split
-            std::copy(small.begin(), small.begin() + w, added);
-            x[0] = embed * small[0];
-            added[0] = (1.0 - embed) * small[0];
+            std::copy(small_net.begin(), small_net.begin() + w, added);
+            x[0] = embed * small_net[0];
+            added[0] = (1.0 - embed) * small_net[0];
         } else {                                      // beta_(0,w): output 0, input (w, 0, ..., 0)
             std::fill(added, added + w, 0.0);
             added[1] = embed;
         }
-        x[n - 1] = small[static_cast<std::size_t>(units * w)];
+        x[n - 1] = small_net[static_cast<std::size_t>(units * w)];
     }
 
     // r (m) and J (m x (units (d + 2) + 1)) of a network of `units` units

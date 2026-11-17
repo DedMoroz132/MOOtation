@@ -145,7 +145,7 @@ inline Rows thin(const Rows& F, std::size_t n, std::uint32_t seed, const std::ve
         throw std::invalid_argument("thinning to " + std::to_string(n) + " rows: the ends of the front's " +
                                     std::to_string(pieces.size()) + " pieces are " + std::to_string(n_keep) +
                                     " rows already");
-    const std::size_t extra = n > n_keep ? std::min(n - n_keep, rest.size()) : 0;
+    const std::size_t extra = n > n_keep ? (std::min)(n - n_keep, rest.size()) : 0;
     std::mt19937 g(seed);
     for (std::size_t k = 0; k < extra; ++k) {             // the first `extra` places: the draw
         const std::size_t j = k + static_cast<std::size_t>(rnd::below(g, rest.size() - k));

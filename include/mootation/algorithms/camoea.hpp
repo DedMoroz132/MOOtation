@@ -140,13 +140,13 @@ private:
     normalize(DataVault<Ind_t>& vault, const std::vector<int>& idx) {
         int m = vault.objs_n();
         int n = static_cast<int>(idx.size());
-        std::vector<double> ymin(m,  std::numeric_limits<double>::max());
-        std::vector<double> ymax(m, -std::numeric_limits<double>::max());
+        std::vector<double> ymin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> ymax(m, -(std::numeric_limits<double>::max)());
         for (int v : idx) {
             const auto& o = vault.objectives_of(v);
             for (int j = 0; j < m; ++j) {
-                ymin[j] = std::min(ymin[j], o[j]);
-                ymax[j] = std::max(ymax[j], o[j]);
+                ymin[j] = (std::min)(ymin[j], o[j]);
+                ymax[j] = (std::max)(ymax[j], o[j]);
             }
         }
         std::vector<std::vector<double>> Y(n, std::vector<double>(m));
@@ -184,7 +184,7 @@ private:
         std::vector<char> alive(n, 1);
         int nclust = n;
         while (nclust > K) {
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             int ba = -1, bb = -1;
             for (int a = 0; a < n; ++a) {
                 if (!alive[a]) continue;
@@ -223,7 +223,7 @@ private:
         std::vector<double>           dist(n, 0.0);
         for (int i = 0; i < n; ++i) {
             int    best_j = 0;
-            double best_d = std::numeric_limits<double>::max();
+            double best_d = (std::numeric_limits<double>::max)();
             for (int j = 0; j < Kc; ++j) {
                 double d = sq_dist(Y[i], C[j]);
                 if (d < best_d) { best_d = d; best_j = j; }

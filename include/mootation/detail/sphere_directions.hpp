@@ -35,7 +35,7 @@ inline std::vector<std::vector<double>>
 uniform_sphere_directions(int m, int K) {
         auto normalize = [](std::vector<double>& v) {
             double n2 = 0.0; for (double x : v) n2 += x*x;
-            double nn = std::sqrt(std::max(n2, 1e-300));
+            double nn = std::sqrt((std::max)(n2, 1e-300));
             for (double& x : v) x /= nn;
         };
         // 1) candidates
@@ -60,7 +60,7 @@ uniform_sphere_directions(int m, int K) {
             int nxt = -1; double best = 2.0;
             for (int i = 0; i < nc; ++i) {
                 if (used[i]) continue;
-                maxc[i] = std::max(maxc[i], cosv(cand[i], cand[cur]));
+                maxc[i] = (std::max)(maxc[i], cosv(cand[i], cand[cur]));
                 if (maxc[i] < best) { best = maxc[i]; nxt = i; }
             }
             if (nxt < 0) break;
@@ -80,7 +80,7 @@ uniform_sphere_directions(int m, int K) {
                     for (int j = 0; j < m; ++j) {
                         double t = R[a][j] - R[b][j]; d2 += t*t;
                     }
-                    double d = std::sqrt(std::max(d2, 1e-6));
+                    double d = std::sqrt((std::max)(d2, 1e-6));
                     double w = 1.0 / dm::pow(d, s + 1.0);
                     for (int j = 0; j < m; ++j)
                         Frc[a][j] += (R[a][j] - R[b][j]) / d * w;

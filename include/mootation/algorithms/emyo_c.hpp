@@ -159,7 +159,7 @@ private:
         std::vector<int> alive(n, 1), sz(n, 1);
         int count = n;
         while (count > k) {
-            int ba = -1, bb = -1; double bd = std::numeric_limits<double>::max();
+            int ba = -1, bb = -1; double bd = (std::numeric_limits<double>::max)();
             for (int a = 0; a < n; ++a) {
                 if (!alive[a]) continue;
                 for (int b = a + 1; b < n; ++b) {
@@ -203,7 +203,7 @@ private:
 
     void update_ideal(const std::vector<double>& f) {
         for (std::size_t j = 0; j < f.size(); ++j)
-            ideal_[j] = std::min(ideal_[j], f[j]);
+            ideal_[j] = (std::min)(ideal_[j], f[j]);
     }
 
 public:
@@ -240,13 +240,13 @@ public:
         }
         vault.sync();
         // z_j = min_{1<=i<=mu} f_j(x_i); afterwards only offspring update it.
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) update_ideal(vault.objectives_of(i));
     }
 
     void setup_seeded(DataVault<Ind_t>& vault) {
         int n = vault.pop_size(), m = vault.objs_n();
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) update_ideal(vault.objectives_of(i));
     }
 

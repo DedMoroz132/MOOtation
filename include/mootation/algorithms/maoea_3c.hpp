@@ -200,12 +200,12 @@ private:
 
     // ── Normalization (Eq.6): returns normalized objective vectors ───────
     static std::vector<std::vector<double>> normalize(const std::vector<Sol>& S, int m) {
-        std::vector<double> zmin(m, std::numeric_limits<double>::max());
-        std::vector<double> zmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> zmin(m, (std::numeric_limits<double>::max)());
+        std::vector<double> zmax(m, -(std::numeric_limits<double>::max)());
         for (const auto& s : S)
             for (int j = 0; j < m; ++j) {
-                zmin[j] = std::min(zmin[j], s.objs[j]);
-                zmax[j] = std::max(zmax[j], s.objs[j]);
+                zmin[j] = (std::min)(zmin[j], s.objs[j]);
+                zmax[j] = (std::max)(zmax[j], s.objs[j]);
             }
         std::vector<std::vector<double>> F(S.size(), std::vector<double>(m));
         for (std::size_t i = 0; i < S.size(); ++i)
@@ -220,13 +220,13 @@ private:
     static std::vector<int> find_extremes(const std::vector<std::vector<double>>& F, int m) {
         std::vector<int> ex(m, -1);
         for (int axis = 0; axis < m; ++axis) {
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             int    bi = -1;
             for (int i = 0; i < (int)F.size(); ++i) {
-                double asf = -std::numeric_limits<double>::max();
+                double asf = -(std::numeric_limits<double>::max)();
                 for (int j = 0; j < m; ++j) {
                     double w = (j == axis) ? 1.0 : 1e-6;
-                    asf = std::max(asf, F[i][j] / w);
+                    asf = (std::max)(asf, F[i][j] / w);
                 }
                 if (asf < best) { best = asf; bi = i; }
             }
@@ -256,9 +256,9 @@ private:
             int    bestc = -1;
             double bestmin = -1.0;
             for (int ci = 0; ci < (int)cand.size(); ++ci) {
-                double mind = std::numeric_limits<double>::max();
+                double mind = (std::numeric_limits<double>::max)();
                 for (int s : sel)
-                    mind = std::min(mind, angle_dist(F[cand[ci]], F[s]));
+                    mind = (std::min)(mind, angle_dist(F[cand[ci]], F[s]));
                 if (sel.empty()) mind = 0.0;
                 if (mind > bestmin) { bestmin = mind; bestc = ci; }
             }
@@ -322,9 +322,9 @@ private:
         }
         double thr = conv45_ * (double)EA_.size();
         // line 6: |L>1| > min{0.45|EA|, |L<1|} -> concave (+1)
-        if ((double)above > std::min(thr, (double)below)) return 1;
+        if ((double)above > (std::min)(thr, (double)below)) return 1;
         // line 9: |L<1| > min{0.45|EA|, |L>1|} -> convex (-1)
-        if ((double)below > std::min(thr, (double)above)) return -1;
+        if ((double)below > (std::min)(thr, (double)above)) return -1;
         return 0; // linear
     }
 
@@ -333,12 +333,12 @@ private:
     // from nadir = better, so we keep its value (small is good).
     std::vector<double> cal_fitness(const std::vector<Sol>& S, int label) const {
         std::vector<double> fit(S.size());
-        std::vector<double> zmin(m_, std::numeric_limits<double>::max());
-        std::vector<double> zmax(m_, -std::numeric_limits<double>::max());
+        std::vector<double> zmin(m_, (std::numeric_limits<double>::max)());
+        std::vector<double> zmax(m_, -(std::numeric_limits<double>::max)());
         for (const auto& s : S)
             for (int j = 0; j < m_; ++j) {
-                zmin[j] = std::min(zmin[j], s.objs[j]);
-                zmax[j] = std::max(zmax[j], s.objs[j]);
+                zmin[j] = (std::min)(zmin[j], s.objs[j]);
+                zmax[j] = (std::max)(zmax[j], s.objs[j]);
             }
         for (std::size_t i = 0; i < S.size(); ++i) {
             const auto& f = S[i].objs;
@@ -351,7 +351,7 @@ private:
             } else {                       // EdN (Eq.5): 1/dist to nadir
                 double s = 0; for (int j = 0; j < m_; ++j) { double d = f[j] - zmax[j]; s += d * d; }
                 double dn = std::sqrt(s);
-                fit[i] = (dn > 1e-12) ? (1.0 / dn) : std::numeric_limits<double>::max();
+                fit[i] = (dn > 1e-12) ? (1.0 / dn) : (std::numeric_limits<double>::max)();
             }
         }
         return fit;
@@ -450,7 +450,7 @@ private:
         auto Fea = normalize(EA_, m_);
         std::vector<int> clust(Q.size(), 0);
         for (std::size_t i = 0; i < Q.size(); ++i) {
-            int best = 0; double bd = std::numeric_limits<double>::max();
+            int best = 0; double bd = (std::numeric_limits<double>::max)();
             for (std::size_t k = 0; k < EA_.size(); ++k) {
                 double d = angle_dist(Fq[i], Fea[k]);
                 if (d < bd) { bd = d; best = (int)k; }
@@ -488,7 +488,7 @@ private:
         } else {
             // compare by FitFrontNo within the NDF_1..NDF_l set (line 26)
             int maxfit = 0;
-            for (int idx : sel) maxfit = std::max(maxfit, Q[idx].fitfront);
+            for (int idx : sel) maxfit = (std::max)(maxfit, Q[idx].fitfront);
             std::vector<std::vector<int>> byfit(maxfit + 1);
             for (int idx : sel) byfit[Q[idx].fitfront].push_back(idx);
             // k: minimal cumulated FitF count >= N
@@ -550,13 +550,13 @@ private:
                         dist[i][j] = dist[j][i] = dd;
                     }
                 // niche radius r = mean of each member's k-th nearest distance
-                double rsum = 0; int kk = std::min(niche_k_, na - 1);
+                double rsum = 0; int kk = (std::min)(niche_k_, na - 1);
                 if (kk < 1) kk = 1;
                 for (int i = 0; i < na; ++i) {
                     std::vector<double> row;
                     for (int j = 0; j < na; ++j) if (j != i) row.push_back(dist[i][j]);
                     std::stable_sort(row.begin(), row.end());
-                    rsum += row[std::min((int)row.size() - 1, kk - 1)];
+                    rsum += row[(std::min)((int)row.size() - 1, kk - 1)];
                 }
                 double r = (na > 0) ? rsum / na : 1.0;
                 if (r < 1e-12) r = 1e-12;

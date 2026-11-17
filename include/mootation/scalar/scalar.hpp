@@ -629,8 +629,8 @@ inline Result run_scalar(const std::string& name, const Problem& P, double eq_to
         const long long left = ev.budget - ev.spent;
         const long long share = left / std::max<long long>(1, plan_left);
         const long long allowance = s.sub_budget > 0
-            ? std::min(left, static_cast<long long>(s.sub_budget))
-            : std::min(left, std::max(share, floor));
+            ? (std::min)(left, static_cast<long long>(s.sub_budget))
+            : (std::min)(left, (std::max)(share, floor));
         plan_left = std::max<long long>(0, plan_left - 1);
         const long long end = ev.spent + std::max<long long>(1, allowance);
         Run run(sub, ev, frame);
@@ -697,8 +697,8 @@ inline Result run_scalar(const std::string& name, const Problem& P, double eq_to
                 Vec lo = okF[0], hi = okF[0];
                 for (const Vec& f : okF)
                     for (std::size_t j = 0; j < m; ++j) {
-                        lo[j] = std::min(lo[j], f[j]);
-                        hi[j] = std::max(hi[j], f[j]);
+                        lo[j] = (std::min)(lo[j], f[j]);
+                        hi[j] = (std::max)(hi[j], f[j]);
                     }
                 identity = Frame::from_anchors({lo, hi});
             }
@@ -726,7 +726,7 @@ inline Result run_scalar(const std::string& name, const Problem& P, double eq_to
                 if (b < 0 || !found(stage, identity, b)) break;
                 best = b;
                 const double fo = identity.bar(ev.F[static_cast<std::size_t>(b)])[o];
-                rows.push_back({unit(m, o, -1.0), 0.0, fo + 1e-9 * std::max(1.0, std::fabs(fo))});
+                rows.push_back({unit(m, o, -1.0), 0.0, fo + 1e-9 * (std::max)(1.0, std::fabs(fo))});
             }
             if (best >= 0) {
                 anchors.push_back(ev.F[static_cast<std::size_t>(best)]);
@@ -768,15 +768,15 @@ inline Result run_scalar(const std::string& name, const Problem& P, double eq_to
                 std::vector<Vec> have;
                 for (const Vec& g : got) have.push_back(coords(kind, frame, g, k_eps));
                 std::size_t j = 0;
-                double far = -1.0;
+                double distant = -1.0;
                 for (std::size_t c = 0; c < cand.size(); ++c) {
-                    double near = std::numeric_limits<double>::infinity();
+                    double nearby = std::numeric_limits<double>::infinity();
                     for (const Vec& h : have) {
                         double s2 = 0.0;
                         for (std::size_t q = 0; q < h.size(); ++q) s2 += (cand[c][q] - h[q]) * (cand[c][q] - h[q]);
-                        near = std::min(near, std::sqrt(s2));
+                        nearby = (std::min)(nearby, std::sqrt(s2));
                     }
-                    if (near > far) { far = near; j = c; }
+                    if (nearby > distant) { distant = nearby; j = c; }
                 }
                 const Sub sub = build(cand[j]);
                 cand.erase(cand.begin() + static_cast<std::ptrdiff_t>(j));
@@ -1124,12 +1124,12 @@ inline Result run_single(const std::string& name, const Problem& P, double eq_to
             double lo = ev.F[static_cast<std::size_t>(st)][0], hi = lo;
             for (std::size_t i = 0; i < ev.X.size() && !ev.lean; ++i)
                 if (!ev.failed[i]) {
-                    lo = std::min(lo, ev.F[i][0]);
-                    hi = std::max(hi, ev.F[i][0]);
+                    lo = (std::min)(lo, ev.F[i][0]);
+                    hi = (std::max)(hi, ev.F[i][0]);
                 }
             for (std::size_t q = 0; q < plan.size() && ev.lean; ++q) {               // SINGLE-5
-                lo = std::min(lo, plan[q]);
-                hi = std::max(hi, plan[q]);
+                lo = (std::min)(lo, plan[q]);
+                hi = (std::max)(hi, plan[q]);
             }
             const Frame frame = Frame::from_anchors({{lo}, {hi}});   // SINGLE-2
             Sub sub;
@@ -1586,7 +1586,7 @@ inline std::vector<std::pair<std::string, std::string>> lm_profiles(const Proble
     double c = 0.0;
     for (double v : r) c += v * v;
     const lm::Diagnostics d = lm::diagnose(J, 0.5 * c, 1.0, !p.jacobian, o.fd_eps);
-    const std::size_t rank = d.sv.size() - d.small;
+    const std::size_t rank = d.sv.size() - d.tiny;
     json::Value all = json::Value::array();
     for (std::size_t j : which) {
         const lm::Profile pr = lm::profile(p, x_hat, j, o);
@@ -1821,7 +1821,7 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
     }
     std::size_t varpro_rank = 0;
     const bool refuse_failed = word["lm_failed"] == "refuse";                       // LOCAL-3, LOCAL-8
-    const long long no_limit = std::numeric_limits<long long>::max() / 4;   // LOCAL-2
+    const long long no_limit = (std::numeric_limits<long long>::max)() / 4;   // LOCAL-2
     lo.max_nfev = no_limit;
     bo.max_nfev = no_limit;
     bo.max_iter = no_limit;
@@ -2002,7 +2002,7 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
                         if (!finite) return;                  // lm refuses or stops there (LM-9)
                         Vec a = lm::detail::Projection(Phi).coef(sp.y);   // the point (alpha, a(alpha)) evaluated
                         for (std::size_t l = 0; l < lin.size(); ++l)
-                            a[l] = std::min(shi[lin[l]], std::max(slo[lin[l]], a[l]));
+                            a[l] = (std::min)(shi[lin[l]], (std::max)(slo[lin[l]], a[l]));
                         at(full(al, a));
                     };
                     const lm::SeparableResult sr = lm::varpro(sp, alpha0, lo, varpro == "kaufman");
@@ -2519,7 +2519,7 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             if (!(sigma0 > 0.0) || !(tol > 0.0)) throw std::invalid_argument("cma_sigma0 and local_tol must be > 0");
             Vec y0(lo.size());
             for (std::size_t j = 0; j < lo.size(); ++j)                                    // POP-7
-                y0[j] = start.has_x0 ? std::min(1.0, std::max(0.0, (start.x0[j] - lo[j]) / (hi[j] - lo[j])))
+                y0[j] = start.has_x0 ? (std::min)(1.0, (std::max)(0.0, (start.x0[j] - lo[j]) / (hi[j] - lo[j])))
                                      : rnd::uniform01(rng);
             sep_cmaes::SepCMAES m(y0, sigma0, rng, np);
             k.size(m.lambda());
@@ -2644,7 +2644,7 @@ inline Result run(const std::string& name, const Problem& P, double eq_tol, bool
             Q.time_clock = chosen;
         }
         if (max_seconds > 0.0)
-            Q.deadline = std::min(P.deadline,
+            Q.deadline = (std::min)(P.deadline,
                                   (Q.time_clock == Clock::wall ? t0 : clock_seconds(Q.time_clock)) + max_seconds);
         r = detail::run_named(name, Q, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, rest,
                               std::move(observer), record_every, start);

@@ -180,16 +180,16 @@ protected:
         std::vector<double> hi(m, -std::numeric_limits<double>::infinity());
         for (const auto& f : Q)
             for (std::size_t j = 0; j < m; ++j) {
-                lo[j] = std::min(lo[j], f[j]);
-                hi[j] = std::max(hi[j], f[j]);
+                lo[j] = (std::min)(lo[j], f[j]);
+                hi[j] = (std::max)(hi[j], f[j]);
             }
         // R2E-1: the ideal point of every evaluation so far (every offspring
         // passes through Q), less r2_offset of Q's range
         if (ideal_.size() != m) ideal_ = lo;
-        for (std::size_t j = 0; j < m; ++j) ideal_[j] = std::min(ideal_[j], lo[j]);
+        for (std::size_t j = 0; j < m; ++j) ideal_[j] = (std::min)(ideal_[j], lo[j]);
         std::vector<double> r(m), scale(m, 1.0);
         for (std::size_t j = 0; j < m; ++j) {
-            const double span = hi[j] - std::min(lo[j], ideal_[j]);
+            const double span = hi[j] - (std::min)(lo[j], ideal_[j]);
             r[j] = ideal_[j] - offset_ * span;
             if (normalize_ && span > 0.0) scale[j] = 1.0 / span;
         }
@@ -246,7 +246,7 @@ private:
             std::size_t arg = 0;
             for (std::size_t a = 0; a < Y.size(); ++a) {
                 double u = 0.0;
-                for (std::size_t j = 0; j < w.size(); ++j) u = std::max(u, w[j] * Y[a][j]);
+                for (std::size_t j = 0; j < w.size(); ++j) u = (std::max)(u, w[j] * Y[a][j]);
                 if (u < best) { second = best; best = u; arg = a; }
                 else if (u < second) second = u;
             }

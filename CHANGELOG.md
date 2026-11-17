@@ -10,6 +10,15 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+- Fixed (task 31, layer 1; the owner's choice of 17.11): the headers compile
+  after a plain `#include <windows.h>` (no `NOMINMAX`, no
+  `WIN32_LEAN_AND_MEAN`): every call of `min` and `max` is in parentheses,
+  `(std::min)(a, b)`, `(std::numeric_limits<T>::max)()`, and no name is
+  `near`, `far` or `small`. Nothing runs otherwise. New test
+  `test_windows_first`.
+- Changed (task 31, layer 1): `scalar::lm::Diagnostics::small` (the count of
+  almost-zero singular values) is `tiny`, as windows.h defines `small`; the
+  Python dictionary keeps its key `small`.
 - Fixed (task 31, layer 1; §30.10): a strategy's loops checked its budget
   by the evaluations alone, so the declared cost of a `local_search` hook
   (and of the success and delta hooks) never ended a run — `cluster_ga` with

@@ -214,7 +214,7 @@ inline std::vector<std::size_t> run_boostdms(Evaluator& ev, int n_objs, int pop_
 
     auto x_of = [&](const Vec& u) {
         Vec x(n);
-        for (std::size_t j = 0; j < n; ++j) x[j] = ev.lo[j] + std::min(1.0, std::max(0.0, u[j])) * width[j];
+        for (std::size_t j = 0; j < n; ++j) x[j] = ev.lo[j] + (std::min)(1.0, (std::max)(0.0, u[j])) * width[j];
         return x;
     };
     auto u_of = [&](std::size_t i) {
@@ -276,8 +276,8 @@ inline std::vector<std::size_t> run_boostdms(Evaluator& ev, int n_objs, int pop_
         std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) { return d[a] < d[b]; });
         std::vector<std::size_t> inside, outside;
         for (std::size_t k : order) (d[k] <= 3.0 * delta ? inside : outside).push_back(k);
-        const std::size_t n_in = std::min(inside.size(), static_cast<std::size_t>(0.8 * static_cast<double>(pmax)));
-        const std::size_t n_out = std::min({outside.size(), pmax - n_in,
+        const std::size_t n_in = (std::min)(inside.size(), static_cast<std::size_t>(0.8 * static_cast<double>(pmax)));
+        const std::size_t n_out = (std::min)({outside.size(), pmax - n_in,
                                             static_cast<std::size_t>(std::ceil(0.2 * static_cast<double>(pmax)))});
         std::vector<std::size_t> take(inside.begin(), inside.begin() + static_cast<std::ptrdiff_t>(n_in));
         take.insert(take.end(), outside.begin(), outside.begin() + static_cast<std::ptrdiff_t>(n_out));
@@ -356,7 +356,7 @@ inline std::vector<std::size_t> run_boostdms(Evaluator& ev, int n_objs, int pop_
             };
             Vec z0(n, 0.0);
             double top = fk[Iset[0]];
-            for (std::size_t i : Iset) top = std::max(top, fk[i]);
+            for (std::size_t i : Iset) top = (std::max)(top, fk[i]);
             z0.push_back(top);
             return head(slsqp::minimize(nlp, z0, {1e-12, 200}).x);
         };
@@ -365,7 +365,7 @@ inline std::vector<std::size_t> run_boostdms(Evaluator& ev, int n_objs, int pop_
             std::vector<Vec> cand;
             for (const Vec& s : offsets) {
                 Vec u(n);
-                for (std::size_t j = 0; j < n; ++j) u[j] = std::min(1.0, std::max(0.0, xc[j] + s[j]));
+                for (std::size_t j = 0; j < n; ++j) u[j] = (std::min)(1.0, (std::max)(0.0, xc[j] + s[j]));
                 if (ev.known(x_of(u))) continue;          // BD-4
                 if (std::find(cand.begin(), cand.end(), u) != cand.end()) continue;
                 cand.push_back(u);

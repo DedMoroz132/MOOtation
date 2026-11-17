@@ -85,8 +85,8 @@ inline std::vector<std::vector<double>> normalize(const std::vector<std::vector<
     std::vector<double> lo = F[0], hi = F[0];
     for (const auto& f : F)
         for (std::size_t k = 0; k < m; ++k) {
-            lo[k] = std::min(lo[k], f[k]);
-            hi[k] = std::max(hi[k], f[k]);
+            lo[k] = (std::min)(lo[k], f[k]);
+            hi[k] = (std::max)(hi[k], f[k]);
         }
     for (std::size_t i = 0; i < F.size(); ++i) {
         out[i].resize(m);
@@ -124,7 +124,7 @@ inline Frame frame_of(const std::vector<std::vector<double>>& fbar)
                 double d = 0.0;
                 for (std::size_t k = 0; k < fbar[i].size(); ++k) d += fbar[i][k] * fbar[j][k];
                 const double c = d / len[i] / len[j];
-                t = dm::acos(std::min(1.0, std::max(-1.0, c)));
+                t = dm::acos((std::min)(1.0, (std::max)(-1.0, c)));
             }
             fr.theta[i * n + j] = t;
             fr.theta[j * n + i] = t;
@@ -135,7 +135,7 @@ inline Frame frame_of(const std::vector<std::vector<double>>& fbar)
         if (!(len[i] > 0.0)) continue;
         double t = std::numeric_limits<double>::infinity();
         for (std::size_t j = 0; j < n; ++j)
-            if (j != i && len[j] > 0.0) t = std::min(t, fr.theta[i * n + j]);
+            if (j != i && len[j] > 0.0) t = (std::min)(t, fr.theta[i * n + j]);
         nearest.push_back(t);
     }
     fr.theta_bar = nearest.size() > 1 ? niche_size(nearest, nearest.size()) : 0.0;

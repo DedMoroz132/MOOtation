@@ -116,7 +116,7 @@ public:
             const std::size_t r = pick_h(rng_);
             cr_[i] = terminal_[r] ? 0.0 : pbest::draw_CR(rng_, m_cr_[r]);   // (1)
             F_[i] = pbest::draw_F(rng_, m_f_[r]);                         // (2)
-            u_[i] = pbest::trial(x_, a_, i, order, std::min(top, n_), F_[i], cr_[i], lo_, hi_, rng_, o_.sym, o_.periodic, o_.var_repair);
+            u_[i] = pbest::trial(x_, a_, i, order, (std::min)(top, n_), F_[i], cr_[i], lo_, hi_, rng_, o_.sym, o_.periodic, o_.var_repair);
         }
         return u_;
     }
@@ -176,7 +176,7 @@ private:
     {
         const double ni = static_cast<double>(n_init_), nm = static_cast<double>(o_.n_min);
         const double next = std::round((nm - ni) / static_cast<double>(o_.max_nfe) * static_cast<double>(nfe_) + ni);
-        const std::size_t n_next = std::max(o_.n_min, static_cast<std::size_t>(std::max(next, 0.0)));
+        const std::size_t n_next = (std::max)(o_.n_min, static_cast<std::size_t>((std::max)(next, 0.0)));
         if (n_next >= n_) return;
         const std::vector<std::size_t> order = pbest::ranking(f_, v_);
         std::vector<bool> keep(n_, true);

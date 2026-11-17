@@ -195,7 +195,7 @@ public:
             CR = std::clamp(N(rng), 0.0, 1.0);
             rnd::cauchy_distribution<double> C(mf_[static_cast<std::size_t>(r)], 0.1);
             do { F = C(rng); } while (!(F > 0.0));
-            F = std::min(F, 1.0);
+            F = (std::min)(F, 1.0);
         }
         ++rec.drawn;
         rec.cr_sum += CR;
@@ -355,7 +355,7 @@ private:
 
     void ensure_memory()
     {
-        const std::size_t H = static_cast<std::size_t>(std::max(1, set.memory));
+        const std::size_t H = static_cast<std::size_t>((std::max)(1, set.memory));
         if (mcr_.size() != H) { mcr_.assign(H, 0.5); mf_.assign(H, 0.5); k_ = 0; }
     }
 
@@ -369,7 +369,7 @@ private:
         const std::size_t n = F.size(), m = n ? F[0].size() : 0;
         std::vector<double> lo(m, 1e300), hi(m, -1e300);
         for (const auto& f : F)
-            for (std::size_t j = 0; j < m; ++j) { lo[j] = std::min(lo[j], f[j]); hi[j] = std::max(hi[j], f[j]); }
+            for (std::size_t j = 0; j < m; ++j) { lo[j] = (std::min)(lo[j], f[j]); hi[j] = (std::max)(hi[j], f[j]); }
         std::vector<std::vector<double>> G(n, std::vector<double>(m));
         for (std::size_t i = 0; i < n; ++i)
             for (std::size_t j = 0; j < m; ++j)

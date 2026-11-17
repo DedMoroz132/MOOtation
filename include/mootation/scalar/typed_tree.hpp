@@ -139,7 +139,7 @@ struct TreeOptions {
     int init_tries = 100;        // random_tree's draws under max_size before it refuses
 };
 
-constexpr int no_tree = std::numeric_limits<int>::max();   // an index: no finite tree
+constexpr int no_tree = (std::numeric_limits<int>::max)();   // an index: no finite tree
 
 // Ratle & Sebag's indices (§6.2): of[s] the symbol's, rule[s][r] the production's.
 struct DepthIndex {
@@ -191,7 +191,7 @@ inline DepthIndex depth_index(const Grammar& g)
             for (std::size_t r = 0; r < g.rules[s].size(); ++r) {
                 int deepest = 0;
                 for (int c : g.rules[s][r].children)
-                    deepest = std::max(deepest, ix.of[static_cast<std::size_t>(c)]);
+                    deepest = (std::max)(deepest, ix.of[static_cast<std::size_t>(c)]);
                 const int index = deepest == no_tree ? no_tree : 1 + deepest;
                 if (index < ix.rule[s][r]) {
                     ix.rule[s][r] = index;
@@ -244,7 +244,7 @@ inline std::vector<int> levels(const Grammar& g, const Tree& t)
 inline int depth(const Grammar& g, const Tree& t)
 {
     int d = 0;
-    for (int lv : levels(g, t)) d = std::max(d, lv);
+    for (int lv : levels(g, t)) d = (std::max)(d, lv);
     return d;
 }
 
@@ -314,9 +314,9 @@ inline void grow(const Grammar& g, const DepthIndex& ix, int symbol, int budget,
 template <typename G>
 inline Tree random_tree(const Grammar& g, const DepthIndex& ix, const TreeOptions& o, G& rng)
 {
-    const int budget = o.init_depth > 0 ? std::min(o.init_depth, o.max_depth) : o.max_depth;
+    const int budget = o.init_depth > 0 ? (std::min)(o.init_depth, o.max_depth) : o.max_depth;
     Tree t;
-    for (int k = 0; k < std::max(1, o.init_tries); ++k) {
+    for (int k = 0; k < (std::max)(1, o.init_tries); ++k) {
         t.nodes.clear();
         grow(g, ix, g.start, budget, t.nodes, rng);
         if (o.max_size <= 0 || t.nodes.size() <= static_cast<std::size_t>(o.max_size)) return t;
@@ -364,7 +364,7 @@ inline bool subtree_mutation(const Grammar& g, const DepthIndex& ix, const TreeO
     if (t.nodes.empty()) return false;
     const std::size_t i = static_cast<std::size_t>(rnd::below(rng, t.nodes.size()));
     int budget = o.max_depth - levels(g, t)[i] + 1;
-    if (o.mutation_depth > 0) budget = std::min(budget, o.mutation_depth);
+    if (o.mutation_depth > 0) budget = (std::min)(budget, o.mutation_depth);
     const int s = t.nodes[i].symbol;
     if (ix.of[static_cast<std::size_t>(s)] > budget) return false;
     std::vector<Node> sub;

@@ -153,11 +153,11 @@ inline Result run_replica_ladder(const Problem& P, double eq_tol, bool has_tol0,
     try {
         while (stop.go(ledger.left(budget), P)) {
             const long long left = ledger.left(budget);
-            const long long piece = every > 0 ? std::max(1LL, std::min(every, left / static_cast<long long>(K)))
-                                              : std::max(1LL, left / static_cast<long long>(K));
+            const long long piece = every > 0 ? (std::max)(1LL, (std::min)(every, left / static_cast<long long>(K)))
+                                              : (std::max)(1LL, left / static_cast<long long>(K));
             bool any = false;
             for (std::size_t m = 0; m < K && ledger.left(budget) > 0; ++m) {
-                const long long allowance = std::min(piece, ledger.left(budget));
+                const long long allowance = (std::min)(piece, ledger.left(budget));
                 const Start st = started[m] ? search::at(x[m]) : start;
                 const Result r = run(inner.name, Q[m], eq_tol, has_tol0, eq_tol0, pop_size, allowance,
                                      start_seed(seed, static_cast<std::uint64_t>(pieces)), knobs_at(m), {}, 0, st);
@@ -175,9 +175,9 @@ inline Result run_replica_ladder(const Problem& P, double eq_tol, bool has_tol0,
             }
             double now = std::numeric_limits<double>::infinity();
             for (std::size_t m = 0; m < K; ++m)
-                if (has[m]) now = std::min(now, best[m].objectives[0][0]);
+                if (has[m]) now = (std::min)(now, best[m].objectives[0][0]);
             stop.step(now < best_f);
-            best_f = std::min(best_f, now);
+            best_f = (std::min)(best_f, now);
             if (every == 0 || !any) {
                 own = every == 0 ? "rule" : "idle";
                 break;

@@ -135,7 +135,7 @@ public:
     void step(DataVault<Ind_t>& vault)
     {
         const int N = vault.pop_size();
-        const int d = std::min(vault.objs_n() - 1, vault.vars_n());       // the manifold's dimension
+        const int d = (std::min)(vault.objs_n() - 1, vault.vars_n());       // the manifold's dimension
         std::vector<std::vector<double>> X(static_cast<std::size_t>(N));
         for (int i = 0; i < N; ++i) X[static_cast<std::size_t>(i)] = vault.variables_of(static_cast<std::size_t>(i));
         const auto models = local_pca(X, d);
@@ -221,7 +221,7 @@ private:
             for (std::size_t t = 0; t < x.size(); ++t) p += (x[t] - M.mean[t]) * u[t];
             all -= p * p;
         }
-        return std::max(all, 0.0);
+        return (std::max)(all, 0.0);
     }
 
     // The principal subspace of the points S of X: the mean, the first d
@@ -315,11 +315,11 @@ private:
                 for (int k = 0; k < d; ++k) {
                     double p = 0.0;
                     for (std::size_t t = 0; t < n; ++t) p += (X[i][t] - M.mean[t]) * M.U[static_cast<std::size_t>(k)][t];
-                    M.a[static_cast<std::size_t>(k)] = std::min(M.a[static_cast<std::size_t>(k)], p);
-                    M.b[static_cast<std::size_t>(k)] = std::max(M.b[static_cast<std::size_t>(k)], p);
+                    M.a[static_cast<std::size_t>(k)] = (std::min)(M.a[static_cast<std::size_t>(k)], p);
+                    M.b[static_cast<std::size_t>(k)] = (std::max)(M.b[static_cast<std::size_t>(k)], p);
                 }
             double rest = 0.0;
-            for (std::size_t t = static_cast<std::size_t>(d); t < eig[j].size(); ++t) rest += std::max(eig[j][t], 0.0);
+            for (std::size_t t = static_cast<std::size_t>(d); t < eig[j].size(); ++t) rest += (std::max)(eig[j][t], 0.0);
             M.sigma = n > static_cast<std::size_t>(d) ? rest / static_cast<double>(n - static_cast<std::size_t>(d)) : 0.0;
             M.vol = 1.0;                                                  // RM-5
             for (int k = 0; k < d; ++k)

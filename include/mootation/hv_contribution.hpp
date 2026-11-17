@@ -101,7 +101,7 @@ inline double exact_one(const std::vector<std::vector<double>>& F, const std::ve
     for (std::size_t q = 0; q < n; ++q) {
         if (q == i) continue;
         const std::size_t at = L.size();
-        for (std::size_t k = 0; k < m; ++k) L.push_back(std::max(F[q][k], p[k]));
+        for (std::size_t k = 0; k < m; ++k) L.push_back((std::max)(F[q][k], p[k]));
         if (inside_row(L.data() + at, r)) ++rows;
         else L.resize(at);                            // as wfg drops it
     }
@@ -125,7 +125,7 @@ inline double exact_one(const std::vector<std::vector<double>>& F, const std::ve
             kept->next[p] = {std::move(in), sub};
         }
     }
-    return std::max(0.0, own - sub);
+    return (std::max)(0.0, own - sub);
 }
 
 // The end of a step for the kept counts: this step's become the last step's.
@@ -200,12 +200,12 @@ inline std::vector<double> contributions_box(const std::vector<std::vector<doubl
         for (std::size_t q = 0; q < n; ++q) {
             if (q == i) continue;
             const std::size_t at = L.size();
-            for (std::size_t k = 0; k < m; ++k) L.push_back(std::max(F[q][k], p[k]));
+            for (std::size_t k = 0; k < m; ++k) L.push_back((std::max)(F[q][k], p[k]));
             if (inside(L.data() + at)) ++rows;
             else L.resize(at);
         }
         const double sub = rows > 0 ? hypervolume::box(L.data(), rows, m, r.data()) : 0.0;
-        c[i] = std::max(0.0, own - sub);
+        c[i] = (std::max)(0.0, own - sub);
     }
     return c;
 }
@@ -330,7 +330,7 @@ inline std::vector<double> contributions_iwfg(const std::vector<std::vector<doub
             const std::size_t at = L.size();
             bool in = true;
             for (std::size_t j = 0; j < d; ++j) {
-                L.push_back(std::max(F[q][a.dims[j]], p[a.dims[j]]));
+                L.push_back((std::max)(F[q][a.dims[j]], p[a.dims[j]]));
                 in = in && L.back() < ref[j];
             }
             if (in) ++rows;
@@ -344,7 +344,7 @@ inline std::vector<double> contributions_iwfg(const std::vector<std::vector<doub
             sub = it->second.hv(L, rows, d);
         }
         if (stats) ++stats->chunks;
-        return a.w * std::max(0.0, own - sub);
+        return a.w * (std::max)(0.0, own - sub);
     };
 
     std::vector<std::deque<Chunk>> todo(n);
@@ -403,8 +403,8 @@ inline std::vector<double> contributions_iwfg(const std::vector<std::vector<doub
     double tol = 1e-12;                                // as the race's abs_tol
     for (std::size_t k = 0; k < m; ++k) {
         double lo = inf;
-        for (const auto& f : F) lo = std::min(lo, f[k]);
-        tol *= std::max(0.0, r[k] - lo);
+        for (const auto& f : F) lo = (std::min)(lo, f[k]);
+        tol *= (std::max)(0.0, r[k] - lo);
     }
     const double bound = partial[s] * (1.0 + 1e-9) + tol;
     // a point still below the bound is taken further, by at most 4 M chunks
@@ -462,7 +462,7 @@ inline std::vector<double> contributions_mc(const std::vector<std::vector<double
             for (std::size_t j = 0; j < m; ++j)
                 if (F[q][j] > p[j]) { ++worse; at = j; }
             covered_whole = worse == 0;               // a copy of p: no region of its own
-            if (worse == 1) b[at] = std::min(b[at], F[q][at]);
+            if (worse == 1) b[at] = (std::min)(b[at], F[q][at]);
         }
         if (covered_whole) continue;
         // Only a point no worse than b in every objective can cover a sample
@@ -476,7 +476,7 @@ inline std::vector<double> contributions_mc(const std::vector<std::vector<double
             if (reach) others.insert(others.end(), F[q].begin(), F[q].end());
         }
         double vol = 1.0;
-        for (std::size_t k = 0; k < m; ++k) vol *= std::max(0.0, b[k] - p[k]);
+        for (std::size_t k = 0; k < m; ++k) vol *= (std::max)(0.0, b[k] - p[k]);
         if (vol <= 0.0) continue;
         for (std::size_t s = 0; s < samples_per_point; ++s)
             for (std::size_t k = 0; k < m; ++k)
@@ -596,11 +596,11 @@ inline std::vector<double> contributions_race(const std::vector<std::vector<doub
             for (std::size_t j = 0; j < m; ++j)
                 if (F[q][j] > p[j]) { ++worse; at = j; }
             covered_whole = worse == 0;            // a copy of p: no region of its own
-            if (worse == 1) a.hi[at] = std::min(a.hi[at], F[q][at]);
+            if (worse == 1) a.hi[at] = (std::min)(a.hi[at], F[q][at]);
         }
         if (!covered_whole) {
             a.vol = 1.0;
-            for (std::size_t k = 0; k < m; ++k) a.vol *= std::max(0.0, a.hi[k] - a.lo[k]);
+            for (std::size_t k = 0; k < m; ++k) a.vol *= (std::max)(0.0, a.hi[k] - a.lo[k]);
         }
         if (a.vol <= 0.0) {                         // nothing of its own: exactly 0
             a.exact = true;
@@ -614,7 +614,7 @@ inline std::vector<double> contributions_race(const std::vector<std::vector<doub
             double v = 1.0;
             for (std::size_t j = 0; j < m && reach; ++j) {
                 reach = F[q][j] < a.hi[j];
-                v *= a.hi[j] - std::max(F[q][j], a.lo[j]);
+                v *= a.hi[j] - (std::max)(F[q][j], a.lo[j]);
             }
             if (reach) share.emplace_back(-v, q);
         }
@@ -634,10 +634,10 @@ inline std::vector<double> contributions_race(const std::vector<std::vector<doub
         std::vector<double> L;
         L.reserve(a.cover.size() * m);
         for (std::size_t q : a.cover)
-            for (std::size_t k = 0; k < m; ++k) L.push_back(std::max(F[q][k], a.lo[k]));
+            for (std::size_t k = 0; k < m; ++k) L.push_back((std::max)(F[q][k], a.lo[k]));
         const double taken = a.cover.empty() ? 0.0
             : hypervolume::wfg(L.data(), a.cover.size(), m, a.hi.data());
-        a.v = std::max(0.0, a.vol - taken);
+        a.v = (std::max)(0.0, a.vol - taken);
         a.dev = 0.0;
         a.exact = true;
         ++st.exact;
@@ -673,12 +673,12 @@ inline std::vector<double> contributions_race(const std::vector<std::vector<doub
     double tol = set.abs_tol;                       // abs_tol * prod(r - ideal)
     for (std::size_t k = 0; k < m; ++k) {
         double lo_k = inf;
-        for (const auto& f : F) lo_k = std::min(lo_k, f[k]);
-        tol *= std::max(0.0, r[k] - lo_k);
+        for (const auto& f : F) lo_k = (std::min)(lo_k, f[k]);
+        tol *= (std::max)(0.0, r[k] - lo_k);
     }
     const double nn = static_cast<double>(S.size());
     double D = 0.0;
-    for (const auto& a : S) D = std::max(D, a.vol);
+    for (const auto& a : S) D = (std::max)(D, a.vol);
     std::vector<std::size_t> live(S.size());
     for (std::size_t t = 0; t < S.size(); ++t) live[t] = t;
     std::size_t lc = S.size();                      // the current least: none before round 1
@@ -729,7 +729,7 @@ inline std::vector<double> contributions_race(const std::vector<std::vector<doub
     for (std::size_t t : live) {
         const Cand& a = S[t];
         if (!st.capped || a.exact) c[a.i] = a.v;
-        else c[a.i] = a.samples == 0 ? a.vol : std::min(a.vol, a.v + a.dev);   // Д8.5
+        else c[a.i] = a.samples == 0 ? a.vol : (std::min)(a.vol, a.v + a.dev);   // Д8.5
     }
     if (stats) *stats = st;
     return c;

@@ -116,8 +116,8 @@ inline void blx_alpha_crossover(const std::vector<double>& p1, const std::vector
         const double lo = sbx_require_bound(bounds[j].first,  "lower", static_cast<int>(j));
         const double hi = sbx_require_bound(bounds[j].second, "upper", static_cast<int>(j));
         const double I  = std::abs(p1[j] - p2[j]);
-        const double a  = std::min(p1[j], p2[j]) - alpha * I;
-        const double b  = std::max(p1[j], p2[j]) + alpha * I;
+        const double a  = (std::min)(p1[j], p2[j]) - alpha * I;
+        const double b  = (std::max)(p1[j], p2[j]) + alpha * I;
         auto child = [&](double parent, RepairTally& tally) {
             auto draw = [&] { return a + (b - a) * uni(rng); };
             double v = draw();
@@ -232,8 +232,8 @@ inline std::vector<std::pair<std::string, double>> crossover_stats(bool totals)
     if (co.active && !co.eig.empty()) {
         double sum = 0.0, lead = 0.0, low = co.eig.front();
         for (std::size_t i = 0; i < co.eig.size(); ++i) {
-            sum += std::max(co.eig[i], 0.0);
-            if (static_cast<int>(i) < co.m - 1) lead += std::max(co.eig[i], 0.0);
+            sum += (std::max)(co.eig[i], 0.0);
+            if (static_cast<int>(i) < co.m - 1) lead += (std::max)(co.eig[i], 0.0);
             if (co.eig[i] > 1e-12 * co.eig.front()) low = co.eig[i];
         }
         if (co.eig.front() > 0.0) {
@@ -331,7 +331,7 @@ struct CrossoverSpec {
             std::vector<Crossover> v;
             std::size_t a = 0;
             while (a <= w.size()) {
-                const std::size_t b = std::min(w.find(',', a), w.size());
+                const std::size_t b = (std::min)(w.find(',', a), w.size());
                 std::size_t x = a, y = b;              // the item without spaces
                 while (x < y && w[x] == ' ') ++x;
                 while (y > x && w[y - 1] == ' ') --y;
@@ -411,7 +411,7 @@ struct CrossoverSpec {
             // child (SHADE's Eq. 20; de_crossover.hpp)
             auto p_of = [&] {
                 if (de.set.adapt != DEAdapt::SHADE) return de.set.p;
-                const double lo = std::min(0.2, 2.0 / static_cast<double>(N));
+                const double lo = (std::min)(0.2, 2.0 / static_cast<double>(N));
                 rnd::uniform_real_distribution<double> u(lo, 0.2);
                 return u(rng);
             };

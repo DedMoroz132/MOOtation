@@ -88,7 +88,7 @@ inline double shape(int i, double t)
         case 3: return 1.0 - t;
         case 9: return 1.0 - dm::pow(t, 0.6);
         case 10: return 1.0 - dm::pow(t, 2.0);
-        case 11: return std::sqrt(std::max(0.0, 2.0 - dm::pow(t, 2.0)));
+        case 11: return std::sqrt((std::max)(0.0, 2.0 - dm::pow(t, 2.0)));
         case 12: return 0.85 - 0.8 * t - 0.08 * std::fabs(dm::sin(3.2 * dm::kPi * t));
         default: return 5.0 - dm::exp(t) - 0.5 * std::fabs(dm::sin(3.0 * dm::kPi * t));
     }
@@ -116,7 +116,7 @@ inline double least_over_g(int i, double f1)
         return g;
     }();
     const double golden = (std::sqrt(5.0) - 1.0) / 2.0;
-    const double base = std::max(1.0, f1 / upper(i));
+    const double base = (std::max)(1.0, f1 / upper(i));
     std::vector<double> G(grid.size());
     std::size_t k = 0;                                 // np.argmin: the first least
     double best = 0.0;
@@ -128,14 +128,14 @@ inline double least_over_g(int i, double f1)
             k = j;
         }
     }
-    double lo = G[k > 0 ? k - 1 : 0], hi = G[std::min(k + 1, grid.size() - 1)];
+    double lo = G[k > 0 ? k - 1 : 0], hi = G[(std::min)(k + 1, grid.size() - 1)];
     for (int it = 0; it < 60; ++it) {
         const double c = hi - golden * (hi - lo), d = lo + golden * (hi - lo);
         if (c * shape(i, f1 / c) < d * shape(i, f1 / d)) hi = d;
         else lo = c;
     }
     const double mid = 0.5 * (lo + hi);
-    return std::min(best, mid * shape(i, f1 / mid));
+    return (std::min)(best, mid * shape(i, f1 / mid));
 }
 
 // mw.floor: the least reachable f2 at f1
@@ -144,7 +144,7 @@ inline double floor_at(int i, double f1)
     if (scanned(i)) return shape(i, f1);
     if (i == 9 || i == 10 || i == 11) {
         const double top = upper(i);
-        return f1 <= top ? shape(i, std::min(f1, top)) : 0.0;
+        return f1 <= top ? shape(i, (std::min)(f1, top)) : 0.0;
     }
     return least_over_g(i, f1);
 }
@@ -209,9 +209,9 @@ inline double radius(int i, double th)
         const double l2 = 0.5 * dm::kPi - 2.0 * std::fabs(th - 0.25 * dm::kPi);
         double s = dm::sin(6.0 * dm::pow(l2, 3.0));
         if (std::fabs(s) < 1e-12) s = 0.0;
-        return 1.0 + std::max(0.5 * s, -0.45 * s);
+        return 1.0 + (std::max)(0.5 * s, -0.45 * s);
     }
-    if (i == 7) return std::max(1.0, 1.15 - 0.2 * dm::pow(dm::sin(4.0 * th), 8.0));
+    if (i == 7) return (std::max)(1.0, 1.15 - 0.2 * dm::pow(dm::sin(4.0 * th), 8.0));
     return 1.1;
 }
 
@@ -399,7 +399,7 @@ inline Rows spread(const Rows& F, std::size_t n, std::vector<std::size_t>* piece
     const std::size_t ends = idx.size();
     for (double t : linspace(0.0, s.back(), std::max<std::size_t>(n > ends ? n - ends : 0, 2))) {
         const std::size_t k = static_cast<std::size_t>(std::lower_bound(s.begin(), s.end(), t) - s.begin());
-        idx.push_back(std::min(k, F.n - 1));
+        idx.push_back((std::min)(k, F.n - 1));
     }
     std::sort(idx.begin(), idx.end());
     idx.erase(std::unique(idx.begin(), idx.end()), idx.end());
@@ -420,7 +420,7 @@ inline const std::vector<double>& mw14_records()
         for (double v : t) {
             const double h = 6.0 - dm::exp(v) - 1.5 * dm::sin(1.1 * dm::kPi * v * v);
             if (h < prior) out.push_back(v);
-            prior = std::min(prior, h);
+            prior = (std::min)(prior, h);
         }
         return out;
     }();

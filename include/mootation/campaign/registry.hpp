@@ -75,7 +75,7 @@ inline void failing_balls(const std::string& name, std::size_t n, double share,
         for (const auto& c : centres) {
             double s = 0.0;
             for (std::size_t j = 0; j < n; ++j) s += (u[j] - c[j]) * (u[j] - c[j]);
-            best = std::min(best, s);
+            best = (std::min)(best, s);
         }
         d[i] = std::sqrt(best);
     }
@@ -549,7 +549,7 @@ public:
         if (region_.kind == "n") {                // |u - clamp(u, W)| <= TUBE
             double d2 = 0.0;
             for (std::size_t j = 0; j < n; ++j) {
-                const double e = u[j] - std::min(std::max(u[j], region_.lo[j]), region_.hi[j]);
+                const double e = u[j] - (std::min)((std::max)(u[j], region_.lo[j]), region_.hi[j]);
                 d2 += e * e;
             }
             return d2 <= kFailTube * kFailTube;
@@ -560,7 +560,7 @@ public:
         for (std::size_t k = 0; k < region_.centres.size(); ++k) {
             double dot = 0.0;
             for (std::size_t j = 0; j < n; ++j) dot += u[j] * region_.centres[k][j];
-            best = std::min(best, uu + cc_[k] - 2.0 * dot);
+            best = (std::min)(best, uu + cc_[k] - 2.0 * dot);
         }
         return best < region_.radius * region_.radius;
     }
@@ -735,8 +735,8 @@ public:
             const double a = i == 1000 ? 1.0 : i * (1.0 / 1000.0);
             double f[2];
             objectives(a, 0.0, f);
-            ideal[1] = std::min(ideal[1], f[1]);
-            nadir[1] = std::max(nadir[1], f[1]);
+            ideal[1] = (std::min)(ideal[1], f[1]);
+            nadir[1] = (std::max)(nadir[1], f[1]);
         }
     }
 

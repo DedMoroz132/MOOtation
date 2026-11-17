@@ -141,7 +141,7 @@ private:
         Vec lo(m, std::numeric_limits<double>::infinity());
         for (int i : idx)
             for (std::size_t j = 0; j < m; ++j)
-                lo[j] = std::min(lo[j], P[static_cast<std::size_t>(i)].f[j]);
+                lo[j] = (std::min)(lo[j], P[static_cast<std::size_t>(i)].f[j]);
         for (int i : idx) {
             Vec& v = out[static_cast<std::size_t>(i)];
             v.resize(m);
@@ -177,7 +177,7 @@ private:
     {
         const Vec& w = W_[static_cast<std::size_t>(k)];
         double g = -std::numeric_limits<double>::infinity();
-        for (std::size_t j = 0; j < f.size(); ++j) g = std::max(g, std::abs(f[j]) / std::max(w[j], 1e-4));
+        for (std::size_t j = 0; j < f.size(); ++j) g = (std::max)(g, std::abs(f[j]) / (std::max)(w[j], 1e-4));
         return g;
     }
 
@@ -221,7 +221,7 @@ private:
                         const Vec& fa = F[static_cast<std::size_t>(in[a])];
                         const Vec& fb = F[static_cast<std::size_t>(in[b])];
                         for (std::size_t j = 0; j < fa.size(); ++j) d2 += (fa[j] - fb[j]) * (fa[j] - fb[j]);
-                        dist[a] = std::min(dist[a], std::sqrt(d2));
+                        dist[a] = (std::min)(dist[a], std::sqrt(d2));
                     }
                 const double least = *std::min_element(dist.begin(), dist.end());
                 int worst = -1;

@@ -160,7 +160,7 @@ inline Groups windows(std::size_t n, std::size_t w, std::size_t stride)
         return g;
     }
     for (std::size_t s = 0;; s += stride) {
-        const std::size_t a = std::min(s, n - w);              // the last window ends at the last variable
+        const std::size_t a = (std::min)(s, n - w);              // the last window ends at the last variable
         std::vector<std::size_t> one(w);
         for (std::size_t k = 0; k < w; ++k) one[k] = a + k;
         g.push_back(one);
@@ -211,7 +211,7 @@ inline Result run_coevolution(const Problem& P, double eq_tol, bool has_tol0, do
     const long long cycles = k.whole("cc_cycles", 0, 0), cap = k.whole("start_budget", 0, 0);
     const double min_dist = k.number("min_dist", 1e-3), min_df = k.number("min_df", 1e-8);
     if (by_nb && !P.neighbors) throw std::invalid_argument("coevolution: cc_groups = neighbors needs the neighbors hook");
-    const long long stride = stride0 > 0 ? stride0 : std::max(1LL, w / 2);
+    const long long stride = stride0 > 0 ? stride0 : (std::max)(1LL, w / 2);
     if (stride > w) throw std::invalid_argument("coevolution: cc_stride must not exceed cc_window (the groups overlap)");
     search::finite_box("coevolution", P);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
@@ -234,8 +234,8 @@ inline Result run_coevolution(const Problem& P, double eq_tol, bool has_tol0, do
             for (std::size_t g = 0; g < G.size(); ++g) {
                 const long long rest = search::left(ev);
                 if (rest <= 0) break;
-                const long long share = std::max(1LL, rest / static_cast<long long>(G.size() - g));
-                const long long allowance = cap > 0 ? std::min(cap, rest) : share;
+                const long long share = (std::max)(1LL, rest / static_cast<long long>(G.size() - g));
+                const long long allowance = cap > 0 ? (std::min)(cap, rest) : share;
                 const search::Found r = subspace::sub_run(ev, inner, context, runs == 0 ? start : Start{}, G[g],
                                                           allowance, start_seed(seed, static_cast<std::uint64_t>(runs)),
                                                           pop_size);
@@ -304,7 +304,7 @@ inline Result run_lns(const Problem& P, double eq_tol, bool has_tol0, double eq_
         const Vec x0 = subspace::first_point(P, start, rng);
         std::vector<std::size_t> all(n);
         for (std::size_t j = 0; j < n; ++j) all[j] = j;
-        const long long first_allowance = cap > 0 ? std::min(cap, search::left(ev)) : std::max(1LL, search::left(ev) / 10);
+        const long long first_allowance = cap > 0 ? (std::min)(cap, search::left(ev)) : (std::max)(1LL, search::left(ev) / 10);
         cur = subspace::sub_run(ev, inner, x0, start.has_x0 ? start : search::at(x0), all, first_allowance,
                                 start_seed(seed, 0), pop_size);
         if (cur.ok) log.add(cur.x, cur.f, 0);
@@ -320,13 +320,13 @@ inline Result run_lns(const Problem& P, double eq_tol, bool has_tol0, double eq_
                 for (std::size_t q = 1; q < c.size() && q < n; ++q)
                     if (c[q] > c[j]) j = q;
             } else {
-                j = std::min(n - 1, static_cast<std::size_t>(rnd::uniform01(rng) * static_cast<double>(n)));
+                j = (std::min)(n - 1, static_cast<std::size_t>(rnd::uniform01(rng) * static_cast<double>(n)));
             }
             const std::vector<std::size_t> win = window_at(j, cur.x);
             Vec destroyed = cur.x;                                                   // LNS-1
             for (std::size_t v : win) destroyed[v] = P.lo[v] + rnd::uniform01(rng) * search::width(P, v);
             const long long rest = search::left(ev);
-            const long long allowance = cap > 0 ? std::min(cap, rest) : std::max(1LL, std::min(rest, rest / 20 + 1));
+            const long long allowance = cap > 0 ? (std::min)(cap, rest) : (std::max)(1LL, (std::min)(rest, rest / 20 + 1));
             const search::Found r = subspace::sub_run(ev, inner, destroyed, Start{}, win, allowance,
                                                       start_seed(seed, static_cast<std::uint64_t>(runs)), pop_size);
             ++runs;

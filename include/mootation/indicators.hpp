@@ -40,13 +40,13 @@ inline double nan_min(double a, double b)
 {
     if (std::isnan(a)) return a;
     if (std::isnan(b)) return b;
-    return std::min(a, b);
+    return (std::min)(a, b);
 }
 inline double nan_max(double a, double b)
 {
     if (std::isnan(a)) return a;
     if (std::isnan(b)) return b;
-    return std::max(a, b);
+    return (std::max)(a, b);
 }
 
 // f(z0, z1) over [0, n) in `threads` contiguous parts (0: as many as the
@@ -54,13 +54,13 @@ inline double nan_max(double a, double b)
 template <typename F>
 void parallel(std::size_t n, unsigned threads, const F& f)
 {
-    if (threads == 0) threads = std::max(1u, std::thread::hardware_concurrency());
+    if (threads == 0) threads = (std::max)(1u, std::thread::hardware_concurrency());
     const std::size_t parts = std::min<std::size_t>(threads, n / 64 + 1);
     if (parts <= 1) { f(std::size_t{0}, n); return; }
     std::vector<std::thread> pool;
     const std::size_t step = (n + parts - 1) / parts;
     for (std::size_t p = 0; p < parts; ++p) {
-        const std::size_t a = p * step, b = std::min(n, a + step);
+        const std::size_t a = p * step, b = (std::min)(n, a + step);
         if (a < b) pool.emplace_back([&f, a, b] { f(a, b); });
     }
     for (auto& t : pool) t.join();
@@ -102,7 +102,7 @@ inline void front_distances(const double* F, std::size_t n, const double* R, std
             if (eps) eps[z] = best_eps;
         }
     };
-    if (threads == 0) threads = std::max(1u, std::thread::hardware_concurrency());
+    if (threads == 0) threads = (std::max)(1u, std::thread::hardware_concurrency());
     const std::size_t parts = std::max<std::size_t>(1, std::min<std::size_t>(threads, r / 64));
     const std::size_t step = parts ? (r + parts - 1) / parts : r;
     std::vector<std::vector<double>> mins(parts, std::vector<double>(to_ref ? n : 0, inf));
@@ -111,7 +111,7 @@ inline void front_distances(const double* F, std::size_t n, const double* R, std
     } else {
         std::vector<std::thread> pool;
         for (std::size_t p = 0; p < parts; ++p) {
-            const std::size_t z0 = p * step, z1 = std::min(r, z0 + step);
+            const std::size_t z0 = p * step, z1 = (std::min)(r, z0 + step);
             if (z0 < z1) pool.emplace_back([&work, &mins, p, z0, z1] { work(z0, z1, mins[p]); });
         }
         for (auto& t : pool) t.join();
@@ -126,7 +126,7 @@ inline void front_distances(const double* F, std::size_t n, const double* R, std
 
 // metrics.igd's distances: near[z] = min over a of ||z - a||.
 inline void igd_distances(const double* F, std::size_t n, const double* R, std::size_t r,
-                          std::size_t m, double* near, unsigned threads = 1)
+                          std::size_t m, double* nearby, unsigned threads = 1)
 {
     detail::parallel(r, threads, [&](std::size_t z0, std::size_t z1) {
         std::vector<double> buf(m);
@@ -142,7 +142,7 @@ inline void igd_distances(const double* F, std::size_t n, const double* R, std::
                 const double v = std::sqrt(np::sum(buf.data(), m));
                 best = a == 0 ? v : detail::nan_min(best, v);
             }
-            near[z] = best;
+            nearby[z] = best;
         }
     });
 }

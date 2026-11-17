@@ -695,19 +695,19 @@ inline std::vector<std::string> benchmark_selection(const Value& spec, const Reg
                 continue;
             }
             const std::string head = p.substr(0, p.find('_'));
-            std::vector<std::string> near;
+            std::vector<std::string> nearby;
             for (const auto& n : names)
-                if (upper(n).rfind(upper(head), 0) == 0) near.push_back(n);
-            if (near.empty()) {
+                if (upper(n).rfind(upper(head), 0) == 0) nearby.push_back(n);
+            if (nearby.empty()) {
                 std::string fam;
                 for (char c : head)
                     if (std::isalpha(static_cast<unsigned char>(c))) fam += c;
                 for (const auto& n : names)
-                    if (upper(n).rfind(upper(fam), 0) == 0) near.push_back(n);
+                    if (upper(n).rfind(upper(fam), 0) == 0) nearby.push_back(n);
             }
-            if (near.size() > 5) near.resize(5);
+            if (nearby.size() > 5) nearby.resize(5);
             bad("benchmarks.problems",
-                "unknown problem '" + p + "'" + (near.empty() ? "" : "; did you mean: " + join(near, ", ")));
+                "unknown problem '" + p + "'" + (nearby.empty() ? "" : "; did you mean: " + join(nearby, ", ")));
         }
         return out;
     }
@@ -908,11 +908,11 @@ inline std::vector<std::string> validate(Config& cfg, const Registry& reg,
         const auto& a = cfg.algorithms[i];
         const std::string where = "algorithms[" + std::to_string(i) + "] (" + a.name + ")";
         if (!known.empty() && !known.count(a.name)) {
-            std::vector<std::string> near;
+            std::vector<std::string> nearby;
             for (const auto& n : known)
-                if (n.rfind(a.name.substr(0, 3), 0) == 0) near.push_back(n);
-            if (near.size() > 5) near.resize(5);
-            bad(where, "unknown algorithm '" + a.name + "'" + (near.empty() ? "" : "; did you mean: " + join(near, ", ")));
+                if (n.rfind(a.name.substr(0, 3), 0) == 0) nearby.push_back(n);
+            if (nearby.size() > 5) nearby.resize(5);
+            bad(where, "unknown algorithm '" + a.name + "'" + (nearby.empty() ? "" : "; did you mean: " + join(nearby, ", ")));
         }
         if (a.pop < 2 && !(cfg.kind == "builtin" && a.pop == 0)) bad(where, "pop must be >= 2, got " + std::to_string(a.pop));
         if (a.evaluations < 0) bad(where, "evaluations must be >= 0, got " + std::to_string(a.evaluations));

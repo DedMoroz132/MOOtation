@@ -270,7 +270,7 @@ inline Result fit(const Kernel& K, const std::vector<double>& y, const std::vect
             lt = l;
             for (std::size_t j = 0; j < free_l.size(); ++j) {
                 const std::size_t k = free_l[j];
-                lt[k] = std::min(beta, std::max(alpha, l[k] + mu * h[p + j]));
+                lt[k] = (std::min)(beta, (std::max)(alpha, l[k] + mu * h[p + j]));
             }
             const double pt = detail::residual(K, y, w, lt, at, ft);
             if (pt < phi) {
@@ -314,7 +314,7 @@ inline double rho_max(const Kernel& K, const std::vector<double>& y, const std::
         K(lam, e, nullptr, nullptr);
         const double ne = std::sqrt(detail::wdot(e, e, w));
         if (ne == 0.0 || ny == 0.0) continue;
-        worst = std::max(worst, detail::wdot(f, e, w) / (ny * ne));
+        worst = (std::max)(worst, detail::wdot(f, e, w) / (ny * ne));
     }
     return worst;
 }

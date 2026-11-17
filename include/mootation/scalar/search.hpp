@@ -239,10 +239,10 @@ inline std::vector<Result> starts(Evaluator& ev, const Inner& inner, std::vector
 {
     const long long rest = left(ev);
     if (rest <= 0 || s.empty()) return {};
-    const long long each = cap > 0 ? std::min(cap, rest) : std::max(1LL, rest / static_cast<long long>(s.size()));
+    const long long each = cap > 0 ? (std::min)(cap, rest) : (std::max)(1LL, rest / static_cast<long long>(s.size()));
     long long given = 0;
     for (auto& sp : s) {
-        sp.allowance = std::min(each, rest - given);
+        sp.allowance = (std::min)(each, rest - given);
         given += sp.allowance;
     }
     while (!s.empty() && s.back().allowance <= 0) s.pop_back();
@@ -367,7 +367,7 @@ inline Result run_mlsl(const Problem& P, double eq_tol, bool has_tol0, double eq
                 const std::size_t i = order[q];
                 if (used[i] || !std::isfinite(f[i])) continue;
                 bool excluded = false;                                                         // Q_τ, X*_ν
-                for (std::size_t c = 0; c < n && !excluded; ++c) excluded = std::min(U[i][c], 1.0 - U[i][c]) < tau;
+                for (std::size_t c = 0; c < n && !excluded; ++c) excluded = (std::min)(U[i][c], 1.0 - U[i][c]) < tau;
                 for (std::size_t q2 = 0; q2 < minima.size() && !excluded; ++q2) {
                     double d2 = 0.0;
                     for (std::size_t c = 0; c < n; ++c) d2 += (minima[q2][c] - U[i][c]) * (minima[q2][c] - U[i][c]);
@@ -540,13 +540,13 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
                 if (y.size() != n) throw std::runtime_error(name + ": the perturb hook changed the point's length");
                 for (std::size_t j = 0; j < n; ++j)
                     y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
-                                                       : std::min(P.hi[j], std::max(P.lo[j], y[j]));
+                                                       : (std::min)(P.hi[j], (std::max)(P.lo[j], y[j]));
             } else {
                 for (std::size_t j = 0; j < n; ++j) {                                            // SRCH-4
                     const double moved = y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step *
                                                     (absolute ? 1.0 : search::width(P, j));    // SRCH-15
                     y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(moved, P.lo[j], P.hi[j])  // PER-2
-                                                       : std::min(P.hi[j], std::max(P.lo[j], moved));
+                                                       : (std::min)(P.hi[j], (std::max)(P.lo[j], moved));
                 }
             }
             const double u = rnd::uniform01(rng);
@@ -599,7 +599,7 @@ inline Result run_walk(const std::string& name, const Problem& P, double eq_tol,
             }
             if (bh && !ladder && tried == interval) {                                            // SRCH-5, SRCH-18
                 step = static_cast<double>(accepted) / static_cast<double>(tried) > target ? step / 0.9 : step * 0.9;
-                step = std::min(step, 1.0);                                                       // SRCH-10
+                step = (std::min)(step, 1.0);                                                       // SRCH-10
                 accepted = tried = 0;
             }
             idle = ev.used() == before ? idle + 1 : 0;
@@ -666,7 +666,7 @@ inline Result run_halving(const Problem& P, double eq_tol, bool has_tol0, double
             const long long more = budget / (static_cast<long long>(arms.size()) * rounds);
             if (more <= 0) break;
             std::vector<StartSpec> specs;
-            const long long fresh = std::min(more, search::left(ev) / static_cast<long long>(arms.size()));
+            const long long fresh = (std::min)(more, search::left(ev) / static_cast<long long>(arms.size()));
             if (fresh <= 0) break;
             for (Arm& a : arms) {
                 a.spec.allowance += more;                                                         // SRCH-6
@@ -741,7 +741,7 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
     try {
         while (stop.go(ev)) {
             const double before = ev.used();
-            g.fresh = std::min(every, search::left(ev));                                          // SRCH-7
+            g.fresh = (std::min)(every, search::left(ev));                                          // SRCH-7
             g.allowance += g.fresh;
             if (!written.empty()) {                                                               // SRCH-12
                 g.start = start;
@@ -766,12 +766,12 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
             });
             if (pick == "spread") order.resize(std::max<std::size_t>(1, order.size() / 10));
             std::vector<StartSpec> specs;
-            auto far = [&](std::size_t i) {
+            auto distant = [&](std::size_t i) {
                 double d = std::numeric_limits<double>::infinity();
                 for (const Vec& s : started) {
                     double m = 0.0;
-                    for (std::size_t j = 0; j < n; ++j) m = std::max(m, std::fabs(ev.X[i][j] - s[j]) / scale(j));
-                    d = std::min(d, m);
+                    for (std::size_t j = 0; j < n; ++j) m = (std::max)(m, std::fabs(ev.X[i][j] - s[j]) / scale(j));
+                    d = (std::min)(d, m);
                 }
                 return d;
             };
@@ -780,7 +780,7 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
                 if (pick == "spread" && !specs.empty()) {
                     double best_d = -1.0;
                     for (std::size_t q : order) {
-                        const double d = far(q);
+                        const double d = distant(q);
                         if (d > best_d) {
                             best_d = d;
                             i = q;
@@ -804,9 +804,9 @@ inline Result run_memetic(const Problem& P, double eq_tol, bool has_tol0, double
                 specs.push_back(sp);
             }
             const long long share_cap =
-                std::max(1LL, static_cast<long long>(share / (1.0 - share) * static_cast<double>(every)) /
+                (std::max)(1LL, static_cast<long long>(share / (1.0 - share) * static_cast<double>(every)) /
                                   std::max<long long>(1, static_cast<long long>(specs.size())));
-            const std::vector<Result> res = search::starts(ev, local, specs, cap > 0 ? std::min(cap, share_cap) : share_cap,
+            const std::vector<Result> res = search::starts(ev, local, specs, cap > 0 ? (std::min)(cap, share_cap) : share_cap,
                                                            static_cast<int>(threads), pop_size);
             for (std::size_t q = 0; q < res.size(); ++q) {
                 const search::Found b = search::found(res[q]);

@@ -110,7 +110,7 @@ inline Run run_cma(Evaluator& ev, const Vec& m0, double sigma0, std::size_t lamb
     r.sigma0 = sigma0;
     const long long before = ev.spent;
     const long long limit = ev.limit;
-    if (allowance > 0) ev.limit = std::min(limit, ev.spent + allowance);
+    if (allowance > 0) ev.limit = (std::min)(limit, ev.spent + allowance);
     CMAES es(m0, sigma0, rng, static_cast<int>(lambda), options);
     const std::size_t n = m0.size();
     auto value = [&](const Vec& y) {
@@ -126,7 +126,7 @@ inline Run run_cma(Evaluator& ev, const Vec& m0, double sigma0, std::size_t lamb
         if (clip)
             for (std::size_t j = 0; j < n; ++j) {
                 if (periodic::is(ev.P.periodic, j)) continue;
-                x[j] = std::min(ev.hi[j], std::max(ev.lo[j], y[j]));
+                x[j] = (std::min)(ev.hi[j], (std::max)(ev.lo[j], y[j]));
                 d2 += (y[j] - x[j]) * (y[j] - x[j]);
             }
         const std::size_t i = ev.index(x);
@@ -214,7 +214,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
     for (std::size_t j = 0; j < n; ++j) {
         if (!std::isfinite(P.lo[j]) || !std::isfinite(P.hi[j]))
             throw std::invalid_argument(name + " draws its start in the box: every bound must be finite (RST-6)");
-        width = std::max(width, P.hi[j] - P.lo[j]);
+        width = (std::max)(width, P.hi[j] - P.lo[j]);
     }
     const bool warm = k.find("warm_start") && k.word("warm_start", "off", {"off", "on"}) == "on";   // RST-9
     strategy::StopRule stop = strategy::stop_of(k);                                  // stop_rule.hpp: a step a run of CMA-ES
@@ -276,7 +276,7 @@ inline Result run_restarts(const std::string& name, const Problem& P, double eq_
             const double u = rnd::uniform01(rng), u2 = rnd::uniform01(rng);              // RST-2
             const double ratio = 0.5 * static_cast<double>(lam_last) / static_cast<double>(lam_def);
             const auto lam_s = static_cast<std::size_t>(std::floor(static_cast<double>(lam_def) * dm::pow(ratio, u * u)));
-            r = one(2, std::max(lam_s, lam_def), sigma_large * dm::pow(10.0, -2.0 * u2), std::max(1LL, last_large / 2), rng);
+            r = one(2, (std::max)(lam_s, lam_def), sigma_large * dm::pow(10.0, -2.0 * u2), (std::max)(1LL, last_large / 2), rng);
             if (r.budget_out && ev.left() > 0) r.budget_out = false;                     // its own allowance ended
         }
         stop.step(ev);

@@ -58,17 +58,17 @@ inline void sbx(const std::vector<double>& p1, const std::vector<double>& p2, co
     for (std::size_t j = 0; j < p1.size(); ++j) {
         if (rnd::uniform01(g) > 0.5) continue;
         if (std::fabs(p1[j] - p2[j]) < 1e-14) continue;
-        const double y1 = std::min(p1[j], p2[j]), y2 = std::max(p1[j], p2[j]);
+        const double y1 = (std::min)(p1[j], p2[j]), y2 = (std::max)(p1[j], p2[j]);
         const double dy = y2 - y1;
         const double u = rnd::uniform01(g);
         const double bl = 1.0 + 2.0 * (y1 - lo[j]) / dy;
         const double al = 2.0 - dm::pow(bl, -(kEtaC + 1.0));
         double bq = u <= 1.0 / al ? dm::pow(u * al, e) : dm::pow(1.0 / (2.0 - u * al), e);
-        c1[j] = std::min(std::max(0.5 * ((y1 + y2) - bq * dy), lo[j]), hi[j]);
+        c1[j] = (std::min)((std::max)(0.5 * ((y1 + y2) - bq * dy), lo[j]), hi[j]);
         const double bh = 1.0 + 2.0 * (hi[j] - y2) / dy;
         const double ah = 2.0 - dm::pow(bh, -(kEtaC + 1.0));
         bq = u <= 1.0 / ah ? dm::pow(u * ah, e) : dm::pow(1.0 / (2.0 - u * ah), e);
-        c2[j] = std::min(std::max(0.5 * ((y1 + y2) + bq * dy), lo[j]), hi[j]);
+        c2[j] = (std::min)((std::max)(0.5 * ((y1 + y2) + bq * dy), lo[j]), hi[j]);
         if (rnd::uniform01(g) < 0.5) std::swap(c1[j], c2[j]);
     }
 }
@@ -87,15 +87,15 @@ inline void polynomial_mutation(std::vector<double>& x, const std::vector<double
         const double u = rnd::uniform01(g);
         double dq;
         if (u < 0.5) {
-            const double b = std::min(std::max((x[j] - lo[j]) / dx, 0.0), 1.0);
+            const double b = (std::min)((std::max)((x[j] - lo[j]) / dx, 0.0), 1.0);
             const double tmp = 2.0 * u + (1.0 - 2.0 * u) * dm::pow(1.0 - b, kEtaM + 1.0);
             dq = dm::pow(tmp, e) - 1.0;
         } else {
-            const double b = std::min(std::max((hi[j] - x[j]) / dx, 0.0), 1.0);
+            const double b = (std::min)((std::max)((hi[j] - x[j]) / dx, 0.0), 1.0);
             const double tmp = 2.0 * (1.0 - u) + (2.0 * u - 1.0) * dm::pow(1.0 - b, kEtaM + 1.0);
             dq = 1.0 - dm::pow(tmp, e);
         }
-        x[j] = std::min(std::max(x[j] + dq * dx, lo[j]), hi[j]);
+        x[j] = (std::min)((std::max)(x[j] + dq * dx, lo[j]), hi[j]);
     }
 }
 
@@ -127,7 +127,7 @@ inline Answer random_selection_ea(const Evaluate& evaluate, const std::vector<do
     Rows X(pop, std::vector<double>(d));
     for (auto& x : X)
         for (std::size_t j = 0; j < d; ++j) x[j] = lo[j] + rnd::uniform01(g) * (hi[j] - lo[j]);
-    const std::size_t k0 = std::min(pop, max_evaluations);
+    const std::size_t k0 = (std::min)(pop, max_evaluations);
     X.resize(k0);
     Rows F;
     for (const auto& x : X) F.push_back(evaluate(x));
@@ -140,7 +140,7 @@ inline Answer random_selection_ea(const Evaluate& evaluate, const std::vector<do
     }
     std::vector<double> c1, c2;
     while (spent < max_evaluations) {
-        const std::size_t k = std::min(pop, max_evaluations - spent);
+        const std::size_t k = (std::min)(pop, max_evaluations - spent);
         Rows kids;
         while (kids.size() < k) {
             const std::size_t a = static_cast<std::size_t>(rnd::below(g, X.size()));
@@ -164,14 +164,14 @@ inline Answer random_selection_ea(const Evaluate& evaluate, const std::vector<do
         std::vector<std::size_t> order(Xa.size());
         std::iota(order.begin(), order.end(), std::size_t{0});
         rnd::shuffle(order.begin(), order.end(), g);
-        order.resize(std::min(pop, Xa.size()));
+        order.resize((std::min)(pop, Xa.size()));
         X.clear();
         F.clear();
         for (auto i : order) {
             X.push_back(Xa[i]);
             F.push_back(Fa[i]);
         }
-        if (observe && (gen % std::max(1, record_every) == 0 || spent >= max_evaluations)) {
+        if (observe && (gen % (std::max)(1, record_every) == 0 || spent >= max_evaluations)) {
             keep_ok(F, X, Fo, Xo);
             observe(gen, Fo, Xo);
         }
@@ -238,7 +238,7 @@ inline Answer gsemo(const Evaluate& evaluate, const std::vector<double>& lo, con
         // a "generation" is pop evaluations, so records line up with the others
         if (spent % pop == 0 || spent >= max_evaluations) {
             ++step;
-            if (observe && (step % std::max(1, record_every) == 0 || spent >= max_evaluations)) {
+            if (observe && (step % (std::max)(1, record_every) == 0 || spent >= max_evaluations)) {
                 answer(Fa, Xa);
                 observe(step, Fa, Xa);
             }

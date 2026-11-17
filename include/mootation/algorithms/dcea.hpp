@@ -189,7 +189,7 @@ private:
         double q=std::sqrt(na)*std::sqrt(nb); if(q<1e-300) return 1.0; return std::clamp(d/q,-1.0,1.0);
     }
     static std::vector<double> unit(std::vector<double> f){
-        double n=0; for(double v:f) n+=v*v; n=std::sqrt(std::max(n,1e-300)); for(double&v:f) v/=n; return f;
+        double n=0; for(double v:f) n+=v*v; n=std::sqrt((std::max)(n,1e-300)); for(double&v:f) v/=n; return f;
     }
     bool dom(const Sol& a, const Sol& b) const {
         return detail::dominates(constraint_mode, a.objs, a.cv, b.objs, b.cv);
@@ -202,7 +202,7 @@ private:
         for(int i=1;i<(int)set.size();++i){ double c=cosang(s,set[i]); if(c>bc){bc=c;best=i;} }
         return best;
     }
-    void upd_ideal(const std::vector<double>& f){ for(int k=0;k<m_;++k) z_[k]=std::min(z_[k],f[k]); }
+    void upd_ideal(const std::vector<double>& f){ for(int k=0;k<m_;++k) z_[k]=(std::min)(z_[k],f[k]); }
 
     // NDS: the number of fronts (MF) for a set of indices into pool
     int max_front(const std::vector<int>& idx, const std::vector<Sol>& pool) const {
@@ -325,7 +325,7 @@ public:
             throw std::invalid_argument("DCEA: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
         auto Vr=das_dennis::generate_auto(m_,W_req_); V_.clear(); for(auto&v:Vr) V_.push_back(unit(v)); W_=(int)V_.size();
-        if(N_%W_!=0) S_=std::max(1,N_/W_); else S_=N_/W_;
+        if(N_%W_!=0) S_=(std::max)(1,N_/W_); else S_=N_/W_;
         S_=N_/W_; if(S_<1) S_=1;
         auto Lr=das_dennis::generate_auto(m_,N_); Lambda_.clear(); for(auto&v:Lr) Lambda_.push_back(unit(v));
         const auto& bd=vault.get_bounds();
@@ -336,7 +336,7 @@ public:
         pop_.clear(); for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
-        z_.assign(m_,std::numeric_limits<double>::max()); for(auto&s:pop_) upd_ideal(s.objs);
+        z_.assign(m_,(std::numeric_limits<double>::max)()); for(auto&s:pop_) upd_ideal(s.objs);
         init_subpops();   // DCEA-6: Alg.3 l.6-7 (Eq.2 + Algorithm 1)
     }
     void setup_seeded(DataVault<Ind_t>& vault){
@@ -351,7 +351,7 @@ public:
         pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
-        z_.assign(m_,std::numeric_limits<double>::max()); for(auto&s:pop_) upd_ideal(s.objs);
+        z_.assign(m_,(std::numeric_limits<double>::max)()); for(auto&s:pop_) upd_ideal(s.objs);
         init_subpops();   // DCEA-6: Alg.3 l.6-7 (Eq.2 + Algorithm 1)
     }
 
@@ -362,7 +362,7 @@ public:
         ++gen_;
         int scratch=vault.expand(1);
         const auto& bd=vault.get_bounds();
-        double frac = std::min(1.0, (double)gen_/std::max(1,t_max_));   // ≈ NFE/NFEmax
+        double frac = (std::min)(1.0, (double)gen_/(std::max)(1,t_max_));   // ≈ NFE/NFEmax
 
         // DCEA-6: SP^w is NOT recomputed by the Eq.2 association — SP_ is
         // used, inherited from the ESM of the previous generation / the
@@ -447,7 +447,7 @@ public:
                 // B^w = the b nearest Λ to V_[w]
                 std::vector<std::pair<double,int>> dd;
                 for(int l=0;l<(int)Lambda_.size();++l){ double s=0; for(int k=0;k<m_;++k){double df=V_[w][k]-Lambda_[l][k];s+=df*df;} dd.emplace_back(std::sqrt(s),l); }
-                int bb=std::min(b_,(int)dd.size()); std::partial_sort(dd.begin(),dd.begin()+bb,dd.end());
+                int bb=(std::min)(b_,(int)dd.size()); std::partial_sort(dd.begin(),dd.begin()+bb,dd.end());
                 std::vector<int> DC;
                 for(int t=0;t<bb;++t) for(int i:tau[dd[t].second]) if(!inYw[i]) DC.push_back(i);
                 rnd::uniform_int_distribution<int> dr(0,(int)R.size()-1);
@@ -473,7 +473,7 @@ public:
         // Eq.7 gloss: z^min_g is "calculated from the previous F_R, which will
         // be updated when Algorithm 6 ends" — recomputed here over this
         // generation's R, held fixed until the next ESM ends (DCEA-2).
-        z_.assign(m_,std::numeric_limits<double>::max());
+        z_.assign(m_,(std::numeric_limits<double>::max)());
         for(const auto& s:R) upd_ideal(s.objs);
 
         // ── periodic update of V from the cluster centres (DCEA-1) ──

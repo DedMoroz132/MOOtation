@@ -368,7 +368,7 @@ private:
                 cond_.push_back(np_sign(f_.x_opt[static_cast<std::size_t>(i)]) * dm::pow(10.0, i / (D - 1.0)));
         if (f_.fid == 20)
             for (double v : f_.x_opt) two_abs_.push_back(2.0 * std::abs(v));
-        if (f_.fid == 9 || f_.fid == 19) c_ = std::max(1.0, std::sqrt(static_cast<double>(D)) / 8.0);
+        if (f_.fid == 9 || f_.fid == 19) c_ = (std::max)(1.0, std::sqrt(static_cast<double>(D)) / 8.0);
         if (f_.fid == 23) c_ = 10.0 / dm::pow(static_cast<double>(D), 1.2);
         if (f_.fid == 24) {
             c_ = 1.0 - 1.0 / (2.0 * std::sqrt(D + 20.0) - 8.2);
@@ -439,7 +439,7 @@ private:
 
     double f8(const double* d) const
     {
-        const double c = std::max(1.0, std::sqrt(static_cast<double>(D_)) / 8.0);
+        const double c = (std::max)(1.0, std::sqrt(static_cast<double>(D_)) / 8.0);
         double z[kMaxSoloD] = {}, t[kMaxSoloD] = {};
         for (int i = 0; i < D_; ++i) z[i] = c * d[i] + 1.0;
         for (int i = 0; i < D_ - 1; ++i) {
@@ -685,7 +685,7 @@ private:
             aa[i] = a[i] * a[i];
             bb[i] = b[i] * b[i];
         }
-        const double funnel = std::min(row_sum(aa, static_cast<std::size_t>(D_)),
+        const double funnel = (std::min)(row_sum(aa, static_cast<std::size_t>(D_)),
                                        1.0 * D_ + c_ * row_sum(bb, static_cast<std::size_t>(D_)));
         matvec(f_.R, D_, a, u);
         for (int i = 0; i < D_; ++i) u[i] = f_.lam[static_cast<std::size_t>(i)] * u[i];
@@ -805,7 +805,7 @@ inline Function instance(int fid, int iid, int D)
         for (int i = 0; i < D; ++i) f.x_opt[static_cast<std::size_t>(i)] = scale * f.sign[static_cast<std::size_t>(i)];
     }
     if (fid == 9 || fid == 19) {
-        const double two_c = 2.0 * std::max(1.0, std::sqrt(static_cast<double>(D)) / 8.0);
+        const double two_c = 2.0 * (std::max)(1.0, std::sqrt(static_cast<double>(D)) / 8.0);
         for (int j = 0; j < D; ++j) {
             double s = 0.0;
             for (int i = 0; i < D; ++i) s = s + f.R[static_cast<std::size_t>(i * D + j)];

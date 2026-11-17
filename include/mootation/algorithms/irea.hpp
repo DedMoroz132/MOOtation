@@ -136,10 +136,10 @@ private:
     void update_ideal(DataVault<Ind_t>& vault, int pool) {
         int m = vault.objs_n();
         if (static_cast<int>(z_.size()) != m)
-            z_.assign(m, std::numeric_limits<double>::max());
+            z_.assign(m, (std::numeric_limits<double>::max)());
         for (int i = 0; i < pool; ++i) {
             const auto& o = vault.objectives_of(i);
-            for (int j = 0; j < m; ++j) z_[j] = std::min(z_[j], o[j]);
+            for (int j = 0; j < m; ++j) z_[j] = (std::min)(z_[j], o[j]);
         }
     }
 
@@ -153,7 +153,7 @@ private:
         const double eps = 1e-6;
         std::vector<int> extreme(m, -1);
         for (int i = 0; i < m; ++i) {
-            double best_asf = std::numeric_limits<double>::max();
+            double best_asf = (std::numeric_limits<double>::max)();
             for (int v = 0; v < pool; ++v) {
                 const auto& o = vault.objectives_of(v);
                 double asf = 0.0;
@@ -205,10 +205,10 @@ private:
             }
         }
         if (degenerate) {
-            std::vector<double> nadir(m, -std::numeric_limits<double>::max());
+            std::vector<double> nadir(m, -(std::numeric_limits<double>::max)());
             for (int v = 0; v < pool; ++v) {
                 const auto& o = vault.objectives_of(v);
-                for (int j = 0; j < m; ++j) nadir[j] = std::max(nadir[j], o[j]);
+                for (int j = 0; j < m; ++j) nadir[j] = (std::max)(nadir[j], o[j]);
             }
             for (int j = 0; j < m; ++j) intercepts[j] = nadir[j] - zstar[j];
         }
@@ -216,7 +216,7 @@ private:
         for (int v = 0; v < pool; ++v) {
             const auto& o = vault.objectives_of(v);
             for (int j = 0; j < m; ++j) {
-                double denom = std::max(intercepts[j], 1e-12);
+                double denom = (std::max)(intercepts[j], 1e-12);
                 fn[v][j] = (o[j] - zstar[j]) / denom;   // ≥ 0: f ≥ z* (running min)
             }
         }
@@ -237,7 +237,7 @@ private:
     static double perp(const std::vector<double>& f, const std::vector<double>& w) {
         double dot = 0.0, ww = 0.0;
         for (std::size_t j = 0; j < f.size(); ++j) { dot += f[j] * w[j]; ww += w[j] * w[j]; }
-        ww = std::max(ww, 1e-30);
+        ww = (std::max)(ww, 1e-30);
         double t = dot / ww;
         double s = 0.0;
         for (std::size_t j = 0; j < f.size(); ++j) { double d = f[j] - t * w[j]; s += d * d; }
@@ -268,7 +268,7 @@ private:
         int Nref = static_cast<int>(W_.size());
         std::vector<std::vector<int>> clusters(Nref);
         for (int s = 0; s < pool; ++s) {
-            int    bj = 0; double bd = std::numeric_limits<double>::max();
+            int    bj = 0; double bd = (std::numeric_limits<double>::max)();
             for (int j = 0; j < Nref; ++j) {
                 double d = perp(Fn[s], W_[j]);
                 if (d < bd) { bd = d; bj = j; }
@@ -314,7 +314,7 @@ public:
             else                        vault.set_variables(i, vars);
         }
         vault.sync();
-        z_.assign(m, std::numeric_limits<double>::max());
+        z_.assign(m, (std::numeric_limits<double>::max)());
         update_ideal(vault, n);
         auto Fn = normalise(vault, n);
         associate(vault, n, Fn);                       // Associate(P0)
@@ -323,7 +323,7 @@ public:
     void setup_seeded(DataVault<Ind_t>& vault) {
         int n = vault.pop_size(), m = vault.objs_n();
         if (W_.empty()) W_ = das_dennis::generate_exact(m, n);
-        z_.assign(m, std::numeric_limits<double>::max());
+        z_.assign(m, (std::numeric_limits<double>::max)());
         update_ideal(vault, n);
         auto Fn = normalise(vault, n);
         associate(vault, n, Fn);
@@ -356,7 +356,7 @@ public:
 
         // §4.3(2): p_c = 1.0, p_m = 1/n, with n the number of real variables.
         double pm = (pm_ >= 0.0) ? pm_
-                                 : 1.0 / static_cast<double>(std::max(1, vault.vars_n()));
+                                 : 1.0 / static_cast<double>((std::max)(1, vault.vars_n()));
 
         // (8) Variation: SBX + polynomial mutation over parent pairs ->
         // offspring in [N, 2N).
@@ -423,7 +423,7 @@ public:
             std::stable_sort(cl.begin(), cl.end(),
                       [&](int a, int b){ return F[a] < F[b]; });
         int Nf = 0;
-        for (const auto& cl : clusters) Nf = std::max(Nf, static_cast<int>(cl.size()));
+        for (const auto& cl : clusters) Nf = (std::max)(Nf, static_cast<int>(cl.size()));
 
         std::vector<std::vector<int>> layers(Nf);
         for (const auto& cl : clusters)

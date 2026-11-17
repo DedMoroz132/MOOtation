@@ -262,13 +262,13 @@ private:
     // ── Eq. 2: normalization by the set's ideal and nadir points ───────────
     std::vector<std::vector<double>> normalize_set(DataVault<Ind_t>& vault, int count) {
         int m = vault.objs_n();
-        std::vector<double> zmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> zmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> zmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> zmax(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < count; ++i) {
             const auto& o = vault.objectives_of(i);
             for (int j = 0; j < m; ++j) {
-                zmin[j] = std::min(zmin[j], o[j]);
-                zmax[j] = std::max(zmax[j], o[j]);
+                zmin[j] = (std::min)(zmin[j], o[j]);
+                zmax[j] = (std::max)(zmax[j], o[j]);
             }
         }
         std::vector<std::vector<double>> Fn(count, std::vector<double>(m, 0.0));
@@ -333,7 +333,7 @@ private:
         int m = static_cast<int>(Fn[nd[0]].size());
         double u = 1.0 / std::sqrt(static_cast<double>(m));
         int pick = nd[0];
-        double best = std::numeric_limits<double>::max();
+        double best = (std::numeric_limits<double>::max)();
         for (int v : nd) {
             double n2 = 0.0, pr = 0.0;
             for (int j = 0; j < m; ++j) { n2 += Fn[v][j] * Fn[v][j]; pr += Fn[v][j] * u; }
@@ -371,7 +371,7 @@ private:
         for (int i = 0; i < n; ++i)
             for (int j = i + 1; j < n; ++j)
                 dam[i][j] = dam[j][i] = mdist(MF[i], MF[j]);
-        int k = std::min(m, n - 1);
+        int k = (std::min)(m, n - 1);
         std::vector<double> rec;
         rec.reserve(static_cast<std::size_t>(n) * static_cast<std::size_t>(k));
         std::vector<double> tmp;
@@ -388,7 +388,7 @@ private:
             for (int j = 0; j < n; ++j) {
                 if (j == i) continue;
                 if (dam[i][j] < r)
-                    s += dm::log(std::max(dam[i][j] / r, 1e-300));
+                    s += dm::log((std::max)(dam[i][j] / r, 1e-300));
             }
             lp[i] = s;
         }
@@ -418,8 +418,8 @@ private:
 
     std::vector<int> identify_knee_points(DataVault<Ind_t>& vault, int n) {
         int m = vault.objs_n();
-        std::vector<double> fmax(m, -std::numeric_limits<double>::max());
-        std::vector<double> fmin(m,  std::numeric_limits<double>::max());
+        std::vector<double> fmax(m, -(std::numeric_limits<double>::max)());
+        std::vector<double> fmin(m,  (std::numeric_limits<double>::max)());
         std::vector<int>    ext (m, 0);                   // extreme points
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
@@ -437,7 +437,7 @@ private:
         if (ok) {
             double wn = 0.0;
             for (double wi : w) wn += wi * wi;
-            wn = std::sqrt(std::max(wn, 1e-300));
+            wn = std::sqrt((std::max)(wn, 1e-300));
             for (int i = 0; i < n; ++i) {
                 const auto& o = vault.objectives_of(i);
                 double dot = 0.0;
@@ -479,7 +479,7 @@ private:
                 if (nb) removed[a] = 1;                   // neighbours (incl. x)
             }
         }
-        knee_t_prev_ = static_cast<double>(KP.size()) / static_cast<double>(std::max(n, 1));
+        knee_t_prev_ = static_cast<double>(KP.size()) / static_cast<double>((std::max)(n, 1));
         return KP;
     }
 
@@ -523,11 +523,11 @@ private:
                 for (int a = 0; a < m; ++a) t += (p[a] - mean[a]) * v[a];
                 *sse -= t * t;
             }
-            *sse = std::max(*sse, 0.0);
+            *sse = (std::max)(*sse, 0.0);
         }
         double dot = 0.0, u = 1.0 / std::sqrt(static_cast<double>(m));
         for (int a = 0; a < m; ++a) dot += v[a] * u;
-        double c = std::min(std::abs(dot), 1.0);
+        double c = (std::min)(std::abs(dot), 1.0);
         return dm::acos(c);
     }
 
@@ -542,16 +542,16 @@ private:
         std::vector<int> norm_set;
         if (cv_norm_nd_) norm_set = fast_nds(vault, n).front();
         else { norm_set.resize(n); std::iota(norm_set.begin(), norm_set.end(), 0); }
-        std::vector<double> fmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> fmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> fmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> fmax(m, -(std::numeric_limits<double>::max)());
         for (int i : norm_set) {
             const auto& o = vault.objectives_of(i);
             for (int j = 0; j < m; ++j) {
-                fmin[j] = std::min(fmin[j], o[j]);
-                fmax[j] = std::max(fmax[j], o[j]);
+                fmin[j] = (std::min)(fmin[j], o[j]);
+                fmax[j] = (std::max)(fmax[j], o[j]);
             }
         }
-        int ns = std::max(1, std::min(nsel_, n));
+        int ns = (std::max)(1, (std::min)(nsel_, n));
         std::vector<int> samp(n);
         std::iota(samp.begin(), samp.end(), 0);
         rnd::shuffle(samp.begin(), samp.end(), rng_);
@@ -774,7 +774,7 @@ private:
         // Alg. 6 lines 12–13: bootstrap with the M best by Fit when P is empty
         if (P.empty()) {
             std::stable_sort(Fk.begin(), Fk.end(), [&](int a, int b) { return fit[a] > fit[b]; });
-            int take = std::min({m, static_cast<int>(Fk.size()), N});
+            int take = (std::min)({m, static_cast<int>(Fk.size()), N});
             P.assign(Fk.begin(), Fk.begin() + take);
             Fk.erase(Fk.begin(), Fk.begin() + take);
         }
@@ -784,7 +784,7 @@ private:
         std::vector<double> ad(Fk.size());
         std::vector<int>    aref(Fk.size());
         auto assoc_one = [&](std::size_t k) {
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             int who = -1;
             for (int p : P) {
                 double dd = mdist(MF[Fk[k]], MF[p]);
@@ -874,9 +874,9 @@ public:
     void set_eta_crossover(double e) { eta_c_ = e; }
     void set_eta_mutation (double e) { eta_m_ = e; }   // PM's index under kpcm_pm = on
     void set_pc(double p)            { pc_ = p; }
-    void set_nsel(int v)             { nsel_ = std::max(1, v); }
-    void set_nper(int v)             { nper_ = std::max(2, v); }
-    void set_noise_frac(double v)    { noise_frac_ = std::max(0.0, v); }
+    void set_nsel(int v)             { nsel_ = (std::max)(1, v); }
+    void set_nper(int v)             { nper_ = (std::max)(2, v); }
+    void set_noise_frac(double v)    { noise_frac_ = (std::max)(0.0, v); }
     bool set_param(const std::string& k, double v) {
         if (k != "noise_frac") return false;                 // MaOEA-IAMD-N
         if (!(v >= 0.0 && std::isfinite(v)))
@@ -987,7 +987,7 @@ public:
             }
             ops::sbx(pv1, pv2, c1, c2, bounds, eta_c_, pc_, rng_);
             if (kpcm_pm_) {                               // IAMD-1: PlatEMO's GA
-                const double pm = 1.0 / static_cast<double>(std::max(1, vault.vars_n()));
+                const double pm = 1.0 / static_cast<double>((std::max)(1, vault.vars_n()));
                 ops::polynomial_mutation(c1, bounds, eta_m_, pm, rng_);
                 if (i + 1 < n) ops::polynomial_mutation(c2, bounds, eta_m_, pm, rng_);
             }

@@ -387,7 +387,7 @@ private:
                     guarded("repair", k, [&] { o_.user_repair(x); });
                 } else if (o_.clip && x.size() == lo_.size()) {
                     for (std::size_t j = 0; j < x.size(); ++j)
-                        if (std::isfinite(x[j])) x[j] = std::min(hi_[j], std::max(lo_[j], x[j]));
+                        if (std::isfinite(x[j])) x[j] = (std::min)(hi_[j], (std::max)(lo_[j], x[j]));
                 }
                 checked(x, k, "the user's operators");
             }

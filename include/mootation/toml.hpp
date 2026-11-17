@@ -390,10 +390,10 @@ struct Parser {
             std::uint64_t u = 0;
             for (char c : d) {
                 const std::uint64_t v = digit(c) ? static_cast<std::uint64_t>(c - '0') : static_cast<std::uint64_t>(c - 'a' + 10);
-                if (u > (std::numeric_limits<std::uint64_t>::max() - v) / static_cast<std::uint64_t>(base)) return bad();
+                if (u > ((std::numeric_limits<std::uint64_t>::max)() - v) / static_cast<std::uint64_t>(base)) return bad();
                 u = u * static_cast<std::uint64_t>(base) + v;
             }
-            if (u > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) fail("Integer out of range");
+            if (u > static_cast<std::uint64_t>((std::numeric_limits<std::int64_t>::max)())) fail("Integer out of range");
             at = e;
             return Value::integer(static_cast<std::int64_t>(u));
         }

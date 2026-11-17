@@ -109,12 +109,12 @@ inline long long characteristic_effort(double R, double alpha, long long n_runs)
     if (n_runs < 1) throw std::invalid_argument("so::characteristic_effort: at least one run");
     if (!(R >= 0.0 && R <= 1.0)) throw std::invalid_argument("so::characteristic_effort: R in [0, 1]");
     const double eps = 1.0 / (static_cast<double>(n_runs) + 1.0);
-    const double r = std::min(std::max(R, eps), 1.0 - eps);
+    const double r = (std::min)((std::max)(R, eps), 1.0 - eps);
     const double x = dm::log(1.0 - alpha) / dm::log(1.0 - r);
     const double nearest = std::round(x);
-    const double ulp64 = 64.0 * std::numeric_limits<double>::epsilon() * std::max(1.0, std::fabs(x));
+    const double ulp64 = 64.0 * std::numeric_limits<double>::epsilon() * (std::max)(1.0, std::fabs(x));
     const double up = std::fabs(x - nearest) <= ulp64 ? nearest : std::ceil(x);   // KAV-2
-    return std::max(1LL, static_cast<long long>(up));
+    return (std::max)(1LL, static_cast<long long>(up));
 }
 
 // K18 (13): the characteristic cost, c the mean cost of a run
@@ -130,7 +130,7 @@ inline double quantile_sorted(const std::vector<double>& v, double q)
     if (v.empty()) throw std::invalid_argument("so::quantile: no values");
     const double h = (static_cast<double>(v.size()) - 1.0) * q;
     const std::size_t lo = static_cast<std::size_t>(std::floor(h));
-    const std::size_t hi = std::min(lo + 1, v.size() - 1);
+    const std::size_t hi = (std::min)(lo + 1, v.size() - 1);
     return v[lo] + (h - static_cast<double>(lo)) * (v[hi] - v[lo]);
 }
 

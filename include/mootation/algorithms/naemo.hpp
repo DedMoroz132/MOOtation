@@ -219,7 +219,7 @@ private:
             dot += xk * w[k];
             wn2 += w[k] * w[k];
         }
-        double wn = std::sqrt(std::max(wn2, 1e-300));
+        double wn = std::sqrt((std::max)(wn2, 1e-300));
         double proj = dot / wn2;                 // projection coefficient
         d1 = dot / wn;                           // = proj*||w||
         double s2 = 0.0;
@@ -228,11 +228,11 @@ private:
             double perp = xk - proj * w[k];
             s2 += perp * perp;
         }
-        d2 = std::sqrt(std::max(s2, 0.0));
+        d2 = std::sqrt((std::max)(s2, 0.0));
     }
 
     int associate(const std::vector<double>& f, const std::vector<double>& z) const {
-        int best = 0; double best_d2 = std::numeric_limits<double>::max();
+        int best = 0; double best_d2 = (std::numeric_limits<double>::max)();
         for (int i = 0; i < n_; ++i) {
             double d1, d2; pbi_components(f, z, W_[i], d1, d2);
             if (d2 < best_d2) { best_d2 = d2; best = i; }
@@ -273,9 +273,9 @@ private:
             // default path takes the largest attainable lattice <= pop_size
             // instead (NAEMO-7).
             const int H = das_dennis::find_H_le(m, L_soft_);
-            W_ = das_dennis::generate(m, std::max(1, H));
+            W_ = das_dennis::generate(m, (std::max)(1, H));
             if ((int)W_.size() > L_soft_)   // only reachable at absurdly small N
-                W_.resize(static_cast<std::size_t>(std::max(2, L_soft_)));
+                W_.resize(static_cast<std::size_t>((std::max)(2, L_soft_)));
         }
         n_ = (int)W_.size();
         // FULL geometric neighbour ordering, computed once: for each line i,
@@ -317,9 +317,9 @@ private:
 
     std::vector<double> ideal_point() const {
         int m = arch_.empty() ? 0 : (int)arch_[0].objs.size();
-        std::vector<double> z(m, std::numeric_limits<double>::max());
+        std::vector<double> z(m, (std::numeric_limits<double>::max)());
         for (const auto& s : arch_)
-            for (int k = 0; k < m; ++k) z[k] = std::min(z[k], s.objs[k]);
+            for (int k = 0; k < m; ++k) z[k] = (std::min)(z[k], s.objs[k]);
         return z;
     }
 
@@ -445,12 +445,12 @@ public:
         // k depends on n, so build W first; estimate a draft n from n_req_ or
         // L_soft to size k
         int n_hint = (n_req_ > 0) ? n_req_ : (L_soft_ - 1);
-        k_ = std::max(2, n_hint / 5);   // 20% of the reference lines (§4.5)
+        k_ = (std::max)(2, n_hint / 5);   // 20% of the reference lines (§4.5)
         build_directions(m);
         // n_ (the actual lattice size) is known only now; refine k_ from it.
         // build_directions does NOT read k_ — the neighbourhoods are the full
         // geometric ranking and k is applied on the fly — so it is not rerun.
-        k_ = std::max(2, n_ / 5);
+        k_ = (std::max)(2, n_ / 5);
 
         // random initialization of L_soft individuals
         int N = vault.pop_size();
@@ -475,9 +475,9 @@ public:
         int m = vault.objs_n();
         L_soft_ = vault.pop_size();
         int n_hint = (n_req_ > 0) ? n_req_ : (L_soft_ - 1);
-        k_ = std::max(2, n_hint / 5);   // 20% of the reference lines (§4.5)
+        k_ = (std::max)(2, n_hint / 5);   // 20% of the reference lines (§4.5)
         build_directions(m);
-        k_ = std::max(2, n_ / 5);       // see setup(): no second build needed
+        k_ = (std::max)(2, n_ / 5);       // see setup(): no second build needed
         load_arch(vault);
         mu_etac_ = 30.0; mu_F_ = 0.5; mu_CR_ = 0.2;
     }
@@ -539,7 +539,7 @@ public:
             if (pool.size() < 3)   // fallback: the whole archive (NAEMO-3)
                 for (int i = 0; i < (int)arch_.size(); ++i) pool.push_back(i);
 
-            double etac = std::max(1e-6, gec(rng_));
+            double etac = (std::max)(1e-6, gec(rng_));
             double F    = std::clamp(gF(rng_),  0.0, 1.0);
             double CR   = std::clamp(gCR(rng_), 0.0, 1.0);
 
@@ -587,7 +587,7 @@ public:
                     for (int t = 1; t < n_; ++t) if (cnt[t] > cnt[lmax]) lmax = t;
                     if (cnt[lmax] <= 0) break;
                     // the member of line lmax with the LARGEST PBI
-                    int worst = -1; double worst_g = -std::numeric_limits<double>::max();
+                    int worst = -1; double worst_g = -(std::numeric_limits<double>::max)();
                     for (int i = 0; i < (int)arch_.size(); ++i) {
                         if (line_of[i] != lmax) continue;
                         double g = pbi(arch_[i].objs, z, lmax);

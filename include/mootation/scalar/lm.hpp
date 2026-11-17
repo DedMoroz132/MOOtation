@@ -230,7 +230,7 @@ using Vec = std::vector<double>;
 using lsq::Matrix;
 
 inline constexpr double kEps = std::numeric_limits<double>::epsilon();
-inline constexpr double kTiny = std::numeric_limits<double>::min();   // the smallest normal number
+inline constexpr double kTiny = (std::numeric_limits<double>::min)();   // the smallest normal number
 inline constexpr double kInf = std::numeric_limits<double>::infinity();
 
 // The problem: m residuals of n parameters; the Jacobian (m x n) if known;
@@ -287,7 +287,7 @@ inline double norm(const Vec& v)
     double big = 0.0;
     for (double e : v) {
         if (std::isnan(e)) return std::numeric_limits<double>::quiet_NaN();
-        big = std::max(big, std::fabs(e));
+        big = (std::max)(big, std::fabs(e));
     }
     if (big == 0.0 || !std::isfinite(big)) return big;
     double s = 0.0;
@@ -489,11 +489,11 @@ inline double levenberg(const Factor& f, const Vec& D, double delta, double lamb
         g[j] = s / D[f.perm[j]];
     }
     double upper = norm(g) / delta;                   // u_0
-    if (upper == 0.0) upper = kTiny / std::min(delta, 0.1);
+    if (upper == 0.0) upper = kTiny / (std::min)(delta, 0.1);
     Matrix S;
     for (int it = 1;; ++it) {
         if (!(lambda > lower && lambda < upper))      // (5.5)(a)
-            lambda = std::max(1e-3 * upper, std::sqrt(lower * upper));
+            lambda = (std::max)(1e-3 * upper, std::sqrt(lower * upper));
         Vec dl(n);
         for (std::size_t j = 0; j < n; ++j) dl[j] = std::sqrt(lambda) * D[j];
         solve_damped(f, f.qtr, dl, z, S);
@@ -503,7 +503,7 @@ inline double levenberg(const Factor& f, const Vec& D, double delta, double lamb
         if (std::fabs(phi) <= sigma * delta || it == 10) return lambda;
         const double q = newton_q(S, f.perm, D, Dz, dznorm);
         if (phi < 0.0) upper = lambda;                // (5.5)(b)
-        lower = std::max(lower, lambda + phi / (dznorm * q * q));
+        lower = (std::max)(lower, lambda + phi / (dznorm * q * q));
         lambda = lambda + (phi / delta) / (q * q);    // (5.4)
     }
 }
@@ -548,8 +548,8 @@ inline double to_boundary(const Vec& x, const Vec& d, const Vec& lo, const Vec& 
 {
     double a = kInf;
     for (std::size_t i = 0; i < x.size(); ++i) {
-        if (d[i] > 0.0 && hi[i] < kInf) a = std::min(a, (hi[i] - x[i]) / d[i]);
-        else if (d[i] < 0.0 && lo[i] > -kInf) a = std::min(a, (lo[i] - x[i]) / d[i]);
+        if (d[i] > 0.0 && hi[i] < kInf) a = (std::min)(a, (hi[i] - x[i]) / d[i]);
+        else if (d[i] < 0.0 && lo[i] > -kInf) a = (std::min)(a, (lo[i] - x[i]) / d[i]);
     }
     return a;
 }
@@ -577,10 +577,10 @@ inline Vec feasible(const Vec& x, const Vec& d, const Vec& lo, const Vec& hi, do
 {
     const std::size_t n = x.size();
     const double box = to_boundary(x, d, lo, hi);
-    double tau = std::min(tmax, box);
+    double tau = (std::min)(tmax, box);
     if (quadratic) {
         if (!(slope < 0.0)) tau = 0.0;
-        else if (curv > 0.0) tau = std::min(tau, -slope / curv);
+        else if (curv > 0.0) tau = (std::min)(tau, -slope / curv);
     }
     Vec s(n);
     for (std::size_t i = 0; i < n; ++i) s[i] = tau * d[i];
@@ -592,7 +592,7 @@ inline Vec feasible(const Vec& x, const Vec& d, const Vec& lo, const Vec& hi, do
         }
         return true;
     };
-    double theta = std::max(0.95, 1.0 - norm(s));
+    double theta = (std::max)(0.95, 1.0 - norm(s));
     if (!inside(theta)) theta = 0.95;
     for (double& e : s) e *= theta;
     return s;
@@ -615,7 +615,7 @@ inline std::size_t pseudorank(const Factor& f, std::size_t rows)
 {
     const std::size_t k = f.R.rows;
     if (k == 0 || f.R(0, 0) == 0.0) return 0;
-    const double tau = static_cast<double>(std::max(rows, k)) * kEps * std::fabs(f.R(0, 0));
+    const double tau = static_cast<double>((std::max)(rows, k)) * kEps * std::fabs(f.R(0, 0));
     std::size_t r = 0;
     while (r < k && std::fabs(f.R(r, r)) > tau) ++r;
     return r;
@@ -648,7 +648,7 @@ inline Matrix complement(const Matrix& N, const Vec& D, std::size_t& rank)
 // where x_j + h passes the upper bound (LMB-4)
 inline void fd_jacobian(const Problem& p, const Vec& x, const Vec& r, double fd_eps, Matrix& J)
 {
-    const double e = std::sqrt(std::max(fd_eps, kEps));
+    const double e = std::sqrt((std::max)(fd_eps, kEps));
     J = Matrix(p.m, p.n);
     Vec xh = x, rh(p.m);
     for (std::size_t j = 0; j < p.n; ++j) {
@@ -681,10 +681,10 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
     if (bounded)                                      // strictly inside (LMB-3)
         for (std::size_t i = 0; i < n; ++i) {
             const double l = p.lo[i], u = p.hi[i];
-            if (l > -kInf && x[i] < l + 100.0 * kEps * std::max(1.0, std::fabs(l)))
-                x[i] = u < kInf ? l + 0.1 * (u - l) : l + 0.1 * std::max(1.0, std::fabs(l));
-            else if (u < kInf && x[i] > u - 100.0 * kEps * std::max(1.0, std::fabs(u)))
-                x[i] = l > -kInf ? u - 0.1 * (u - l) : u - 0.1 * std::max(1.0, std::fabs(u));
+            if (l > -kInf && x[i] < l + 100.0 * kEps * (std::max)(1.0, std::fabs(l)))
+                x[i] = u < kInf ? l + 0.1 * (u - l) : l + 0.1 * (std::max)(1.0, std::fabs(l));
+            else if (u < kInf && x[i] > u - 100.0 * kEps * (std::max)(1.0, std::fabs(u)))
+                x[i] = l > -kInf ? u - 0.1 * (u - l) : u - 0.1 * (std::max)(1.0, std::fabs(u));
         }
     const long long max_nfev =
         o.max_nfev > 0 ? o.max_nfev : (p.jacobian ? 100 : 200) * static_cast<long long>(n + 1);
@@ -761,7 +761,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
                 delta = xnorm > 0.0 ? o.factor * xnorm : o.factor;
             }
             if (o.scale)
-                for (std::size_t j = 0; j < n; ++j) D[j] = std::max(D[j], colnorm[j]);
+                for (std::size_t j = 0; j < n; ++j) D[j] = (std::max)(D[j], colnorm[j]);
             Matrix N;
             p.gauge(x, N);
             if (N.rows != n) throw std::invalid_argument("lm: the gauge basis needs n rows");
@@ -792,14 +792,14 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
                 if (f.colnorm[l] == 0.0) continue;
                 double sum = 0.0;
                 for (std::size_t i = 0; i <= j; ++i) sum += f.R(i, j) * (f.qtr[i] / rnorm);
-                gcos = std::max(gcos, std::fabs(sum / f.colnorm[l]));
+                gcos = (std::max)(gcos, std::fabs(sum / f.colnorm[l]));
             }
         if (gcos <= o.gtol) {
             res.status = Status::gtol;
             break;
         }
         if (o.scale && !gauged)
-            for (std::size_t j = 0; j < n; ++j) D[j] = std::max(D[j], colnorm[j]);
+            for (std::size_t j = 0; j < n; ++j) D[j] = (std::max)(D[j], colnorm[j]);
         for (std::size_t j = 0; j < n; ++j) Dt[j] = bounded ? D[j] / std::sqrt(dv[j]) : D[j];
         for (;;) {                                     // until a step is taken
             lambda = detail::levenberg(f, gauged ? Vec(nf, 1.0) : Dt, delta, lambda, zf);
@@ -836,7 +836,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
                 Ds[j] = Dt[j] * s[j];
             }
             const double pnorm = norm(Ds);
-            if (iter == 1) delta = std::min(delta, pnorm);
+            if (iter == 1) delta = (std::min)(delta, pnorm);
             if (o.geodesic) {                         // LMG-1..3 (no finite bound here)
                 const double h = o.geodesic_h;
                 for (std::size_t j = 0; j < n; ++j) xt[j] = x[j] - h * z[j];
@@ -853,7 +853,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
                 Vec Da(n);
                 for (std::size_t j = 0; j < n; ++j) Da[j] = D[j] * (0.5 * z2[j]);
                 if (!(2.0 * norm(Da) <= o.geodesic_alpha * pnorm)) {   // (15) fails (LMG-2)
-                    delta = 0.5 * std::min(delta, pnorm);
+                    delta = 0.5 * (std::min)(delta, pnorm);
                     if (res.nfev >= max_nfev) {
                         res.status = Status::max_nfev;
                         done = true;
@@ -898,7 +898,7 @@ inline Result solve(const Problem& p, Vec x, const Options& o)
                 double mu = 0.1;                      // also where ||f_+|| = +inf (LM-9)
                 if (finite && rtnorm <= rnorm) mu = 0.5;
                 else if (finite && rtnorm <= 10.0 * rnorm) mu = 0.5 * gamma / (gamma + 0.5 * reduced);
-                mu = std::min(0.5, std::max(0.1, mu));
+                mu = (std::min)(0.5, (std::max)(0.1, mu));
                 delta = mu * delta;
                 if (!bounded && lambda == 0.0 && ratio <= 1e-4)   // the same point again (LM-3b)
                     while (pnorm > 0.0 && pnorm <= 1.1 * delta && !(delta <= o.xtol * xnorm)) delta *= mu;
@@ -1008,7 +1008,7 @@ inline Result solve_robust(const Problem& p, Vec x, const Options& o)
     Vec r(m);
     for (int round = 0; round < o.irls_max; ++round) {
         const long long cap = o.max_nfev > 0 ? o.max_nfev : (p.jacobian ? 100 : 200) * static_cast<long long>(p.n + 1);
-        oi.max_nfev = std::max(1LL, cap - total.nfev);
+        oi.max_nfev = (std::max)(1LL, cap - total.nfev);
         if (o.max_iter > 0) {                         // LM-10: the rounds together
             if (total.iterations >= o.max_iter) break;
             oi.max_iter = o.max_iter - total.iterations;
@@ -1025,7 +1025,7 @@ inline Result solve_robust(const Problem& p, Vec x, const Options& o)
         double moved = 0.0;
         for (std::size_t i = 0; i < m; ++i) {
             const double wi = weight_of(o.loss, o.f_scale, r[i]);
-            moved = std::max(moved, std::fabs(wi - w[i]));
+            moved = (std::max)(moved, std::fabs(wi - w[i]));
             w[i] = wi;
             sw[i] = std::sqrt(wi);
         }
@@ -1054,7 +1054,7 @@ inline Result solve_robust(const Problem& p, Vec x, const Options& o)
 // (m - n) where none is (LM-8); the correlations C_ij / sqrt(C_ii C_jj).
 struct Diagnostics {
     Vec sv;                                 // singular values of J, decreasing
-    std::size_t small = 0;                  // of them almost zero
+    std::size_t tiny = 0;                  // of them almost zero
     double sigma2 = 0.0;                    // the variance the covariance takes
     bool sigma2_given = false;
     Matrix cov, corr;                       // n x n
@@ -1080,7 +1080,7 @@ inline Diagnostics diagnose(const Matrix& J, double cost, double sigma2, bool di
     std::vector<Vec> v;                     // right singular vectors of J, in J's order of columns
     for (std::size_t k = 0; k < n; ++k) {
         const std::size_t e = 2 * n - 1 - k;            // the k-th largest eigenvalue
-        d.sv.push_back(std::max(0.0, w[e]));
+        d.sv.push_back((std::max)(0.0, w[e]));
         Vec vk(n, 0.0);
         for (std::size_t j = 0; j < n; ++j) vk[f.perm[j]] = V(n + j, e);
         const double s = norm(vk);
@@ -1088,12 +1088,12 @@ inline Diagnostics diagnose(const Matrix& J, double cost, double sigma2, bool di
             for (double& x : vk) x /= s;
         v.push_back(vk);
     }
-    const double rel = differences ? std::sqrt(std::max(fd_eps, kEps)) : static_cast<double>(std::max(m, n)) * kEps;
+    const double rel = differences ? std::sqrt((std::max)(fd_eps, kEps)) : static_cast<double>((std::max)(m, n)) * kEps;
     const double tau = rel * (n ? d.sv[0] : 0.0);
     d.cov = Matrix(n, n);
     for (std::size_t k = 0; k < n; ++k) {
         if (d.sv[k] <= tau) {
-            ++d.small;
+            ++d.tiny;
             continue;
         }
         const double c = d.sigma2 / (d.sv[k] * d.sv[k]);
@@ -1131,7 +1131,7 @@ inline JacobianCheck check_jacobian(const Problem& p, const Vec& x, double fd_ep
             d[i] = J(i, j) - F(i, j);
             e[i] = F(i, j);
         }
-        c.column_error.push_back(norm(d) / std::max(norm(e), kTiny));
+        c.column_error.push_back(norm(d) / (std::max)(norm(e), kTiny));
         c.worst.push_back(j);
     }
     std::stable_sort(c.worst.begin(), c.worst.end(),
@@ -1166,7 +1166,7 @@ struct Projection {
     explicit Projection(const Matrix& Phi) : f(factor(Phi, Vec(Phi.rows, 0.0))), m(Phi.rows)
     {
         const std::size_t p = f.R.rows;
-        const double tau = static_cast<double>(std::max(m, p)) * kEps * (p ? std::fabs(f.R(0, 0)) : 0.0);
+        const double tau = static_cast<double>((std::max)(m, p)) * kEps * (p ? std::fabs(f.R(0, 0)) : 0.0);
         while (rank < p && std::fabs(f.R(rank, rank)) > tau) ++rank;
     }
     Vec qt(Vec v) const                     // Q^T v, all m entries
@@ -1419,12 +1419,12 @@ inline EqResult eliminate(const Problem& p, const Equalities& e, const Vec& x0, 
         double s = -e.d[i];
         for (std::size_t j = 0; j < n; ++j) {
             s += e.C(i, j) * xp[j];
-            cbig = std::max(cbig, std::fabs(e.C(i, j)));
+            cbig = (std::max)(cbig, std::fabs(e.C(i, j)));
         }
-        resid = std::max(resid, std::fabs(s));
+        resid = (std::max)(resid, std::fabs(s));
     }
-    scale = std::max(scale, cbig * norm(xp));
-    if (resid > 1e3 * kEps * std::max(scale, kTiny)) throw std::invalid_argument("lm: the linear equalities are inconsistent");
+    scale = (std::max)(scale, cbig * norm(xp));
+    if (resid > 1e3 * kEps * (std::max)(scale, kTiny)) throw std::invalid_argument("lm: the linear equalities are inconsistent");
     const std::size_t ny = n - rc;
     Matrix Z(n, ny);
     for (std::size_t c = 0; c < ny; ++c) {
@@ -1518,7 +1518,7 @@ inline EqResult bound_constrained_lagrangian(const Problem& p, const Equalities&
                 for (std::size_t j = 0; j < n; ++j) A(pc + i, j) = Ah(i, j);
             return;
         }
-        const double step = std::sqrt(std::max(o.fd_eps, kEps));    // as fd_jacobian
+        const double step = std::sqrt((std::max)(o.fd_eps, kEps));    // as fd_jacobian
         Vec vh = v, ch;
         for (std::size_t j = 0; j < n; ++j) {
             double hj = step * std::fabs(v[j]);
@@ -1548,7 +1548,7 @@ inline EqResult bound_constrained_lagrangian(const Problem& p, const Equalities&
         Vec dv(n);
         for (std::size_t j = 0; j < n; ++j) {
             double t = v[j] - g[j];
-            if (!p.lo.empty()) t = std::min(p.hi[j], std::max(p.lo[j], t));
+            if (!p.lo.empty()) t = (std::min)(p.hi[j], (std::max)(p.lo[j], t));
             dv[j] = v[j] - t;
         }
         return norm(dv) / s;
@@ -1560,7 +1560,7 @@ inline EqResult bound_constrained_lagrangian(const Problem& p, const Equalities&
         ++out.fit.nfev;
         Matrix J;
         jacobian_at(p, x, r, o.fd_eps, J, out.fit);
-        s = std::max(1.0, norm(gradient_of(J, r)));
+        s = (std::max)(1.0, norm(gradient_of(J, r)));
     }
     Problem inner;
     inner.n = n;
@@ -1607,8 +1607,8 @@ inline EqResult bound_constrained_lagrangian(const Problem& p, const Equalities&
             x = step.x;
             pg = projected(x, r, c, s);
             if (pg <= omega) break;
-            oi.ftol = std::max(kEps, 0.01 * oi.ftol);
-            oi.xtol = std::max(kEps, 0.01 * oi.xtol);
+            oi.ftol = (std::max)(kEps, 0.01 * oi.ftol);
+            oi.xtol = (std::max)(kEps, 0.01 * oi.xtol);
         }
         const double cn = norm(c);
         if (cn <= eta) {
@@ -1703,7 +1703,7 @@ inline double chi2_cdf(double x, int df)
         sum += term;
         if (term < kEps * sum) break;
     }
-    return std::min(1.0, dm::exp(a * dm::log(z) - z - lg) * sum);
+    return (std::min)(1.0, dm::exp(a * dm::log(z) - z - lg) * sum);
 }
 
 inline double chi2_quantile(double alpha, int df)
@@ -1764,7 +1764,7 @@ inline Profile profile(const Problem& p, const Vec& x_hat, std::size_t j, const 
         e.d = {v};
         Vec x0 = from;
         x0[j] = v;
-        if (!p.lo.empty()) x0[j] = std::min(p.hi[j], std::max(p.lo[j], v));
+        if (!p.lo.empty()) x0[j] = (std::min)(p.hi[j], (std::max)(p.lo[j], v));
         const EqResult er = solve_eq(p, e, x0, o);
         return ProfilePoint{v, er.fit.status == Status::nonfinite ? kInf : er.fit.cost, er.fit.x};   // LM-9
     };
@@ -1793,7 +1793,7 @@ inline Profile profile(const Problem& p, const Vec& x_hat, std::size_t j, const 
             detail::jacobian_at(p, x_hat, r, o.fd_eps, J, counts);
             const Diagnostics d = diagnose(J, pr.cost_hat, 1.0, !p.jacobian, o.fd_eps);
             const double cjj = d.cov(j, j);
-            h = cjj > 0.0 ? std::sqrt(2.0 * pr.threshold * cjj) / 10.0 : 0.1 * std::max(1.0, std::fabs(x_hat[j]));
+            h = cjj > 0.0 ? std::sqrt(2.0 * pr.threshold * cjj) / 10.0 : 0.1 * (std::max)(1.0, std::fabs(x_hat[j]));
         }
         for (int side = 0; side < 2; ++side) {
             const double dir = side == 0 ? -1.0 : 1.0, bound = side == 0 ? lo_j : hi_j;
@@ -1849,7 +1849,7 @@ inline Profile profile(const Problem& p, const Vec& x_hat, std::size_t j, const 
     pr.upper = crossed[1] ? crossing[1] : kInf;
     bool flat = true;
     for (const ProfilePoint& pt : pr.points)
-        flat = flat && std::fabs(pt.cost - pr.cost_hat) <= po.flat_tol * std::max(1.0, pr.cost_hat);
+        flat = flat && std::fabs(pt.cost - pr.cost_hat) <= po.flat_tol * (std::max)(1.0, pr.cost_hat);
     pr.kind = crossed[0] && crossed[1] ? Profile::Kind::identifiable
             : flat                    ? Profile::Kind::structurally_non_identifiable
                                       : Profile::Kind::practically_non_identifiable;

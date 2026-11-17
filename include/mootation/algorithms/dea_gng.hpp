@@ -201,7 +201,7 @@ private:
         double d=0,na=0,nb=0; for(std::size_t k=0;k<a.size();++k){d+=a[k]*b[k];na+=a[k]*a[k];nb+=b[k]*b[k];}
         double q=std::sqrt(na)*std::sqrt(nb); if(q<1e-300) return 0.0; return dm::acos(std::clamp(d/q,-1.0,1.0));
     }
-    void upd_ideal(const std::vector<double>& f){ for(int k=0;k<m_;++k) z_[k]=std::min(z_[k],f[k]); }
+    void upd_ideal(const std::vector<double>& f){ for(int k=0;k<m_;++k) z_[k]=(std::min)(z_[k],f[k]); }
 
     std::vector<int> nondominated(const std::vector<Sol>& P) const {
         std::vector<int> nd; int n=(int)P.size();
@@ -223,7 +223,7 @@ private:
         int R=(int)R_.size();
         if(R==0){ AS_=F0; return; }                       // unreachable: R_ starts as R_u
         std::vector<double> zp(m_,-1e300);
-        for(auto&s:F0) for(int k=0;k<m_;++k) zp[k]=std::max(zp[k],s.objs[k]);
+        for(auto&s:F0) for(int k=0;k<m_;++k) zp[k]=(std::max)(zp[k],s.objs[k]);
         auto fnorm=[&](const std::vector<double>& o){ std::vector<double> r(m_); for(int k=0;k<m_;++k){double d=zp[k]-z_[k]; r[k]=(d>1e-12)?(o[k]-z_[k])/d:(o[k]-z_[k]); } return r; };
         std::vector<std::vector<std::pair<double,int>>> Delta(R);   // (angle, index into F0)
         for(int i=0;i<(int)F0.size();++i){ auto fp=fnorm(F0[i].objs); int best=0; double ba=ang(fp,R_[0]);
@@ -248,7 +248,7 @@ private:
     void gng_update(){
         if(AS_.empty()) return;
         std::vector<double> mn(m_,1e300),mx(m_,-1e300);
-        for(auto&s:AS_) for(int k=0;k<m_;++k){ mn[k]=std::min(mn[k],s.objs[k]); mx[k]=std::max(mx[k],s.objs[k]); }
+        for(auto&s:AS_) for(int k=0;k<m_;++k){ mn[k]=(std::min)(mn[k],s.objs[k]); mx[k]=(std::max)(mx[k],s.objs[k]); }
         auto norm=[&](const std::vector<double>& o){ std::vector<double> r(m_); for(int k=0;k<m_;++k){double d=mx[k]-mn[k]; r[k]=(d>1e-12)?(o[k]-mn[k])/d:0.0;} return r; };
         int HPmax=2*(int)AS_.size();
         if((int)gn_.size()<2){
@@ -282,7 +282,7 @@ private:
             for(int i=0;i<(int)gn_.size();++i){ std::vector<int> del; for(auto&e:gadj_[i]) if(e.second>age_max_) del.push_back(e.first); for(int j:del){ gadj_[i].erase(j); gadj_[j].erase(i); } }
             for(int i=0;i<(int)gn_.size();++i){ if(gn_[i].alive && gn_[i].hp<=0){ gn_[i].alive=false; for(auto&e:gadj_[i]) gadj_[e.first].erase(i); gadj_[i].clear(); } }
             int aliveN=0; for(auto&g:gn_) if(g.alive) ++aliveN;
-            if(sig_count_%std::max(1,lambda_)==0 && aliveN<maxnode_){
+            if(sig_count_%(std::max)(1,lambda_)==0 && aliveN<maxnode_){
                 int q=-1; double me=-1; for(int i=0;i<(int)gn_.size();++i){ if(gn_[i].alive && gn_[i].err>me){me=gn_[i].err;q=i;} }
                 if(q>=0 && !gadj_[q].empty()){
                     int f=-1; double mf=-1; for(auto&e:gadj_[q]){ int nb=e.first; if(gn_[nb].alive && gn_[nb].err>mf){mf=gn_[nb].err;f=nb;} }
@@ -303,7 +303,7 @@ private:
         std::vector<int> idx; for(int i=0;i<(int)gn_.size();++i) if(gn_[i].alive) idx.push_back(i);
         if(idx.empty()){ R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA); nRu_=(int)R_.size(); return; }
         std::vector<double> mn(m_,1e300),mx(m_,-1e300);
-        for(auto&s:AS_) for(int k=0;k<m_;++k){ mn[k]=std::min(mn[k],s.objs[k]); mx[k]=std::max(mx[k],s.objs[k]); }
+        for(auto&s:AS_) for(int k=0;k<m_;++k){ mn[k]=(std::min)(mn[k],s.objs[k]); mx[k]=(std::max)(mx[k],s.objs[k]); }
         std::map<int,int> g2l; for(int t=0;t<(int)idx.size();++t) g2l[idx[t]]=t;
         std::vector<std::vector<double>> node_obj(idx.size());
         for(int t=0;t<(int)idx.size();++t){ node_obj[t].resize(m_); for(int k=0;k<m_;++k) node_obj[t][k]=gn_[idx[t]].pos[k]*(mx[k]-mn[k])+mn[k]; }
@@ -321,9 +321,9 @@ private:
         for(int q=0;q<Q;++q){
             std::vector<int> nq; for(int t=0;t<(int)idx.size();++t) if(comp[t]==q) nq.push_back(t);
             std::vector<double> fminN(m_,1e300),fmaxN(m_,-1e300);
-            for(int t:nq) for(int k=0;k<m_;++k){ fminN[k]=std::min(fminN[k],node_obj[t][k]); fmaxN[k]=std::max(fmaxN[k],node_obj[t][k]); }
+            for(int t:nq) for(int k=0;k<m_;++k){ fminN[k]=(std::min)(fminN[k],node_obj[t][k]); fmaxN[k]=(std::max)(fmaxN[k],node_obj[t][k]); }
             std::vector<double> fminA(m_,1e300),fmaxA(m_,-1e300);
-            if(!sigOf[q].empty()) for(int s:sigOf[q]) for(int k=0;k<m_;++k){ fminA[k]=std::min(fminA[k],AS_[s].objs[k]); fmaxA[k]=std::max(fmaxA[k],AS_[s].objs[k]); }
+            if(!sigOf[q].empty()) for(int s:sigOf[q]) for(int k=0;k<m_;++k){ fminA[k]=(std::min)(fminA[k],AS_[s].objs[k]); fmaxA[k]=(std::max)(fmaxA[k],AS_[s].objs[k]); }
             else { fminA=fminN; fmaxA=fmaxN; }
             for(int t:nq){ std::vector<double> r(m_);
                 for(int k=0;k<m_;++k){ double dn=fmaxN[k]-fminN[k]; double frac=(dn>1e-12)?(node_obj[t][k]-fminN[k])/dn:0.0; r[k]=frac*(fmaxA[k]-fminA[k])+fminA[k]; }
@@ -343,9 +343,9 @@ private:
                 if(j>i){ dp+=edist(Rp[i],Rp[j]); ++cntp; } } }
         if(cntp>0) dp/=cntp; else dp=1e300;   // no edges (all nodes isolated) ⇒ d_p does not constrain
         double du=1e300; for(int i=0;i<(int)Ru_.size();++i) for(int j=i+1;j<(int)Ru_.size();++j){ double d=edist(Ru_[i],Ru_[j]); if(d<du) du=d; }
-        double dmin=std::min(dp,du);
+        double dmin=(std::min)(dp,du);
         R_.clear(); Rtheta_.clear();
-        for(auto& ru:Ru_){ double dd=1e300; for(auto& rp:Rp) dd=std::min(dd,edist(ru,rp)); if(dd>=dmin){ R_.push_back(ru); Rtheta_.push_back(INF_THETA); } }
+        for(auto& ru:Ru_){ double dd=1e300; for(auto& rp:Rp) dd=(std::min)(dd,edist(ru,rp)); if(dd>=dmin){ R_.push_back(ru); Rtheta_.push_back(INF_THETA); } }
         nRu_=(int)R_.size();
         int ri=0;
         for(int q=0;q<Q;++q){ std::vector<int> nq; for(int t=0;t<(int)idx.size();++t) if(comp[t]==q) nq.push_back(t);
@@ -365,7 +365,7 @@ private:
                 // Eq.7 exactly. ζ'=max(0,ζ_min−ε).
                 //   ζ'≈0 (edge ∥ r) ⇒ tan→0 ⇒ θ→∞; ζ'∈(0,π/2) ⇒ θ=1/tanζ'>0;
                 //   ζ'≥π/2 (obtuse angle) ⇒ 1/tanζ'≤0 ⇒ max(0,·)=0.
-                else { double zp=std::max(0.0,zmin-eps_theta_); theta = (zp>1e-9)? std::max(0.0,1.0/dm::tan(zp)) : INF_THETA; }
+                else { double zp=(std::max)(0.0,zmin-eps_theta_); theta = (zp>1e-9)? (std::max)(0.0,1.0/dm::tan(zp)) : INF_THETA; }
                 R_.push_back(Rnode[ri]); Rtheta_.push_back(theta);
                 ++ri;
             }
@@ -374,10 +374,10 @@ private:
     }
 
     double pbi(const std::vector<double>& fp, const std::vector<double>& r, double theta) const {
-        double rn2=0; for(double v:r) rn2+=v*v; double rn=std::sqrt(std::max(rn2,1e-300));
+        double rn2=0; for(double v:r) rn2+=v*v; double rn=std::sqrt((std::max)(rn2,1e-300));
         double d1=0; for(int k=0;k<m_;++k) d1+=fp[k]*r[k]/rn;
         double s2=0; for(int k=0;k<m_;++k){ double pr=fp[k]-d1*r[k]/rn; s2+=pr*pr; }
-        double d2=std::sqrt(std::max(s2,0.0));
+        double d2=std::sqrt((std::max)(s2,0.0));
         if(theta>=INF_THETA) return d2;
         return d1+theta*d2;
     }
@@ -393,7 +393,7 @@ private:
         if((int)Pidx.size()>=N_){ std::vector<Sol> out; for(int t=0;t<N_;++t) out.push_back(U[Pidx[t]]); return out; }
         std::vector<int> crit = (fi<(int)fr.size())? fr[fi] : std::vector<int>{};
         std::vector<double> zp(m_,-1e300);
-        for(int p:fr[0]) for(int k=0;k<m_;++k) zp[k]=std::max(zp[k],U[p].objs[k]);
+        for(int p:fr[0]) for(int k=0;k<m_;++k) zp[k]=(std::max)(zp[k],U[p].objs[k]);
         auto fnorm=[&](const std::vector<double>& o){ std::vector<double> r(m_); for(int k=0;k<m_;++k){double d=zp[k]-z_[k]; r[k]=(d>1e-12)?(o[k]-z_[k])/d:(o[k]-z_[k]); } return r; };
         int R=(int)R_.size();
         std::vector<int> cj(R,0);
@@ -444,7 +444,7 @@ private:
         // Association of each individual of pop_ to the nearest r∈R_ by angle;
         // c_j = the number of individuals at r.
         std::vector<int> f0; for(int p=0;p<n;++p) if(rank[p]==0) f0.push_back(p);
-        std::vector<double> zp(m_,-1e300); for(int p:f0) for(int k=0;k<m_;++k) zp[k]=std::max(zp[k],pop_[p].objs[k]);
+        std::vector<double> zp(m_,-1e300); for(int p:f0) for(int k=0;k<m_;++k) zp[k]=(std::max)(zp[k],pop_[p].objs[k]);
         auto fnorm=[&](const std::vector<double>& o){ std::vector<double> r(m_); for(int k=0;k<m_;++k){double d=zp[k]-z_[k]; r[k]=(d>1e-12)?(o[k]-z_[k])/d:(o[k]-z_[k]); } return r; };
         int R=(int)R_.size(); if(R==0) return;
         std::vector<int> assoc(n,0); std::vector<int> cj(R,0);
@@ -482,7 +482,7 @@ public:
         if (vault.bin_vars_n() > 0)
             throw std::invalid_argument("DEA-GNG: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); g_=0; NS_=m_*N_;
-        age_max_=N_; lambda_=std::max(1,(int)std::floor(0.2*N_)); maxnode_=N_;
+        age_max_=N_; lambda_=(std::max)(1,(int)std::floor(0.2*N_)); maxnode_=N_;
         // ε from the number of objectives (§IV-A) unless set explicitly.
         if(!eps_user_set_) eps_theta_=(m_<5)?0.05*M_PI:0.15*M_PI;
         auto Ur=das_dennis::generate_auto(m_,N_); Ru_=Ur; R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA); nRu_=(int)R_.size();
@@ -490,7 +490,7 @@ public:
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
         vault.sync();
-        pop_.clear(); z_.assign(m_,std::numeric_limits<double>::max());
+        pop_.clear(); z_.assign(m_,(std::numeric_limits<double>::max)());
         for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             upd_ideal(s.objs); pop_.push_back(s);}
@@ -502,11 +502,11 @@ public:
         if (vault.bin_vars_n() > 0)
             throw std::invalid_argument("DEA-GNG: binary variables are not supported (reproduction is real-valued only)");
         m_=vault.objs_n(); N_=vault.pop_size(); g_=0; NS_=m_*N_;
-        age_max_=N_; lambda_=std::max(1,(int)std::floor(0.2*N_)); maxnode_=N_;
+        age_max_=N_; lambda_=(std::max)(1,(int)std::floor(0.2*N_)); maxnode_=N_;
         // ε from the number of objectives (§IV-A) unless set explicitly.
         if(!eps_user_set_) eps_theta_=(m_<5)?0.05*M_PI:0.15*M_PI;
         auto Ur=das_dennis::generate_auto(m_,N_); Ru_=Ur; R_=Ru_; Rtheta_.assign(R_.size(),INF_THETA); nRu_=(int)R_.size();
-        pop_.clear(); z_.assign(m_,std::numeric_limits<double>::max());
+        pop_.clear(); z_.assign(m_,(std::numeric_limits<double>::max)());
         for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             upd_ideal(s.objs); pop_.push_back(s);}

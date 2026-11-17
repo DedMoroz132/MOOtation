@@ -306,7 +306,7 @@ private:
         double cv = 0.0;
         for (std::size_t j = 0; j < s.limits.size(); ++j) {
             const double worst = lim_hi_.empty() ? 0.0 : lim_hi_[j];
-            s.limits[j] = 2.0 * std::max(worst, 0.0) + 1.0;
+            s.limits[j] = 2.0 * (std::max)(worst, 0.0) + 1.0;
             cv += s.limits[j];
         }
         s.cv = s.cv_raw = cv;
@@ -537,8 +537,8 @@ private:
                     throw std::runtime_error("set_aux: a non-finite value for point " +
                                              std::to_string(i) + " of the population");
                 buf_[live[i]].objectives[m + j] = a;
-                lo[j] = std::min(lo[j], a);
-                hi[j] = std::max(hi[j], a);
+                lo[j] = (std::min)(lo[j], a);
+                hi[j] = (std::max)(hi[j], a);
             }
         }
         for (std::size_t r : dead)

@@ -71,7 +71,7 @@ inline PolishResult polish(const Problem& P, const std::vector<Point>& points, c
     const std::size_t m = static_cast<std::size_t>(P.m), n = P.lo.size();
     Evaluator ev(P, eq_tol, false, 0.0, budget, pop_size, std::move(observer), record_every);
     ev.recorded = true;                              // the algorithm has had gen 0
-    const long long p = std::max(1, pop_size);
+    const long long p = (std::max)(1, pop_size);
     ev.gen0 = (base_evaluations + p - 1) / p;
     for (const Point& pt : points) ev.plant(pt.x, pt.f, pt.g);
     std::vector<std::size_t> base_idx;
@@ -86,8 +86,8 @@ inline PolishResult polish(const Problem& P, const std::vector<Point>& points, c
         Vec lo = ev.F[chosen[0]], hi = ev.F[chosen[0]];
         for (std::size_t i : chosen)
             for (std::size_t j = 0; j < m; ++j) {
-                lo[j] = std::min(lo[j], ev.F[i][j]);
-                hi[j] = std::max(hi[j], ev.F[i][j]);
+                lo[j] = (std::min)(lo[j], ev.F[i][j]);
+                hi[j] = (std::max)(hi[j], ev.F[i][j]);
             }
         const Frame frame = Frame::from_anchors({lo, hi});
         try {
@@ -166,7 +166,7 @@ inline PolishResult polish(const Problem& P, const std::vector<Point>& points, c
             const std::size_t room = keep.size() < static_cast<std::size_t>(pop_size)
                                          ? static_cast<std::size_t>(pop_size) - keep.size() : 0;
             std::vector<std::size_t> pick = keep;
-            for (std::size_t t = 0; t < std::min(room, rest.size()); ++t) pick.push_back(rest[t]);
+            for (std::size_t t = 0; t < (std::min)(room, rest.size()); ++t) pick.push_back(rest[t]);
             std::vector<std::size_t> cut;
             for (std::size_t j : pick) cut.push_back(nd[j]);
             nd = cut;

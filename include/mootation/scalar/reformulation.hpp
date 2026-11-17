@@ -78,7 +78,7 @@ inline Result run_reformulation(const Problem& P, double eq_tol, bool has_tol0, 
     long long searches = 0, improved = 0;
     auto allowance = [&]() {                                                         // RF-3
         const long long left = ledger.left(budget);
-        return std::max(1LL, cap > 0 ? std::min(cap, left) : left / static_cast<long long>(K + 1));
+        return (std::max)(1LL, cap > 0 ? (std::min)(cap, left) : left / static_cast<long long>(K + 1));
     };
     // 0. the first search, in the problem from the run's start
     const long long a0 = K == 0 ? budget : allowance();
@@ -108,7 +108,7 @@ inline Result run_reformulation(const Problem& P, double eq_tol, bool has_tol0, 
                 if (!r.variables.empty()) {
                     P.from_formulation(q, r.variables[0], back);
                     if (back.size() != x.size()) throw std::runtime_error("reformulation: from_formulation gave x of another length");
-                    for (std::size_t j = 0; j < back.size(); ++j) back[j] = std::min(P.hi[j], std::max(P.lo[j], back[j]));
+                    for (std::size_t j = 0; j < back.size(); ++j) back[j] = (std::min)(P.hi[j], (std::max)(P.lo[j], back[j]));
                 }
             }
             ledger.add(r, grad_cost);

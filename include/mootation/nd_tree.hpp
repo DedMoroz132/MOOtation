@@ -244,7 +244,7 @@ private:
     {
         std::vector<std::size_t> ids;
         ids.swap(nodes_[static_cast<std::size_t>(v)].ids);
-        const std::size_t k = std::min(children_, ids.size());
+        const std::size_t k = (std::min)(children_, ids.size());
         std::vector<char> seed(ids.size(), 0);
         std::vector<std::size_t> seeds;
         // the first seed: the largest average distance to all the others

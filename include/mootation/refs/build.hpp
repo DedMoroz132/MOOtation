@@ -85,7 +85,7 @@ inline std::optional<Frame> polygon_frame(const json::Value& spec)
     const Rows D = kind->s == "maf9" ? detail::edge_line_distances(P, V) : detail::vertex_distances(P, V);
     Frame f{std::vector<double>(M, 0.0), std::vector<double>(M, 0.0)};
     for (std::size_t m = 0; m < M; ++m)
-        for (std::size_t v = 0; v < M; ++v) f.nadir[m] = std::max(f.nadir[m], D.row(v)[m]);
+        for (std::size_t v = 0; v < M; ++v) f.nadir[m] = (std::max)(f.nadir[m], D.row(v)[m]);
     return f;
 }
 
@@ -210,7 +210,7 @@ inline std::vector<std::size_t> greedy_subset(const Rows& G, std::size_t n, int 
     for (std::size_t c = 0; c < r; ++c)
         for (std::size_t z = 0; z < r; ++z) {
             for (std::size_t j = 0; j < m; ++j) {
-                const double t = std::max(G.row(c)[j] - G.row(z)[j], 0.0);
+                const double t = (std::max)(G.row(c)[j] - G.row(z)[j], 0.0);
                 sq[j] = t * t;
             }
             D[c * r + z] = std::sqrt(np::sum(sq.data(), m));
@@ -220,7 +220,7 @@ inline std::vector<std::size_t> greedy_subset(const Rows& G, std::size_t n, int 
     auto costs = [&](const std::vector<double>& base) {
         std::vector<double> cost(r);
         for (std::size_t c = 0; c < r; ++c) {
-            for (std::size_t z = 0; z < r; ++z) row[z] = std::min(base[z], D[c * r + z]);
+            for (std::size_t z = 0; z < r; ++z) row[z] = (std::min)(base[z], D[c * r + z]);
             cost[c] = np::mean(row.data(), r);
         }
         return cost;
@@ -233,12 +233,12 @@ inline std::vector<std::size_t> greedy_subset(const Rows& G, std::size_t n, int 
     };
     std::vector<double> cur(r, inf);
     std::vector<std::size_t> chosen;
-    for (std::size_t step = 0; step < std::min(n, r); ++step) {
+    for (std::size_t step = 0; step < (std::min)(n, r); ++step) {
         std::vector<double> cost = costs(cur);
         for (auto c : chosen) cost[c] = inf;
         const std::size_t c = argmin(cost);
         chosen.push_back(c);
-        for (std::size_t z = 0; z < r; ++z) cur[z] = std::min(cur[z], D[c * r + z]);
+        for (std::size_t z = 0; z < r; ++z) cur[z] = (std::min)(cur[z], D[c * r + z]);
     }
     for (int pass = 0; pass < sweeps; ++pass) {
         bool improved = false;
@@ -246,12 +246,12 @@ inline std::vector<std::size_t> greedy_subset(const Rows& G, std::size_t n, int 
             std::vector<double> base(r, inf);
             for (std::size_t k = 0; k < chosen.size(); ++k)
                 if (k != i)
-                    for (std::size_t z = 0; z < r; ++z) base[z] = std::min(base[z], D[chosen[k] * r + z]);
+                    for (std::size_t z = 0; z < r; ++z) base[z] = (std::min)(base[z], D[chosen[k] * r + z]);
             std::vector<double> cost = costs(base);
             for (std::size_t k = 0; k < chosen.size(); ++k)
                 if (k != i) cost[chosen[k]] = inf;
             const std::size_t c = argmin(cost);
-            for (std::size_t z = 0; z < r; ++z) row[z] = std::min(base[z], D[chosen[i] * r + z]);
+            for (std::size_t z = 0; z < r; ++z) row[z] = (std::min)(base[z], D[chosen[i] * r + z]);
             if (cost[c] < np::mean(row.data(), r) - 1e-15) {
                 chosen[i] = c;
                 improved = true;

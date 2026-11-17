@@ -539,7 +539,7 @@ inline bool text_knob_accepts(const std::string& name, const std::string& value)
     if (!is_list_knob(name)) return one(value);
     std::size_t a = 0;
     while (a <= value.size()) {
-        const std::size_t b = std::min(value.find(',', a), value.size());
+        const std::size_t b = (std::min)(value.find(',', a), value.size());
         std::size_t x = a, y = b;                       // the item without spaces
         while (x < y && std::isspace(static_cast<unsigned char>(value[x]))) ++x;
         while (y > x && std::isspace(static_cast<unsigned char>(value[y - 1]))) --y;

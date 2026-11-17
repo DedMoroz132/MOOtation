@@ -137,13 +137,13 @@ inline std::vector<std::size_t> hv_ls_rn(const std::vector<std::vector<double>>&
     const std::size_t n = F.size(), m = ref.size();
     std::vector<std::size_t> S = hv_greedy(F, k, ref);
     if (S.size() >= n || S.size() <= extremes(F).size()) return S;
-    const std::size_t fixed = std::min(extremes(F).size(), S.size());   // S[0, fixed): the extremes
+    const std::size_t fixed = (std::min)(extremes(F).size(), S.size());   // S[0, fixed): the extremes
     std::vector<char> in(n, 0);
     for (std::size_t s : S) in[s] = 1;
     double vol = 1.0;                                   // the reference box above the ideal point
     for (std::size_t j = 0; j < m; ++j) {
         double lo = ref[j];
-        for (const auto& f : F) lo = std::min(lo, f[j]);
+        for (const auto& f : F) lo = (std::min)(lo, f[j]);
         vol *= ref[j] - lo;
     }
     const double tol = 1e-12 * vol;
@@ -178,7 +178,7 @@ inline std::vector<std::size_t> hv_ls_rn(const std::vector<std::vector<double>>&
     // L^R: l points of P \ {p} drawn without replacement, once (from seed)
     std::mt19937 rng(seed);
     std::vector<std::vector<std::size_t>> lists(n);
-    const std::size_t lr = std::min(l, n - 1);
+    const std::size_t lr = (std::min)(l, n - 1);
     for (std::size_t p = 0; p < n; ++p) {
         std::vector<std::size_t> others;
         for (std::size_t q = 0; q < n; ++q) if (q != p) others.push_back(q);

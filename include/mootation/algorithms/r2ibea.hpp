@@ -219,7 +219,7 @@ private:
             return W[a][1] < W[b][1];
         });
         std::vector<int> stair;                      // non-dominated staircase
-        double best_y = std::numeric_limits<double>::max();
+        double best_y = (std::numeric_limits<double>::max)();
         for (int idx : order)
             if (W[idx][1] < best_y) { stair.push_back(idx); best_y = W[idx][1]; }
         int T = static_cast<int>(stair.size());
@@ -284,9 +284,9 @@ private:
             clipped.clear();
             for (int q = 0; q < K; ++q) {
                 if (q == i) continue;
-                clipped.push_back({std::max(W[i][0], W[q][0]),
-                                   std::max(W[i][1], W[q][1]),
-                                   std::max(W[i][2], W[q][2])});
+                clipped.push_back({(std::max)(W[i][0], W[q][0]),
+                                   (std::max)(W[i][1], W[q][1]),
+                                   (std::max)(W[i][2], W[q][2])});
             }
             contrib[i] = box - hv3d(clipped);
         }
@@ -380,18 +380,18 @@ private:
     // ------------------------------------------------------------------ //
     std::vector<double> compute_reference_point(DataVault<Ind_t>& vault, int n) {
         int m = vault.objs_n();
-        std::vector<double> fmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> fmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> fmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> fmax(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < n; ++i) {
             const auto& o = vault.objectives_of(i);
             for (int k = 0; k < m; ++k) {
-                fmin[k] = std::min(fmin[k], o[k]);
-                fmax[k] = std::max(fmax[k], o[k]);
+                fmin[k] = (std::min)(fmin[k], o[k]);
+                fmax[k] = (std::max)(fmax[k], o[k]);
             }
         }
         double max_range = 0.0;
         for (int k = 0; k < m; ++k)
-            max_range = std::max(max_range, fmax[k] - fmin[k]);
+            max_range = (std::max)(max_range, fmax[k] - fmin[k]);
         std::vector<double> zstar(m);
         inv_range_.assign(m, 1.0);
         if (!normalize_) {
@@ -442,7 +442,7 @@ private:
                 if (vx > tx) tx = vx;
                 if (vy > ty) ty = vy;
             }
-            sum += tx - std::min(tx, ty);
+            sum += tx - (std::min)(tx, ty);
         }
         return sum / static_cast<double>(weight_vectors_.size());
     }

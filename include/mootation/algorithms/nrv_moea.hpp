@@ -217,7 +217,7 @@ private:
         std::vector<int> alive(n, 1), sz(n, 1);
         int count = n;
         while (count > K) {
-            int ba = -1, bb = -1; double bd = std::numeric_limits<double>::max();
+            int ba = -1, bb = -1; double bd = (std::numeric_limits<double>::max)();
             for (int a = 0; a < n; ++a) {
                 if (!alive[a]) continue;
                 for (int b = a + 1; b < n; ++b) {
@@ -234,7 +234,7 @@ private:
                 // Ward (Lance-Williams): d(i∪j,k)=sqrt(((ni+nk)d²ik+(nj+nk)d²jk−nk·d²ij)/(ni+nj+nk))
                 double dik = D[ba][c], djk = D[bb][c];
                 double num = (ni+nk)*dik*dik + (nj+nk)*djk*djk - nk*dij*dij;
-                double nd = std::sqrt(std::max(0.0, num / (ni+nj+nk)));
+                double nd = std::sqrt((std::max)(0.0, num / (ni+nj+nk)));
                 D[ba][c] = D[c][ba] = nd;
             }
             cl[ba].insert(cl[ba].end(), cl[bb].begin(), cl[bb].end());
@@ -261,7 +261,7 @@ private:
         if (static_cast<int>(nd.size()) <= N) return nd;   // «keep non-dominated only»
         // ε-prune down to N
         double c = 1e-12;
-        for (int i : nd) for (int j : nd) if (i != j) c = std::max(c, std::abs(eps_plus(F[i], F[j])));
+        for (int i : nd) for (int j : nd) if (i != j) c = (std::max)(c, std::abs(eps_plus(F[i], F[j])));
         std::vector<double> fit(F.size(), 0.0);
         std::vector<char> alive(F.size(), 0);
         for (int i : nd) alive[i] = 1;
@@ -272,7 +272,7 @@ private:
         }
         int rem = static_cast<int>(nd.size()) - N;
         for (int t = 0; t < rem; ++t) {
-            int worst = -1; double wf = std::numeric_limits<double>::max();
+            int worst = -1; double wf = (std::numeric_limits<double>::max)();
             for (int i : nd) if (alive[i] && fit[i] < wf) { wf = fit[i]; worst = i; }
             if (worst < 0) break;
             alive[worst] = 0;
@@ -385,8 +385,8 @@ public:
         const int K = static_cast<int>(nd.size());
         if (K <= N) return nd;
         const int m = static_cast<int>(F[nd[0]].size());
-        std::vector<double> lo(m, std::numeric_limits<double>::max()), hi(m, -std::numeric_limits<double>::max());
-        for (int a : nd) for (int k = 0; k < m; ++k) { lo[k] = std::min(lo[k], F[a][k]); hi[k] = std::max(hi[k], F[a][k]); }
+        std::vector<double> lo(m, (std::numeric_limits<double>::max)()), hi(m, -(std::numeric_limits<double>::max)());
+        for (int a : nd) for (int k = 0; k < m; ++k) { lo[k] = (std::min)(lo[k], F[a][k]); hi[k] = (std::max)(hi[k], F[a][k]); }
         std::vector<std::vector<double>> G(K, std::vector<double>(m));
         for (int i = 0; i < K; ++i)
             for (int k = 0; k < m; ++k) {
@@ -397,7 +397,7 @@ public:
         for (int i = 0; i < K; ++i) for (int j = 0; j < K; ++j) I[i][j] = eps_plus(G[i], G[j]);
         std::vector<double> C(K, 0.0);
         for (int j = 0; j < K; ++j) {
-            for (int i = 0; i < K; ++i) C[j] = std::max(C[j], std::abs(I[i][j]));
+            for (int i = 0; i < K; ++i) C[j] = (std::max)(C[j], std::abs(I[i][j]));
             if (!(C[j] > 0.0)) C[j] = 1e-12;
         }
         std::vector<double> fit(K, 1.0);
@@ -412,8 +412,8 @@ public:
         }
         std::vector<int> kept;
         for (int j = 0; j < K; ++j) if (alive[j]) kept.push_back(j);
-        std::vector<double> mn(m, std::numeric_limits<double>::max());
-        for (int j : kept) for (int k = 0; k < m; ++k) mn[k] = std::min(mn[k], F[nd[j]][k]);
+        std::vector<double> mn(m, (std::numeric_limits<double>::max)());
+        for (int j : kept) for (int k = 0; k < m; ++k) mn[k] = (std::min)(mn[k], F[nd[j]][k]);
         std::vector<double> d(kept.size(), 0.0);
         double mean = 0.0;
         for (std::size_t q = 0; q < kept.size(); ++q) {
@@ -555,16 +555,16 @@ public:
         //    s is frozen every f_r·MaxG generations, min — every gen ────────
         std::vector<int> Fu = Pc;
         for (int v : Fl) Fu.push_back(v);
-        std::vector<double> fmin(m,  std::numeric_limits<double>::max());
-        std::vector<double> fmax(m, -std::numeric_limits<double>::max());
+        std::vector<double> fmin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> fmax(m, -(std::numeric_limits<double>::max)());
         for (int v : Fu) {
             const auto& o = vault.objectives_of(v);
             for (int j = 0; j < m; ++j) {
-                fmin[j] = std::min(fmin[j], o[j]);
-                fmax[j] = std::max(fmax[j], o[j]);
+                fmin[j] = (std::min)(fmin[j], o[j]);
+                fmax[j] = (std::max)(fmax[j], o[j]);
             }
         }
-        int s_period = std::max(1, static_cast<int>(FR_ * t_max_));
+        int s_period = (std::max)(1, static_cast<int>(FR_ * t_max_));
         if (s_age_ < 0 || (current_gen_ - s_age_) >= s_period ||
             static_cast<int>(s_rng_.size()) != m) {
             s_rng_.assign(m, 1.0);
@@ -606,8 +606,8 @@ public:
                     std::vector<double> amax(m, 1e-12);
                     for (int i = 0; i < A; ++i)
                         for (int j = 0; j < m; ++j)
-                            amax[j] = std::max(amax[j], arcN[i][j]);
-                    for (int j = 0; j < m; ++j) A_[j] = 1.0 / std::max(amax[j], 1e-6);
+                            amax[j] = (std::max)(amax[j], arcN[i][j]);
+                    for (int j = 0; j < m; ++j) A_[j] = 1.0 / (std::max)(amax[j], 1e-6);
                 }
             }
             double AA = 0.0; for (int j = 0; j < m; ++j) AA += A_[j]*A_[j];
@@ -628,7 +628,7 @@ public:
                 std::vector<double> C(m, 0.0);
                 for (int v : cl) for (int j = 0; j < m; ++j) C[j] += MP[v][j];
                 for (int j = 0; j < m; ++j) C[j] /= cl.size();
-                int best = cl[0]; double bd = std::numeric_limits<double>::max();
+                int best = cl[0]; double bd = (std::numeric_limits<double>::max)();
                 for (int v : cl) {
                     double d1 = edist(MP[v], C);
                     double d = d1 - d2[v];

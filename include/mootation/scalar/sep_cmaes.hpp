@@ -71,12 +71,12 @@ public:
         }
         muw_ = 1.0 / sw2;
         cs_ = (muw_ + 2.0) / (n + muw_ + 3.0);
-        ds_ = 1.0 + 2.0 * std::max(0.0, std::sqrt((muw_ - 1.0) / (n + 1.0)) - 1.0) + cs_;
+        ds_ = 1.0 + 2.0 * (std::max)(0.0, std::sqrt((muw_ - 1.0) / (n + 1.0)) - 1.0) + cs_;
         cc_ = 4.0 / (n + 4.0);
         mucov_ = muw_;
         const double def = 1.0 / mucov_ * 2.0 / ((n + std::sqrt(2.0)) * (n + std::sqrt(2.0))) +
-                           (1.0 - 1.0 / mucov_) * std::min(1.0, (2.0 * mucov_ - 1.0) / ((n + 2.0) * (n + 2.0) + mucov_));
-        ccov_ = std::min(1.0, (n + 2.0) / 3.0 * def);                    // §2
+                           (1.0 - 1.0 / mucov_) * (std::min)(1.0, (2.0 * mucov_ - 1.0) / ((n + 2.0) * (n + 2.0) + mucov_));
+        ccov_ = (std::min)(1.0, (n + 2.0) / 3.0 * def);                    // §2
         chiN_ = std::sqrt(n) * (1.0 - 1.0 / (4.0 * n) + 1.0 / (21.0 * n * n));   // SEP-2
         ps_.assign(n_, 0.0);
         pc_.assign(n_, 0.0);

@@ -192,13 +192,13 @@ struct LearnedCoords {
         if (k == "coords_warmup") {
             if (!(v >= 0.0) || v != std::floor(v))
                 throw std::invalid_argument("coords_warmup must be an integer >= 0");
-            warmup = static_cast<int>(std::min(v, 1e9));
+            warmup = static_cast<int>((std::min)(v, 1e9));
             return true;
         }
         if (k == "coords_update") {
             if (!(v >= 1.0) || v != std::floor(v))
                 throw std::invalid_argument("coords_update must be an integer >= 1");
-            update = static_cast<int>(std::min(v, 1e9));
+            update = static_cast<int>((std::min)(v, 1e9));
             return true;
         }
         return false;
@@ -298,14 +298,14 @@ struct LearnedCoords {
         // the y-box: the projected population's range, widened by half its span
         double widest = 0.0;
         for (const auto& b : box)
-            if (b.first && b.second) widest = std::max(widest, *b.second - *b.first);
+            if (b.first && b.second) widest = (std::max)(widest, *b.second - *b.first);
         ylo_.assign(n, 1e300);
         yhi_.assign(n, -1e300);
         for (const auto& x : X) {
             const auto y = to_y(x);
             for (std::size_t j = 0; j < n; ++j) {
-                ylo_[j] = std::min(ylo_[j], y[j]);
-                yhi_[j] = std::max(yhi_[j], y[j]);
+                ylo_[j] = (std::min)(ylo_[j], y[j]);
+                yhi_[j] = (std::max)(yhi_[j], y[j]);
             }
         }
         for (std::size_t j = 0; j < n; ++j) {
@@ -358,7 +358,7 @@ struct LearnedCoords {
     {
         std::vector<std::pair<std::optional<double>, std::optional<double>>> b(y.size());
         for (std::size_t j = 0; j < y.size(); ++j)
-            b[j] = {std::min(ylo_[j], y[j]), std::max(yhi_[j], y[j])};
+            b[j] = {(std::min)(ylo_[j], y[j]), (std::max)(yhi_[j], y[j])};
         return b;
     }
 

@@ -116,10 +116,10 @@ inline double ps_dmin(const double* U, std::size_t nu, const double* R, std::siz
 {
     double best = std::numeric_limits<double>::infinity();
     if (nu == 0) return best;
-    const std::vector<double> near = nearest_to_each(U, nu, R, nr, d, cyclic);
+    const std::vector<double> nearby = nearest_to_each(U, nu, R, nr, d, cyclic);
     for (std::size_t a = 0; a < nr; a += 128) {
-        double m = near[a];
-        for (std::size_t r = a + 1; r < a + 128 && r < nr; ++r) m = detail_x::nan_min(m, near[r]);
+        double m = nearby[a];
+        for (std::size_t r = a + 1; r < a + 128 && r < nr; ++r) m = detail_x::nan_min(m, nearby[r]);
         if (m < best) best = m;                         // min(best, m): a NaN leaves best
     }
     return best;
@@ -229,8 +229,8 @@ struct KdTree {
         for (std::size_t c = 0; c < m; ++c) {
             double a = R[idx[lo] * m + c], b = a;
             for (std::size_t k = lo + 1; k < hi; ++k) {
-                a = std::min(a, R[idx[k] * m + c]);
-                b = std::max(b, R[idx[k] * m + c]);
+                a = (std::min)(a, R[idx[k] * m + c]);
+                b = (std::max)(b, R[idx[k] * m + c]);
             }
             if (b - a > widest) {
                 widest = b - a;
@@ -261,7 +261,7 @@ struct KdTree {
         const double* q = R + i * m;
         if (nd.leaf) {
             for (std::size_t k = nd.lo; k < nd.hi; ++k)
-                if (idx[k] != i) best = std::min(best, distance(q, R + idx[k] * m, m, buf));
+                if (idx[k] != i) best = (std::min)(best, distance(q, R + idx[k] * m, m, buf));
             return;
         }
         const double gap = q[nd.axis] - nd.split;

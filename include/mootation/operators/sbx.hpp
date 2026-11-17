@@ -138,8 +138,8 @@ inline void sbx(const std::vector<double>& p1,
         double lo = sbx_require_bound(bounds[j].first,  "lower", j);
         double hi = sbx_require_bound(bounds[j].second, "upper", j);
         if (std::abs(p1[j] - p2[j]) < 1e-14) continue;
-        double y1 = std::min(p1[j], p2[j]);
-        double y2 = std::max(p1[j], p2[j]);
+        double y1 = (std::min)(p1[j], p2[j]);
+        double y2 = (std::max)(p1[j], p2[j]);
         double dy = y2 - y1;
         double u  = uni(rng);
         if (clip) {                    // PlatEMO's form (above): unbounded β, then the clip

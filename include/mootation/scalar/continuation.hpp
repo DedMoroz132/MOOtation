@@ -293,7 +293,7 @@ inline Result run_data_continuation(const Problem& P, double eq_tol, bool has_to
             continuation::Stage view(P, stages[static_cast<std::size_t>(s)], seen);
             Result r;
             try {
-                r = run(inner.name, view.problem, eq_tol, has_tol0, eq_tol0, pop_size, std::min(allowance, rest),
+                r = run(inner.name, view.problem, eq_tol, has_tol0, eq_tol0, pop_size, (std::min)(allowance, rest),
                         start_seed(seed, static_cast<std::uint64_t>(s)), inner.knobs, {}, 0, from);   // DC-2
             } catch (const BudgetSpent&) {
             }

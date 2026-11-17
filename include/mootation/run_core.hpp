@@ -315,7 +315,7 @@ void ops_after_step(Vault& v)
         auto q = cq.find(kv.first);
         auto pp = cp.find(kv.first);
         long long extra = (q == cq.end() ? 0 : q->second) - (pp == cp.end() ? 0 : pp->second);
-        surv += std::min(kv.second, std::max(0LL, extra));
+        surv += (std::min)(kv.second, (std::max)(0LL, extra));
     }
     // nondominated by the parents, and the step to the nearest parent
     double diag = 0.0;
@@ -340,7 +340,7 @@ void ops_after_step(Vault& v)
             for (const auto& px : st().ops.par_x) {
                 double d2 = 0.0;
                 for (std::size_t j = 0; j < px.size(); ++j) d2 += (O[c][j] - px[j]) * (O[c][j] - px[j]);
-                best = std::min(best, d2);
+                best = (std::min)(best, d2);
             }
             step += std::sqrt(best) / diag;
             ++step_n;
@@ -854,7 +854,7 @@ inline void aux_dcn(const std::vector<std::pair<double, double>>& box,
                 const double d = (xi[j] - shift[j]) * scale[j] - ((*X[k])[j] - shift[j]) * scale[j];
                 d2 += d * d;
             }
-            best = std::min(best, d2);
+            best = (std::min)(best, d2);
         }
         dcn[i] = n > 1 ? std::sqrt(best) : 0.0;
     }
@@ -1033,7 +1033,7 @@ RunResult run_core(const RunConfig& cfg)
             auto fun = [&](const std::vector<double>& u) {
                 if (left <= 0) throw Spent{};
                 --left;
-                for (std::size_t j = 0; j < n; ++j) y[j] = std::min(hi[j], std::max(lo[j], lo[j] + u[j] * (hi[j] - lo[j])));
+                for (std::size_t j = 0; j < n; ++j) y[j] = (std::min)(hi[j], (std::max)(lo[j], lo[j] + u[j] * (hi[j] - lo[j])));
                 eval_into(y, objs, lims);
                 const double v = objs[0];
                 if (std::isfinite(v) && v < fbest) { fbest = v; best = y; }
@@ -1085,7 +1085,7 @@ RunResult run_core(const RunConfig& cfg)
     const bool by_evaluations = cfg.max_evaluations > 0;
     if (by_evaluations)
         apply_t_max(alg, static_cast<int>(std::min<long long>(
-            INT_MAX, (cfg.max_evaluations + cfg.pop_size - 1) / std::max(1, cfg.pop_size))));
+            INT_MAX, (cfg.max_evaluations + cfg.pop_size - 1) / (std::max)(1, cfg.pop_size))));
     else
         apply_t_max(alg, cfg.n_gen);
 
@@ -1208,8 +1208,8 @@ RunResult run_core(const RunConfig& cfg)
                 if (!v.is_dirty(i)) cv.push_back(v.raw_cv(i));
             std::stable_sort(cv.begin(), cv.end(), std::greater<double>());
             const std::size_t theta = static_cast<std::size_t>(
-                std::max(1L, std::lround(cfg.eps_theta * static_cast<double>(v.pop_size()))));
-            v.set_cv_level(cv.empty() ? 0.0 : cv[std::min(theta, cv.size()) - 1]);
+                (std::max)(1L, std::lround(cfg.eps_theta * static_cast<double>(v.pop_size()))));
+            v.set_cv_level(cv.empty() ? 0.0 : cv[(std::min)(theta, cv.size()) - 1]);
             // rule 4 from generation 0 when tc = 0: a core whose setup spends
             // fewer than pop_size evaluations (paes: one) would otherwise run
             // its first steps at eps(0) before the first update
@@ -1261,7 +1261,7 @@ RunResult run_core(const RunConfig& cfg)
         // EPS_LEVEL, Eq. 8 rules 2-4, once for every generation reached
         auto eps_update = [&]() {
             auto& v = opt.get_vault();
-            const double pop = static_cast<double>(std::max(1, cfg.pop_size));
+            const double pop = static_cast<double>((std::max)(1, cfg.pop_size));
             const double gens_total = by_evaluations
                 ? static_cast<double>(cfg.max_evaluations) / pop : static_cast<double>(cfg.n_gen);
             const int gen_now = by_evaluations
@@ -1287,7 +1287,7 @@ RunResult run_core(const RunConfig& cfg)
             if (cfg.eps_level) eps_update();
             if (cfg.n_eq > 0 && cfg.eq_linear) {
                 // the share of the budget spent so far, setup included
-                const double t = std::min(1.0, static_cast<double>(spent()) /
+                const double t = (std::min)(1.0, static_cast<double>(spent()) /
                                                    static_cast<double>(cfg.max_evaluations));
                 opt.get_vault().set_eq_tol(cfg.eq_tol0 + (cfg.eq_tol - cfg.eq_tol0) * t);
             }
@@ -1327,7 +1327,7 @@ RunResult run_core(const RunConfig& cfg)
             if (observe) emit(0);
             const long long start  = spent();
             const long long stride = static_cast<long long>(cfg.record_every) *
-                                     std::max(1, cfg.pop_size);
+                                     (std::max)(1, cfg.pop_size);
             long long next_record  = start + stride;
             long long idle         = 0;   // consecutive steps that evaluated nothing
             for (int g = 1; spent() < cfg.max_evaluations; ++g) {
@@ -1348,8 +1348,8 @@ RunResult run_core(const RunConfig& cfg)
                     // The real cost of a step is known now: give the schedule the
                     // number of steps the budget buys (MOEA/D-AWA anneals over
                     // five times more steps than a generational core).
-                    const long long per  = std::max(1LL, now - start);
-                    const long long left = std::max(0LL, cfg.max_evaluations - now);
+                    const long long per  = (std::max)(1LL, now - start);
+                    const long long left = (std::max)(0LL, cfg.max_evaluations - now);
                     apply_t_max(alg, static_cast<int>(std::min<long long>(
                         INT_MAX, 1 + (left + per - 1) / per)));
                 }

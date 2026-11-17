@@ -284,7 +284,7 @@ private:
             if (std::abs(k - kr) > 1e-6) return;
             std::vector<double> ang(M);
             for (int j = 0; j < M - 1; ++j) ang[j] = idx[j] * step;
-            ang[M - 1] = std::max(0.0, std::min(M_PI / 2.0, last));
+            ang[M - 1] = (std::max)(0.0, (std::min)(M_PI / 2.0, last));
             if (shrink >= 0.0)                                   // Step 5 (IF-MaOEA-11)
                 for (int j = 0; j < M; ++j) ang[j] = 0.5 * ang[j] + shrink;
             // W_concave: cosine projection, normalized onto the simplex (Steps 3-4)
@@ -355,7 +355,7 @@ private:
             enum_angles(m_, L1, 0, 0.0, idx, conc, unit);
         }
         if (conc.empty()) {                            // fallback
-            conc = das_dennis::generate_auto(m_, std::max(1, N_));
+            conc = das_dennis::generate_auto(m_, (std::max)(1, N_));
         }
         std::vector<std::vector<double>> set = conc;   // W_concave, boundary layer
         if (L1 < m_) {
@@ -378,7 +378,7 @@ private:
         Ref_.clear();
         for (auto& w : set) {
             double n = 0; for (double v : w) n += v * v;
-            n = std::sqrt(std::max(n, 1e-300));
+            n = std::sqrt((std::max)(n, 1e-300));
             for (double& v : w) v /= n;
             Ref_.push_back(w);
         }
@@ -414,7 +414,7 @@ private:
         const int NR = static_cast<int>(Ref0_.size());
         if (idxs.empty() || NR == 0) return;
         std::vector<int>    best(NR, -1);
-        std::vector<double> bd(NR, std::numeric_limits<double>::max());
+        std::vector<double> bd(NR, (std::numeric_limits<double>::max)());
         for (int i : idxs) {
             int arg = 0; double cm = -2.0;
             for (int r = 0; r < NR; ++r) {
@@ -456,20 +456,20 @@ private:
 
     // IF-MaOEA-12: Alg.1 lines 3-5, Range = [z, z^nad] from the initial population
     void init_range() {
-        rz_.assign(m_, std::numeric_limits<double>::max());
-        rznad_.assign(m_, -std::numeric_limits<double>::max());
+        rz_.assign(m_, (std::numeric_limits<double>::max)());
+        rznad_.assign(m_, -(std::numeric_limits<double>::max)());
         for (const auto& s : P_)
-            for (int k = 0; k < m_; ++k) { rz_[k] = std::min(rz_[k], s.objs[k]); rznad_[k] = std::max(rznad_[k], s.objs[k]); }
+            for (int k = 0; k < m_; ++k) { rz_[k] = (std::min)(rz_[k], s.objs[k]); rznad_[k] = (std::max)(rznad_[k], s.objs[k]); }
     }
 
     // Normalisation z / z^nad over a pool (Eq.5). Returns normalised objs.
     std::vector<std::vector<double>> normalize(const std::vector<Sol>& pool) const {
-        std::vector<double> z(m_, std::numeric_limits<double>::max());
-        std::vector<double> zn(m_, -std::numeric_limits<double>::max());
+        std::vector<double> z(m_, (std::numeric_limits<double>::max)());
+        std::vector<double> zn(m_, -(std::numeric_limits<double>::max)());
         if (range_alg1_) { z = rz_; zn = rznad_; }   // IF-MaOEA-12: Alg.1's persistent Range
         else
             for (const auto& s : pool)
-                for (int k = 0; k < m_; ++k) { z[k] = std::min(z[k], s.objs[k]); zn[k] = std::max(zn[k], s.objs[k]); }
+                for (int k = 0; k < m_; ++k) { z[k] = (std::min)(z[k], s.objs[k]); zn[k] = (std::max)(zn[k], s.objs[k]); }
         std::vector<std::vector<double>> F(pool.size(), std::vector<double>(m_));
         for (std::size_t i = 0; i < pool.size(); ++i)
             for (int k = 0; k < m_; ++k) {
@@ -542,7 +542,7 @@ private:
         std::vector<std::pair<int,double>> chosen;
         std::vector<int> slot(F.size(), -1);
         for (const auto& vert : Vert_) {
-            int best = -1; double bd = std::numeric_limits<double>::max();
+            int best = -1; double bd = (std::numeric_limits<double>::max)();
             for (int i : idxs) {
                 double d2 = 0.0;
                 for (int k = 0; k < m_; ++k) { double t = F[i][k] - vert[k]; d2 += t * t; }
@@ -738,7 +738,7 @@ public:
 
         // Alg.1 line 11: z updated by the offspring (IF-MaOEA-12, if_range = alg1)
         if (range_alg1_)
-            for (const auto& o : O) for (int k = 0; k < m_; ++k) rz_[k] = std::min(rz_[k], o.objs[k]);
+            for (const auto& o : O) for (int k = 0; k < m_; ++k) rz_[k] = (std::min)(rz_[k], o.objs[k]);
 
         // CA = P ∪ O
         std::vector<Sol> CA = P_;

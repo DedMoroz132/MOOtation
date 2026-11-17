@@ -129,7 +129,7 @@ private:
     }
 
     void build_neighbourhood(int n) {
-        int T = std::min(T_, n);
+        int T = (std::min)(T_, n);
         B_.resize(n);
         for (int i=0;i<n;++i) {
             std::vector<std::pair<double,int>> dists;
@@ -250,7 +250,7 @@ private:
         int xc_rank = 0;
         for (int i = 0; i < n; ++i) {
             if (dominates(vault, i, xc_slot))
-                xc_rank = std::max(xc_rank, vault.get_ind(i).rank + 1);
+                xc_rank = (std::max)(xc_rank, vault.get_ind(i).rank + 1);
         }
         vault.get_ind(xc_slot).rank = xc_rank;
         std::vector<int> to_check;
@@ -266,7 +266,7 @@ private:
                 int slot = (i < n) ? i : xc_slot;
                 if (slot == v) continue;
                 if (dominates(vault, slot, v))
-                    new_rank = std::max(new_rank, vault.get_ind(slot).rank + 1);
+                    new_rank = (std::max)(new_rank, vault.get_ind(slot).rank + 1);
             }
             if (new_rank != vault.get_ind(v).rank) {
                 vault.get_ind(v).rank = new_rank;
@@ -293,7 +293,7 @@ private:
             for (int i = 0; i < n; ++i) {
                 if (i == v) continue;
                 if (dominates(vault, i, v))
-                    new_rank = std::max(new_rank, vault.get_ind(i).rank + 1);
+                    new_rank = (std::max)(new_rank, vault.get_ind(i).rank + 1);
             }
             if (new_rank < vault.get_ind(v).rank) {
                 vault.get_ind(v).rank = new_rank;
@@ -338,7 +338,7 @@ private:
         for (int i = 0; i <= n; ++i) {
             int slot = (i < n) ? i : scratch;
             if (vault.get_ind(slot).subregion_idx == h)
-                worst_rank = std::max(worst_rank, vault.get_ind(slot).rank);
+                worst_rank = (std::max)(worst_rank, vault.get_ind(slot).rank);
         }
         int worst = -1; double worst_pbi = -std::numeric_limits<double>::infinity();
         for (int i = 0; i <= n; ++i) {
@@ -358,7 +358,7 @@ private:
         int max_rank = 0;
         for (int i = 0; i <= n; ++i) {
             int slot = (i < n) ? i : scratch;
-            max_rank = std::max(max_rank, vault.get_ind(slot).rank);
+            max_rank = (std::max)(max_rank, vault.get_ind(slot).rank);
         }
         if (max_rank == 0)                       // l = 1 (Alg.4 lines 4–6)
             return locate_worst(vault, n, scratch, niche);
@@ -563,7 +563,7 @@ public:
         int m = vault.objs_n();
         init_weights(n, m);
         build_neighbourhood(n);
-        ideal_.assign(m, std::numeric_limits<double>::max());
+        ideal_.assign(m, (std::numeric_limits<double>::max)());
 
         // Alg.2 line 1: random sampling from Ω.
         const auto& bounds = vault.get_bounds();
@@ -575,7 +575,7 @@ public:
             if(vault.bin_vars_n()>0) vault.set_all_variables(i,vars,bvars); else vault.set_variables(i,vars);
         }
         vault.sync();
-        for(int i=0;i<n;++i){const auto& o=vault.objectives_of(i);for(int j=0;j<m;++j) ideal_[j]=std::min(ideal_[j],o[j]);}
+        for(int i=0;i<n;++i){const auto& o=vault.objectives_of(i);for(int j=0;j<m;++j) ideal_[j]=(std::min)(ideal_[j],o[j]);}
         // Alg.2 line 16: NDS; line 17: random bijection individual ↔ subregion.
         compute_fronts(vault, n);
         assign_subregions_random(vault, n);
@@ -585,8 +585,8 @@ public:
     void setup_seeded(DataVault<Ind_t>& vault) {
         int n=vault.pop_size(), m=vault.objs_n();
         if(W_.empty()){init_weights(n,m);build_neighbourhood(n);}
-        ideal_.assign(m,std::numeric_limits<double>::max());
-        for(int i=0;i<n;++i){const auto& o=vault.objectives_of(i);for(int j=0;j<m;++j) ideal_[j]=std::min(ideal_[j],o[j]);}
+        ideal_.assign(m,(std::numeric_limits<double>::max)());
+        for(int i=0;i<n;++i){const auto& o=vault.objectives_of(i);for(int j=0;j<m;++j) ideal_[j]=(std::min)(ideal_[j],o[j]);}
         compute_fronts(vault,n);
         assign_subregions_random(vault,n);
         vault.expand(1); vault.reduce(n+1);

@@ -87,7 +87,7 @@ struct Rotation {
     Vec B;
 
     int blocks() const { return (n + s - 1) / s; }
-    int size_of(int b) const { return std::min(s, n - b * s); }
+    int size_of(int b) const { return (std::min)(s, n - b * s); }
 
     // out = B v, or B^T v
     void block_product(const double* v, double* out, bool transposed) const
@@ -135,7 +135,7 @@ inline std::vector<int> truncated_swaps(std::mt19937& g, int n)
     const int range = n / 3;
     for (int k = 0; k < n; ++k) {
         const int i = pi[static_cast<std::size_t>(k)];
-        const int lb = std::max(0, i - range), ub = std::min(n - 1, i + range);
+        const int lb = (std::max)(0, i - range), ub = (std::min)(n - 1, i + range);
         if (ub == lb) continue;
         int j = lb + static_cast<int>(rnd::below(g, static_cast<std::uint64_t>(ub - lb)));
         if (j >= i) ++j;
@@ -149,7 +149,7 @@ inline Rotation rotation(std::mt19937& g, int n)
 {
     Rotation R;
     R.n = n;
-    R.s = std::min(n, kBlock);
+    R.s = (std::min)(n, kBlock);
     for (int b = 0; b < R.blocks(); ++b) {
         const Vec q = instances::haar(g, R.size_of(b));
         R.B.insert(R.B.end(), q.begin(), q.end());
@@ -200,7 +200,7 @@ inline Instance of_bbob(const bbob::Function& f, int n)
 }
 
 // max(1, sqrt(s) / 8): f8, f9, f19
-inline double rosenbrock_scale(int n) { return std::max(1.0, std::sqrt(static_cast<double>(std::min(n, kBlock))) / 8.0); }
+inline double rosenbrock_scale(int n) { return (std::max)(1.0, std::sqrt(static_cast<double>((std::min)(n, kBlock))) / 8.0); }
 
 // Function fid at instance iid in n variables (the header's AN INSTANCE)
 inline Instance instance(int fid, int iid, int n)
@@ -270,7 +270,7 @@ public:
         if (id < 1 || id > 24 || n < 2 || in_.x_opt.size() != N) fail("f1..f24, x_opt of n values");
         if (bbob::uses_r(id) && in_.R.n != n) fail("R of n");
         if (bbob::uses_q(id) && in_.Q.n != n) fail("Q of n");
-        gamma_ = std::min(1.0, 40.0 / n);
+        gamma_ = (std::min)(1.0, 40.0 / n);
         axes_ = (n + kBlock - 1) / kBlock;
         c_ = rosenbrock_scale(n);
         for (int i = 0; i < n; ++i) {
@@ -555,7 +555,7 @@ private:
             aa[i] = a[i] * a[i];
             bb[i] = (xh - mu1_) * (xh - mu1_);
         }
-        const double funnel = std::min(row_sum(aa), 1.0 * n_ + lunacek_s_ * row_sum(bb));
+        const double funnel = (std::min)(row_sum(aa), 1.0 * n_ + lunacek_s_ * row_sum(bb));
         const Vec z = qlr(in_.lam, a);
         return gamma_ * (funnel + rastrigin(z)) + 1e4 * pen(x);
     }

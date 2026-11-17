@@ -195,13 +195,13 @@ private:
         double c=dot/d; return std::clamp(c,-1.0,1.0);
     }
     static std::vector<double> unit(const std::vector<double>& f){
-        double n=0; for(double v:f) n+=v*v; n=std::sqrt(std::max(n,1e-300));
+        double n=0; for(double v:f) n+=v*v; n=std::sqrt((std::max)(n,1e-300));
         std::vector<double> u(f.size()); for(std::size_t i=0;i<f.size();++i) u[i]=f[i]/n; return u;
     }
     static std::vector<double> l1(const std::vector<double>& f){
         double s=0; for(double v:f) s+=std::abs(v); if(s<1e-300) s=1.0;
         std::vector<double> w(f.size());
-        for(std::size_t i=0;i<f.size();++i) w[i]=std::max(std::abs(f[i])/s,1e-6);
+        for(std::size_t i=0;i<f.size();++i) w[i]=(std::max)(std::abs(f[i])/s,1e-6);
         return w;
     }
     // normalized objective f' = (f − z)/range_, where z is the RUNNING ideal
@@ -217,7 +217,7 @@ private:
     // clamping and is what Eq.4 does in raw objectives.
     std::vector<double> norm(const std::vector<double>& f) const {
         std::vector<double> r(m_);
-        for(int k=0;k<m_;++k) r[k]=std::max(0.0,(f[k]-z_[k])/range_[k]);
+        for(int k=0;k<m_;++k) r[k]=(std::max)(0.0,(f[k]-z_[k])/range_[k]);
         return r;
     }
     // Vector used for the GEOMETRY (directions §III-A, weights §III-B,
@@ -269,7 +269,7 @@ private:
             if(b<0) break;
             sel.push_back(b); used[b]=1;
         }
-        for(int i=0;(int)sel.size()<cnt;++i) sel.push_back(sel[i%std::max(1,(int)sel.size())]);
+        for(int i=0;(int)sel.size()<cnt;++i) sel.push_back(sel[i%(std::max)(1,(int)sel.size())]);
         return sel;
     }
 
@@ -282,20 +282,20 @@ private:
     // Tchebycheff in the normalized space: g = max_i f'_i / w_i
     double tcheby(const std::vector<double>& f, const std::vector<double>& w) const {
         auto fn=tch_vec(f);
-        double g=-std::numeric_limits<double>::max();
-        for(int i=0;i<m_;++i){ double v=fn[i]/std::max(w[i],1e-6); if(v>g) g=v; }
+        double g=-(std::numeric_limits<double>::max)();
+        for(int i=0;i<m_;++i){ double v=fn[i]/(std::max)(w[i],1e-6); if(v>g) g=v; }
         return g;
     }
     void upd_ideal(const std::vector<double>& f){
-        for(int i=0;i<m_;++i) z_[i]=std::min(z_[i],f[i]);
+        for(int i=0;i<m_;++i) z_[i]=(std::min)(z_[i],f[i]);
     }
     // normalization snapshot over the pool big
     void set_norm(const std::vector<Sol>& big){
-        zn_.assign(m_, std::numeric_limits<double>::max());
-        std::vector<double> nad(m_,-std::numeric_limits<double>::max());
-        for(const auto& s:big) for(int k=0;k<m_;++k){ zn_[k]=std::min(zn_[k],s.objs[k]); nad[k]=std::max(nad[k],s.objs[k]); }
+        zn_.assign(m_, (std::numeric_limits<double>::max)());
+        std::vector<double> nad(m_,-(std::numeric_limits<double>::max)());
+        for(const auto& s:big) for(int k=0;k<m_;++k){ zn_[k]=(std::min)(zn_[k],s.objs[k]); nad[k]=(std::max)(nad[k],s.objs[k]); }
         range_.assign(m_,1.0);
-        for(int k=0;k<m_;++k) range_[k]=std::max(nad[k]-zn_[k],1e-12);
+        for(int k=0;k<m_;++k) range_[k]=(std::max)(nad[k]-zn_[k],1e-12);
     }
 
     // FIX 2026-07-08 (wave 2 of the source-fidelity review):
@@ -337,7 +337,7 @@ private:
         // 1) Max-Min directions from big (normalized objectives projected onto the sphere)
         std::vector<std::vector<double>> proj; proj.reserve(big.size());
         for(const auto& s:big) proj.push_back(unit(geo(s.objs)));
-        int K=std::min(K_req_,(int)big.size());
+        int K=(std::min)(K_req_,(int)big.size());
         std::vector<int> di=max_min(proj,K);
         V_.clear(); for(int idx:di) V_.push_back(unit(geo(big[idx].objs)));
         K_=(int)V_.size();
@@ -381,8 +381,8 @@ private:
                 // comparison is feasibility-first (AM2M-C), so an infeasible
                 // candidate can hold a weight only if nothing feasible is in
                 // the pool.
-                int best=-1; double bg=std::numeric_limits<double>::max();
-                double bcv=std::numeric_limits<double>::max();
+                int best=-1; double bg=(std::numeric_limits<double>::max)();
+                double bcv=(std::numeric_limits<double>::max)();
                 auto consider=[&](int i){
                     double g=tcheby(big[i].objs,w);
                     if(best<0 || detail::better_scalar(constraint_mode,g,big[i].cv,bg,bcv)){
@@ -427,7 +427,7 @@ private:
         // 4) weight holders from the initial population («use them to set P_k»)
         for(int k=0;k<K_;++k)
             for(const auto& w : Wk_[k]){
-                int best=0; double bg=std::numeric_limits<double>::max();
+                int best=0; double bg=(std::numeric_limits<double>::max)();
                 for(int i=0;i<(int)P.size();++i){
                     double g=tcheby(P[i].objs,w);
                     if(g<bg){bg=g;best=i;}
@@ -468,7 +468,7 @@ public:
             if(vault.bin_vars_n()>0) vault.set_all_variables(i,vars,bv); else vault.set_variables(i,vars);
         }
         vault.sync();
-        z_.assign(m_,std::numeric_limits<double>::max());
+        z_.assign(m_,(std::numeric_limits<double>::max)());
         std::vector<Sol> P; P.reserve(N_);
         for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i); s.bvars=vault.binary_variables_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
@@ -479,7 +479,7 @@ public:
 
     void setup_seeded(DataVault<Ind_t>& vault){
         m_=vault.objs_n(); N_=vault.pop_size(); gen_=0;
-        z_.assign(m_,std::numeric_limits<double>::max());
+        z_.assign(m_,(std::numeric_limits<double>::max)());
         std::vector<Sol> P; P.reserve(N_);
         for(int i=0;i<N_;++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i); s.bvars=vault.binary_variables_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);

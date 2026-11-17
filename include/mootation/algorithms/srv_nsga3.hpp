@@ -158,18 +158,18 @@ private:
     // of the simulation"). The scheme is identical to nsga3.hpp.
     void update_norm_state(DataVault<Ind_t>& vault, const std::vector<int>& St) {
         int m=vault.objs_n();
-        if (zmin_hist_.empty())    zmin_hist_.assign(m, std::numeric_limits<double>::max());
+        if (zmin_hist_.empty())    zmin_hist_.assign(m, (std::numeric_limits<double>::max)());
         if (extreme_hist_.empty()) extreme_hist_.assign(m, {});
-        for (int v:St) { const auto& o=vault.objectives_of(v); for (int j=0;j<m;++j) zmin_hist_[j]=std::min(zmin_hist_[j],o[j]); }
+        for (int v:St) { const auto& o=vault.objectives_of(v); for (int j=0;j<m;++j) zmin_hist_[j]=(std::min)(zmin_hist_[j],o[j]); }
         const double eps=1e-6;
         auto asf=[&](const std::vector<double>& o, int axis) {
-            double val=-std::numeric_limits<double>::max();
-            for (int j=0;j<m;++j) { double w=(axis==j)?1.0:eps; val=std::max(val,(o[j]-zmin_hist_[j])/w); }
+            double val=-(std::numeric_limits<double>::max)();
+            for (int j=0;j<m;++j) { double w=(axis==j)?1.0:eps; val=(std::max)(val,(o[j]-zmin_hist_[j])/w); }
             return val;
         };
         for (int i=0;i<m;++i) {
             std::vector<double> best=extreme_hist_[i];
-            double best_asf=best.empty()?std::numeric_limits<double>::max():asf(best,i);
+            double best_asf=best.empty()?(std::numeric_limits<double>::max)():asf(best,i);
             for (int v:St) { const auto& o=vault.objectives_of(v); double a=asf(o,i); if (a<best_asf) { best_asf=a; best=o; } }
             extreme_hist_[i]=std::move(best);
         }
@@ -186,8 +186,8 @@ private:
         // degenerate cases like no intercepts in certain directions or
         // negative intercepts, z_i^nadir is set as the maximal value of
         // f_i(x) from all x in Pc».
-        std::vector<double> nadir(m,-std::numeric_limits<double>::max());
-        for (int v:St) { const auto& o=vault.objectives_of(v); for (int j=0;j<m;++j) nadir[j]=std::max(nadir[j],o[j]); }
+        std::vector<double> nadir(m,-(std::numeric_limits<double>::max)());
+        for (int v:St) { const auto& o=vault.objectives_of(v); for (int j=0;j<m;++j) nadir[j]=(std::max)(nadir[j],o[j]); }
         bool deg=false; for (int i=0;i<m&&deg==false;++i) if(extreme_hist_[i].empty()) deg=true;
         if (deg==false) {
             std::vector<std::vector<double>> A(m,std::vector<double>(m+1));
@@ -224,7 +224,7 @@ private:
     std::vector<double> fn(DataVault<Ind_t>& vault, int v, const NP& np) const {
         int m=vault.objs_n(); const auto& o=vault.objectives_of(v);
         std::vector<double> f(m);
-        for (int j=0;j<m;++j) { double d=np.intercepts[j]; f[j]=(std::abs(d)>1e-12)?(o[j]-np.zmin[j])/d:0.0; f[j]=std::max(f[j],0.0); }
+        for (int j=0;j<m;++j) { double d=np.intercepts[j]; f[j]=(std::abs(d)>1e-12)?(o[j]-np.zmin[j])/d:0.0; f[j]=(std::max)(f[j],0.0); }
         return f;
     }
 
@@ -234,7 +234,7 @@ private:
         int m=vault.objs_n(); int nref=static_cast<int>(V_.size());
         int sz=static_cast<int>(St.size());
         for (int si=0;si<sz;++si) {
-            double best_d=std::numeric_limits<double>::max(); int best_r=0;
+            double best_d=(std::numeric_limits<double>::max)(); int best_r=0;
             for (int r=0;r<nref;++r) {
                 const auto& rv=V_[r];
                 double rr=0.0; for (int j=0;j<m;++j) rr+=rv[j]*rv[j];
@@ -267,7 +267,7 @@ private:
                 if (has) rwf.push_back(r);
             }
             if (rwf.empty()) break;
-            int min_rho=std::numeric_limits<int>::max(); for (int r:rwf) min_rho=std::min(min_rho,rho[r]);
+            int min_rho=(std::numeric_limits<int>::max)(); for (int r:rwf) min_rho=(std::min)(min_rho,rho[r]);
             std::vector<int> cands; for (int r:rwf) if(rho[r]==min_rho) cands.push_back(r);
             rnd::uniform_int_distribution<int> dc(0,(int)cands.size()-1);
             int j_star=cands[dc(rng_)];

@@ -124,7 +124,7 @@ inline void add_noise(std::mt19937& g, double noise, Vec& y)
 {
     if (noise <= 0.0) return;
     double big = 0.0;
-    for (double v : y) big = std::max(big, std::fabs(v));
+    for (double v : y) big = (std::max)(big, std::fabs(v));
     const double sigma = noise * big;
     for (double& v : y) v = v + sigma * rnd::normal01(g);
 }

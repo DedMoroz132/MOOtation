@@ -273,7 +273,7 @@ inline void evaluate(int which, const double* x, double* f, double* g)
         case 7: {
             const double x1 = rnd(x[0]), x2 = rnd(x[1]), x3 = rnd(x[2]), x4 = rnd(x[3]);
             f[0] = std::fabs(6.931 - x3 * x4 / (x1 * x2));
-            f[1] = std::max({x1, x2, x3, x4});
+            f[1] = (std::max)({x1, x2, x3, x4});
             gv = {f[0] / 6.931 - 0.5};
             break;
         }

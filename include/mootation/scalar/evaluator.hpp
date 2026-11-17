@@ -363,7 +363,7 @@ inline bool past_deadline(const Problem& P)
 // evaluator of its own).
 inline Problem derived(const Problem& from, Problem to)
 {
-    to.deadline = std::min(to.deadline, from.deadline);
+    to.deadline = (std::min)(to.deadline, from.deadline);
     to.time_clock = from.time_clock;
     return to;
 }
@@ -480,7 +480,7 @@ public:
           has_tol0(has_eq_tol0), eq_tol0(eq_tol0_), budget(budget_), pop_size(pop_size_), n_res(p.n_res)
     {
         if (record_every > 0 && obs) observer = std::move(obs);
-        stride = static_cast<long long>(std::max(1, record_every)) * pop_size;
+        stride = static_cast<long long>((std::max)(1, record_every)) * pop_size;
         next_record = stride;
         limit = budget;
         if (p.has_residuals()) check_residual_problem();
@@ -756,7 +756,7 @@ public:
     double eq_tol() const
     {
         if (!has_tol0 || budget <= 0 || over) return eq_tol_end;
-        const double share = std::min(1.0, static_cast<double>(spent) / static_cast<double>(budget));
+        const double share = (std::min)(1.0, static_cast<double>(spent) / static_cast<double>(budget));
         return eq_tol0 + (eq_tol_end - eq_tol0) * share;
     }
 
@@ -765,9 +765,9 @@ public:
         if (g.empty()) return 0.0;
         const std::size_t k = g.size() - static_cast<std::size_t>(n_eq);
         double v = 0.0;
-        for (std::size_t j = 0; j < k; ++j) v += std::max(g[j], 0.0);
+        for (std::size_t j = 0; j < k; ++j) v += (std::max)(g[j], 0.0);
         double ve = 0.0;
-        for (std::size_t j = k; j < g.size(); ++j) ve += std::max(std::fabs(g[j]) - tol, 0.0);
+        for (std::size_t j = k; j < g.size(); ++j) ve += (std::max)(std::fabs(g[j]) - tol, 0.0);
         return n_eq ? v + ve : v;
     }
 
@@ -993,7 +993,7 @@ private:
         }
         if (m == 1 && count && !bad && reached(x, f[0], i, verdict)) {          // THE TARGET
             budget = spent;
-            limit = std::min(limit, spent);
+            limit = (std::min)(limit, spent);
             target_reached = true;
             ended = "target";
             throw BudgetSpent{};
@@ -1086,7 +1086,7 @@ private:
         }
         if (count && !bad && reached(x, f[0], i, verdict)) {                    // THE TARGET
             budget = spent;
-            limit = std::min(limit, spent);
+            limit = (std::min)(limit, spent);
             target_reached = true;
             ended = "target";
             throw BudgetSpent{};

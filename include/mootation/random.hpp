@@ -64,11 +64,11 @@ namespace mootation::rnd {
 template <typename G>
 inline std::uint32_t word32(G& g)
 {
-    static_assert(G::min() == 0, "rnd: a generator of whole words");
-    if constexpr (G::max() == 0xFFFFFFFFu) {
+    static_assert((G::min)() == 0, "rnd: a generator of whole words");
+    if constexpr ((G::max)() == 0xFFFFFFFFu) {
         return static_cast<std::uint32_t>(g());
     } else {
-        static_assert(G::max() == std::numeric_limits<std::uint64_t>::max(),
+        static_assert((G::max)() == (std::numeric_limits<std::uint64_t>::max)(),
                       "rnd: a generator of 32- or 64-bit words");
         return static_cast<std::uint32_t>(static_cast<std::uint64_t>(g()) >> 32);
     }
@@ -131,7 +131,7 @@ inline T integer(G& g, T lo, T hi)
 {
     static_assert(std::is_integral<T>::value, "rnd::integer: an integer type");
     const std::uint64_t span = static_cast<std::uint64_t>(hi) - static_cast<std::uint64_t>(lo);
-    const std::uint64_t r = span == std::numeric_limits<std::uint64_t>::max() ? word64(g)
+    const std::uint64_t r = span == (std::numeric_limits<std::uint64_t>::max)() ? word64(g)
                                                                              : below(g, span + 1);
     return static_cast<T>(static_cast<std::uint64_t>(lo) + r);
 }
@@ -209,7 +209,7 @@ inline void shuffle(It first, It last, G& g)
 template <typename T = int>
 class uniform_int_distribution {
 public:
-    explicit uniform_int_distribution(T a = 0, T b = std::numeric_limits<T>::max()) : a_(a), b_(b) {}
+    explicit uniform_int_distribution(T a = 0, T b = (std::numeric_limits<T>::max)()) : a_(a), b_(b) {}
     template <typename G> T operator()(G& g) const { return integer<T>(g, a_, b_); }
     T a() const { return a_; }
     T b() const { return b_; }

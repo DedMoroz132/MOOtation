@@ -401,8 +401,8 @@ inline std::vector<double> pareto_set(Which w, int n)
         }
         case Which::MMF13: {
             const double t = argmin(g11, 0.1 + std::sqrt(0.1), 1.1 + std::sqrt(1.1));
-            const int k = std::max(static_cast<int>(std::sqrt(static_cast<double>(n))), 2);
-            const double top = std::min(1.1, sq(t - 0.1));
+            const int k = (std::max)(static_cast<int>(std::sqrt(static_cast<double>(n))), 2);
+            const double top = (std::min)(1.1, sq(t - 0.1));
             const std::vector<double> a = linspace(0.1, 1.1, k), b = linspace(0.1, top, k);
             for (double x3 : b)
                 for (double x1 : a) {
@@ -416,7 +416,7 @@ inline std::vector<double> pareto_set(Which w, int n)
         case Which::MMF15:
         case Which::MMF15a: {
             const int parts = w == Which::MMF14 || w == Which::MMF14a ? kNp : 1;
-            const int k = std::max(static_cast<int>(std::sqrt(static_cast<double>(n) / parts)), 2);
+            const int k = (std::max)(static_cast<int>(std::sqrt(static_cast<double>(n) / parts)), 2);
             const std::vector<double> a = linspace(0.0, 1.0, k);
             const double t = w == Which::MMF15 || w == Which::MMF15a ? argmin(g15, 0.0, 1.0) : 0.0;
             for (int i = 0; i < parts; ++i)

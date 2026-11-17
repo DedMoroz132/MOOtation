@@ -257,7 +257,7 @@ public:
                     return ia.crowding_distance > ib.crowding_distance;
                 });
             }
-            const int k = std::max(1, static_cast<int>(std::ceil(p * n)));
+            const int k = (std::max)(1, static_cast<int>(std::ceil(p * n)));
             rnd::uniform_int_distribution<int> top(0, k - 1);
             return vault.variables_of(order[static_cast<std::size_t>(top(rng_))]);
         };

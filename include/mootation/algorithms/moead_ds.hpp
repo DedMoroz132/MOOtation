@@ -208,8 +208,8 @@ private:
     void normalize(const std::vector<Sol>& P, std::vector<std::vector<double>>& R,
                    std::vector<double>& d1) const {
         int n=(int)P.size();
-        std::vector<double> zmin(m_,std::numeric_limits<double>::max());
-        for(auto&s:P) for(int k=0;k<m_;++k) zmin[k]=std::min(zmin[k],s.objs[k]);
+        std::vector<double> zmin(m_,(std::numeric_limits<double>::max)());
+        for(auto&s:P) for(int k=0;k<m_;++k) zmin[k]=(std::min)(zmin[k],s.objs[k]);
         // extreme points via ASF (Eq.9; weights — NSGA-III convention, DDS-6)
         // FIX 2026-07-07 (source-fidelity review): was
         // w=(k==i)?1e-6:1.0 (the literal Eq.9, an inversion against NSGA-III
@@ -218,7 +218,7 @@ private:
         std::vector<int> ext(m_,0);
         const std::vector<char> skip=(drs_guard_==DRSGuard::Normalize)?drs_mask(P):std::vector<char>(n,0);   // DDS-10
         for(int i=0;i<m_;++i){
-            int best=0; double bg=std::numeric_limits<double>::max();
+            int best=0; double bg=(std::numeric_limits<double>::max)();
             for(int j=0;j<n;++j){
                 if(skip[j]) continue;
                 double mx=-1e300;
@@ -241,11 +241,11 @@ private:
             for(int r=0;r<m_;++r){ if(r==i) continue; double f=A[r][i]/A[i][i]; for(int c=i;c<m_;++c) A[r][c]-=f*A[i][c]; rhs[r]-=f*rhs[i]; }
         }
         if(ok){ for(int i=0;i<m_;++i){ b[i]=rhs[i]/A[i][i]; if(b[i]<=1e-12){ok=false;break;} a[i]=1.0/b[i]; } }
-        if(!ok){ for(int k=0;k<m_;++k){ double mx=zmin[k]; for(auto&s:P) mx=std::max(mx,s.objs[k]); a[k]=std::max(mx-zmin[k],1e-12); } }
+        if(!ok){ for(int k=0;k<m_;++k){ double mx=zmin[k]; for(auto&s:P) mx=(std::max)(mx,s.objs[k]); a[k]=(std::max)(mx-zmin[k],1e-12); } }
         if(nadir_archive_ && !nd_arch_.empty()){   // DDS-9: z_nad = max over the archive
-            for(int k=0;k<m_;++k){ double mx=-std::numeric_limits<double>::max();
-                for(const auto& v:nd_arch_) mx=std::max(mx,v[k]);
-                a[k]=std::max(mx-zmin[k],1e-12); }
+            for(int k=0;k<m_;++k){ double mx=-(std::numeric_limits<double>::max)();
+                for(const auto& v:nd_arch_) mx=(std::max)(mx,v[k]);
+                a[k]=(std::max)(mx-zmin[k],1e-12); }
         }
         R.assign(n,std::vector<double>(m_,0.0)); d1.assign(n,0.0);
         for(int j=0;j<n;++j){
@@ -263,13 +263,13 @@ private:
     }
     std::vector<int> extreme_idx(const std::vector<Sol>& P) const {
         int n=(int)P.size();
-        std::vector<double> zmin(m_,std::numeric_limits<double>::max());
-        for(auto&s:P) for(int k=0;k<m_;++k) zmin[k]=std::min(zmin[k],s.objs[k]);
+        std::vector<double> zmin(m_,(std::numeric_limits<double>::max)());
+        for(auto&s:P) for(int k=0;k<m_;++k) zmin[k]=(std::min)(zmin[k],s.objs[k]);
         std::vector<int> ext;
         const std::vector<char> skip=(drs_guard_==DRSGuard::Extreme)?drs_mask(P):std::vector<char>(n,0);   // DDS-10
         // FIX 2026-07-07 (source-fidelity review): ASF weights
         // as in normalize() — NSGA-III convention (DDS-6), was the Eq.9 inversion.
-        for(int i=0;i<m_;++i){ int best=0; double bg=std::numeric_limits<double>::max();
+        for(int i=0;i<m_;++i){ int best=0; double bg=(std::numeric_limits<double>::max)();
             for(int j=0;j<n;++j){ if(skip[j]) continue; double mx=-1e300; for(int k=0;k<m_;++k){double w=(k==i)?own_w_:other_w_; double v=(P[j].objs[k]-zmin[k])/w; if(v>mx)mx=v;} if(mx<bg){bg=mx;best=j;} }
             if(std::find(ext.begin(),ext.end(),best)==ext.end()) ext.push_back(best); }
         return ext;
@@ -280,14 +280,14 @@ private:
         int n=(int)pool.size();
         std::vector<std::vector<double>> R; std::vector<double> d1; normalize(pool,R,d1);
         if(n<=N_){ R_last_=R; return pool; }   // Alg.1 line 3: DDS over the initial P — nothing to remove, d2 is kept
-        double theta=std::min(1.0,(double)gen_/std::max(1,t_max_));
+        double theta=(std::min)(1.0,(double)gen_/(std::max)(1,t_max_));
         std::vector<char> inQ(n,0);
         std::vector<int> ext=extreme_idx(pool);
         std::vector<int> Q;
         for(int e:ext){ if(!inQ[e]){ inQ[e]=1; Q.push_back(e);} }
         std::vector<int> Wv; for(int i=0;i<n;++i) if(!inQ[i]) Wv.push_back(i);
-        std::vector<double> distQ(n,std::numeric_limits<double>::max());
-        for(int x:Wv){ double mn=1e300; for(int q:Q) mn=std::min(mn,d2(R[x],R[q])); distQ[x]=mn; }
+        std::vector<double> distQ(n,(std::numeric_limits<double>::max)());
+        for(int x:Wv){ double mn=1e300; for(int q:Q) mn=(std::min)(mn,d2(R[x],R[q])); distQ[x]=mn; }
         while((int)Q.size()<N_ && !Wv.empty()){
             // pivot = argmax distQ
             int p=-1; double bd=-1; for(int x:Wv){ if(distQ[x]>bd){bd=distQ[x];p=x;} }
@@ -303,7 +303,7 @@ private:
             for(int x:nd){ double hpf=d1[x]+theta*d2(R[x],R[p]); if(hpf<bg){bg=hpf;s=x;} }
             inQ[s]=1; Q.push_back(s);
             Wv.erase(std::remove(Wv.begin(),Wv.end(),s),Wv.end());
-            for(int x:Wv) distQ[x]=std::min(distQ[x],d2(R[x],R[s]));
+            for(int x:Wv) distQ[x]=(std::min)(distQ[x],d2(R[x],R[s]));
         }
         // if there were >N extremes (rare) — truncate
         std::vector<int> sel; for(int i=0;i<(int)Q.size() && (int)sel.size()<N_;++i) sel.push_back(Q[i]);
@@ -363,7 +363,7 @@ public:
         // silently leaving every offspring bit at zero (see the header).
         if (vault.bin_vars_n() > 0)
             throw std::invalid_argument("MOEA/D-DS: binary variables are not supported (reproduction is real-valued only)");
-        m_=vault.objs_n(); N_=vault.pop_size(); gen_=0; K_=std::max(2,(int)std::floor(std::sqrt((double)N_)));
+        m_=vault.objs_n(); N_=vault.pop_size(); gen_=0; K_=(std::max)(2,(int)std::floor(std::sqrt((double)N_)));
         const auto& bd=vault.get_bounds(); rnd::uniform_real_distribution<double> d(0.0,1.0);
         std::vector<double> vars(vault.vars_n());
         for(int i=0;i<N_;++i){ for(int j=0;j<vault.vars_n();++j){double lo=bd[j].first.value_or(0.0),hi=bd[j].second.value_or(1.0);vars[j]=lo+d(rng_)*(hi-lo);} vault.set_variables(i,vars);}
@@ -379,7 +379,7 @@ public:
         // silently leaving every offspring bit at zero (see the header).
         if (vault.bin_vars_n() > 0)
             throw std::invalid_argument("MOEA/D-DS: binary variables are not supported (reproduction is real-valued only)");
-        m_=vault.objs_n(); N_=vault.pop_size(); gen_=0; K_=std::max(2,(int)std::floor(std::sqrt((double)N_)));
+        m_=vault.objs_n(); N_=vault.pop_size(); gen_=0; K_=(std::max)(2,(int)std::floor(std::sqrt((double)N_)));
         pop_.clear(); for(int i=0;i<(int)vault.active_n();++i){ Sol s; s.vars=vault.variables_of(i); s.objs=vault.objectives_of(i); s.pt=vault.point_of(i);
             if(constraint_mode!=ConstraintMode::NONE) s.cv=vault.get_cv(i);
             pop_.push_back(s);}
@@ -406,7 +406,7 @@ public:
                 // K nearest to i by d2
                 std::vector<std::pair<double,int>> dd;
                 for(int j=0;j<N_;++j){ if(j==i) continue; dd.emplace_back(d2(R[i],R[j]),j); }
-                int kk=std::min(K_,(int)dd.size()); std::partial_sort(dd.begin(),dd.begin()+kk,dd.end());
+                int kk=(std::min)(K_,(int)dd.size()); std::partial_sort(dd.begin(),dd.begin()+kk,dd.end());
                 p2=dd[rnd::uniform_int_distribution<int>(0,kk-1)(rng_)].second;
             } else { p1=di(rng_); p2=di(rng_); }
             O.push_back(breed(pop_[p1],pop_[p2],vault,scratch));

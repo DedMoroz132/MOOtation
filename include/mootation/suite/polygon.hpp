@@ -116,8 +116,8 @@ inline std::vector<double> ipolygon_set(int n, const std::vector<std::vector<dou
     for (const auto& P : polygons) {
         double lo[2] = {P[0], P[1]}, hi[2] = {P[0], P[1]};
         for (std::size_t i = 2; i < P.size(); ++i) {
-            lo[i % 2] = std::min(lo[i % 2], P[i]);
-            hi[i % 2] = std::max(hi[i % 2], P[i]);
+            lo[i % 2] = (std::min)(lo[i % 2], P[i]);
+            hi[i % 2] = (std::max)(hi[i % 2], P[i]);
         }
         std::mt19937 gen(kIPolygonSeed);
         for (int k = 0; k < per;) {

@@ -173,7 +173,7 @@ private:
         double denom = na * nb;
         if (denom < 1e-30) return PI_ / 2.0;
         double c = std::abs(dot) / denom;
-        c = std::max(-1.0, std::min(1.0, c));
+        c = (std::max)(-1.0, (std::min)(1.0, c));
         return dm::acos(c);
     }
 
@@ -187,7 +187,7 @@ private:
         std::vector<char> alive(n, 1);
         int nclust = n;
         while (nclust > K) {
-            double best = std::numeric_limits<double>::max();
+            double best = (std::numeric_limits<double>::max)();
             int ba = -1, bb = -1;
             for (int a = 0; a < n; ++a) {
                 if (!alive[a]) continue;
@@ -372,13 +372,13 @@ public:
         int pool = n * 2;
 
         // (Algorithm 3, lines 1-3) normalization (3), Fit (4), norm (5) over the pool.
-        std::vector<double> ymin(m,  std::numeric_limits<double>::max());
-        std::vector<double> ymax(m, -std::numeric_limits<double>::max());
+        std::vector<double> ymin(m,  (std::numeric_limits<double>::max)());
+        std::vector<double> ymax(m, -(std::numeric_limits<double>::max)());
         for (int i = 0; i < pool; ++i) {
             const auto& o = vault.objectives_of(i);
             for (int j = 0; j < m; ++j) {
-                ymin[j] = std::min(ymin[j], o[j]);
-                ymax[j] = std::max(ymax[j], o[j]);
+                ymin[j] = (std::min)(ymin[j], o[j]);
+                ymax[j] = (std::max)(ymax[j], o[j]);
             }
         }
         std::vector<std::vector<double>> Fn(pool, std::vector<double>(m));
@@ -422,7 +422,7 @@ public:
 
                 std::vector<std::vector<int>> members(Kc);  // positions i within fl
                 for (int i = 0; i < nfl; ++i) {
-                    int    bj = 0; double bd = std::numeric_limits<double>::max();
+                    int    bj = 0; double bd = (std::numeric_limits<double>::max)();
                     for (int j = 0; j < Kc; ++j) {
                         double d = sq_dist(Y[i], C[j]);
                         if (d < bd) { bd = d; bj = j; }

@@ -76,12 +76,12 @@ struct Frame {
         for (std::size_t j = 0; j < fr.m; ++j) {
             double lo = F[0][j], hi = F[0][j];
             for (const Vec& f : F) {
-                lo = std::min(lo, f[j]);
-                hi = std::max(hi, f[j]);
+                lo = (std::min)(lo, f[j]);
+                hi = (std::max)(hi, f[j]);
             }
             const double range = hi - lo;
             fr.z[j] = lo;
-            fr.s[j] = range > 1e-12 * std::max(1.0, std::fabs(lo)) ? range : 1.0;
+            fr.s[j] = range > 1e-12 * (std::max)(1.0, std::fabs(lo)) ? range : 1.0;
         }
         for (const Vec& f : F) fr.A.push_back(fr.bar(f));
         return fr;
@@ -145,7 +145,7 @@ struct Sub {
         for (const Row& r : ineq)
             if (r.b > 0.0) {
                 const double t = -(dot(r.a, Fb) + r.c) / r.b;
-                lo = have ? std::max(lo, t) : t;
+                lo = have ? (std::max)(lo, t) : t;
                 have = true;
             }
         return have ? lo : 0.0;
@@ -157,7 +157,7 @@ struct Sub {
         const double t = t_star(Fb);
         value = dot(a0, Fb) + b0 * t + c0;
         viol = 0.0;
-        for (const Row& r : ineq) viol += std::max(0.0, -(dot(r.a, Fb) + r.b * t + r.c));
+        for (const Row& r : ineq) viol += (std::max)(0.0, -(dot(r.a, Fb) + r.b * t + r.c));
         for (const Row& r : eq) viol += std::fabs(dot(r.a, Fb) + r.b * t + r.c);
     }
 };
@@ -193,7 +193,7 @@ inline Sub tch(std::size_t m, const Vec& d, const std::string& weights)
     Vec w(m);
     double sum = 0.0;
     for (std::size_t i = 0; i < m; ++i) {
-        w[i] = weights == "inverse" ? 1.0 / std::max(d[i], 1e-6) : std::max(d[i], 1e-6);
+        w[i] = weights == "inverse" ? 1.0 / (std::max)(d[i], 1e-6) : (std::max)(d[i], 1e-6);
         sum += w[i];
     }
     for (double& v : w) v /= sum;
@@ -276,7 +276,7 @@ inline Vec coords(const std::string& kind, const Frame& fr, const Vec& Fb, std::
         Vec P(m);
         double s = 0.0;
         for (std::size_t j = 0; j < m; ++j) {
-            P[j] = std::max(Fb[j], 0.0);
+            P[j] = (std::max)(Fb[j], 0.0);
             s += P[j];
         }
         for (std::size_t j = 0; j < m; ++j) P[j] = s > 0 ? P[j] / s : 1.0 / static_cast<double>(m);

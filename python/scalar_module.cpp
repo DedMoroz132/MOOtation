@@ -698,7 +698,7 @@ void bind_scalar(py::module_& m)
                   else sc::lm::fd_jacobian(p, r.x, r.r, fd_eps, J);
                   const sc::lm::Diagnostics g = sc::lm::diagnose(J, r.cost, sigma2, !p.jacobian, fd_eps);
                   d["singular_values"] = to_list(g.sv);
-                  d["small"] = g.small;
+                  d["small"] = g.tiny;                  // the C++ field is tiny (windows.h defines small)
                   d["sigma2"] = g.sigma2;
                   d["sigma2_given"] = g.sigma2_given;
                   d["covariance"] = rows_of(g.cov);

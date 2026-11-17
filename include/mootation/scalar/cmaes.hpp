@@ -220,14 +220,14 @@ public:
         const double mueff_neg = (lam_ > mu_ && sn2 > 0.0) ? sn * sn / sn2 : 0.0;
         // step-size control (55)
         cs_ = (mueff_ + 2.0) / (n + mueff_ + 5.0);
-        ds_ = 1.0 + 2.0 * std::max(0.0, std::sqrt((mueff_ - 1.0) / (n + 1.0)) - 1.0) + cs_;
+        ds_ = 1.0 + 2.0 * (std::max)(0.0, std::sqrt((mueff_ - 1.0) / (n + 1.0)) - 1.0) + cs_;
         // covariance matrix adaptation (56)-(58)
         cc_ = (4.0 + mueff_ / n) / (n + 4.0 + 2.0 * mueff_ / n);
         const double alpha_cov = 2.0;
         c1_ = alpha_cov / ((n + 1.3) * (n + 1.3) + mueff_);
         cmu_ = options.cmu == CMAESOptions::Cmu::hansen2009
-                   ? std::min(1.0 - c1_, 2.0 * (mueff_ - 2.0 + 1.0 / mueff_) / ((n + 2.0) * (n + 2.0) + mueff_))
-                   : std::min(1.0 - c1_, alpha_cov * (0.25 + mueff_ + 1.0 / mueff_ - 2.0) /
+                   ? (std::min)(1.0 - c1_, 2.0 * (mueff_ - 2.0 + 1.0 / mueff_) / ((n + 2.0) * (n + 2.0) + mueff_))
+                   : (std::min)(1.0 - c1_, alpha_cov * (0.25 + mueff_ + 1.0 / mueff_ - 2.0) /
                                              ((n + 2.0) * (n + 2.0) + alpha_cov * mueff_ / 2.0));
         // (50)-(53): positive weights sum to one, negative ones scaled
         const double alpha_mu = 1.0 + c1_ / cmu_;
@@ -235,9 +235,9 @@ public:
         const double alpha_posdef = (1.0 - c1_ - cmu_) / (n * cmu_);
         const double sum_neg = -sn;
         w_.resize(lam_);
-        const double neg_scale = std::min(alpha_mu, std::min(alpha_mueff, alpha_posdef));
+        const double neg_scale = (std::min)(alpha_mu, (std::min)(alpha_mueff, alpha_posdef));
         for (std::size_t i = 0; i < lam_; ++i)
-            w_[i] = w[i] >= 0.0 ? w[i] / sp : neg_scale * w[i] / std::max(sum_neg, 1e-300);
+            w_[i] = w[i] >= 0.0 ? w[i] / sp : neg_scale * w[i] / (std::max)(sum_neg, 1e-300);
         cm_ = 1.0;                                                             // (54)
         chiN_ = std::sqrt(n) * (1.0 - 1.0 / (4.0 * n) + 1.0 / (21.0 * n * n));
         ps_.assign(n_, 0.0);
@@ -250,7 +250,7 @@ public:
         if (options.eigen_every < 0) throw std::invalid_argument("CMAES: eigen_every >= 0");
         eigen_every_ = options.eigen_every > 0
                            ? options.eigen_every
-                           : std::max(1, static_cast<int>(std::floor(1.0 / ((c1_ + cmu_) * 10.0 * n))));
+                           : (std::max)(1, static_cast<int>(std::floor(1.0 / ((c1_ + cmu_) * 10.0 * n))));
         // the margin: thresholds at the midpoints of the discrete values (HM22 §4.1)
         if (!margin_values_.empty() && margin_values_.size() != n_)
             throw std::invalid_argument("CMAES: margin_values needs a list per coordinate (empty: continuous)");
@@ -426,7 +426,7 @@ public:
                 const std::vector<double> v = times_ci(y[k]);
                 double q = 0.0;
                 for (double t : v) q += t * t;
-                wo[k] *= n / std::max(q, 1e-300);
+                wo[k] *= n / (std::max)(q, 1e-300);
             }
         const double delta_h = (hs ? 0.0 : 1.0) * cc_ * (2.0 - cc_);
         double wsum = 0.0;
@@ -440,17 +440,17 @@ public:
                 Cn(i, j) = keep * C_(i, j) + c1_ * pc_[i] * pc_[j] + cmu_ * rank_mu;
             }
         const double log_step = cs_ / ds_ * (norm_ps / chiN_ - 1.0);            // (44)
-        sigma_ *= dm::exp(injecting_ ? std::min(dsmax_, log_step) : log_step);   // (11)
+        sigma_ *= dm::exp(injecting_ ? (std::min)(dsmax_, log_step) : log_step);   // (11)
         for (std::size_t i = 0; i < n_; ++i)
             for (std::size_t j = 0; j < n_; ++j) C_(i, j) = (Cn(i, j) + Cn(j, i)) / 2.0;
         if (g_ % eigen_every_ == 0) {                                            // CMA-5, CMA-7
             eigen::symmetric(C_, ev_, B_);
-            for (std::size_t i = 0; i < n_; ++i) D_[i] = std::sqrt(std::max(ev_[i], 1e-300));
+            for (std::size_t i = 0; i < n_; ++i) D_[i] = std::sqrt((std::max)(ev_[i], 1e-300));
             ++decompositions_;
         }
         if (margin_on_) apply_margin();                                         // HM22 step 5
         // what H09's criteria read (CMA-1, CMA-2)
-        const std::size_t k = std::min(lam_, 1 + static_cast<std::size_t>(std::ceil(0.1 + static_cast<double>(lam_) / 4.0)));
+        const std::size_t k = (std::min)(lam_, 1 + static_cast<std::size_t>(std::ceil(0.1 + static_cast<double>(lam_) / 4.0)));
         best_hist_.push_back(values[order[0]]);
         median_hist_.push_back(lam_ % 2 == 1 ? values[order[lam_ / 2]]
                                              : (values[order[lam_ / 2 - 1]] + values[order[lam_ / 2]]) / 2.0);
@@ -479,9 +479,9 @@ public:
         if (t >= 100.0 + 50.0 * (n + 3.0) * (n + 3.0) / std::sqrt(lam)) return Stop::max_iter;
         const std::size_t hist_fun = 10 + static_cast<std::size_t>(std::ceil(30.0 * n / lam));
         if (tolfun_ == CMAESOptions::TolFun::cmaes_m) {                           // CMA-8
-            const auto first = best_hist_.end() - static_cast<std::ptrdiff_t>(std::min(len, hist_fun));
+            const auto first = best_hist_.end() - static_cast<std::ptrdiff_t>((std::min)(len, hist_fun));
             const auto [lo, hi] = std::minmax_element(first, best_hist_.end());
-            if (t > 2.0 && std::max(*hi, gen_hi_) - std::min(*lo, gen_lo_) <= 1e-12) return Stop::tol_fun;
+            if (t > 2.0 && (std::max)(*hi, gen_hi_) - (std::min)(*lo, gen_lo_) <= 1e-12) return Stop::tol_fun;
             if (len >= hist_fun && *hi - *lo <= 1e-13) return Stop::tol_hist_fun;
         } else if (len >= hist_fun) {                                             // CMA-3
             const auto first = best_hist_.end() - static_cast<std::ptrdiff_t>(hist_fun);
@@ -494,10 +494,10 @@ public:
             if (3.0 * static_cast<double>(equal) > n) return Stop::equal_fun_vals;
         }
         const double scale = sigma_ / sigma0_;
-        bool small = true;
-        for (std::size_t i = 0; i < n_ && small; ++i)
-            small = std::fabs(pc_[i]) * scale < 1e-12 && std::sqrt(C_(i, i)) * scale < 1e-12;
-        if (small) return Stop::tol_x;
+        bool tiny = true;
+        for (std::size_t i = 0; i < n_ && tiny; ++i)
+            tiny = std::fabs(pc_[i]) * scale < 1e-12 && std::sqrt(C_(i, i)) * scale < 1e-12;
+        if (tiny) return Stop::tol_x;
         const double l_max = ev_.back(), l_min = ev_.front();
         if (scale > 1e20 * std::sqrt(l_max)) return Stop::tol_up_sigma;
         if (stagnation_ == CMAESOptions::Stagnation::cmaes_m && t > n * (5.0 + 100.0 / lam) &&
@@ -535,7 +535,7 @@ public:
         const std::size_t axis = n_ - 1 - static_cast<std::size_t>(g_ % static_cast<long long>(n_));
         bool unchanged = true;                                                    // CMA-4
         for (std::size_t i = 0; i < n_ && unchanged; ++i)
-            unchanged = m_[i] + 0.1 * sigma_ * std::sqrt(std::max(ev_[axis], 0.0)) * B_(i, axis) == m_[i];
+            unchanged = m_[i] + 0.1 * sigma_ * std::sqrt((std::max)(ev_[axis], 0.0)) * B_(i, axis) == m_[i];
         if (unchanged) return Stop::no_effect_axis;
         for (std::size_t i = 0; i < n_; ++i)
             if (m_[i] + 0.2 * sigma_ * std::sqrt(C_(i, i)) == m_[i]) return Stop::no_effect_coor;
@@ -557,7 +557,7 @@ private:
                 const double ci = std::sqrt(ncdf::chi2_1_quantile(1.0 - 2.0 * alpha)) * sd;
                 const double d = m - ell;
                 const double sg = d > 0.0 ? 1.0 : (d < 0.0 ? -1.0 : 0.0);
-                m = ell + sg * std::min(std::fabs(d), ci);
+                m = ell + sg * (std::min)(std::fabs(d), ci);
                 continue;
             }
             const double lo = *(std::lower_bound(l.begin(), l.end(), m) - 1);      // (15): max{l < m}
@@ -566,7 +566,7 @@ private:
             const double p_up = ncdf::normal_cdf((m - up) / sd);                  // (18)
             const double p_mid = 1.0 - p_low - p_up;                              // (19)
             if (p_low >= alpha / 2.0 && p_up >= alpha / 2.0) continue;            // CMM-2
-            const double pl1 = std::max(alpha / 2.0, p_low), pu1 = std::max(alpha / 2.0, p_up);   // (20), (21)
+            const double pl1 = (std::max)(alpha / 2.0, p_low), pu1 = (std::max)(alpha / 2.0, p_up);   // (20), (21)
             const double scale = (1.0 - pl1 - pu1 - p_mid) / (pl1 + pu1 + p_mid - 3.0 * alpha / 2.0);
             const double pl2 = pl1 + scale * (pl1 - alpha / 2.0);                 // (22)
             const double pu2 = pu1 + scale * (pu1 - alpha / 2.0);                 // (23)

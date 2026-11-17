@@ -133,10 +133,10 @@ public:
         }
         muw_ = 1.0 / s2;
         cs_ = (muw_ + 2.0) / (n + muw_ + 5.0);
-        ds_ = 1.0 + cs_ + 2.0 * std::max(0.0, std::sqrt((muw_ - 1.0) / (n + 1.0)) - 1.0);
+        ds_ = 1.0 + cs_ + 2.0 * (std::max)(0.0, std::sqrt((muw_ - 1.0) / (n + 1.0)) - 1.0);
         cc_ = (4.0 + muw_ / n) / (n + 4.0 + 2.0 * muw_ / n);
         c1_ = 2.0 / ((n + 1.3) * (n + 1.3) + muw_);                              // CC-1
-        cmu_ = std::min(1.0 - c1_, 2.0 * (muw_ - 2.0 + 1.0 / muw_) / ((n + 2.0) * (n + 2.0) + muw_));
+        cmu_ = (std::min)(1.0 - c1_, 2.0 * (muw_ - 2.0 + 1.0 / muw_) / ((n + 2.0) * (n + 2.0) + muw_));
         chi_ = std::sqrt(n) * (1.0 - 1.0 / (4.0 * n) + 1.0 / (21.0 * n * n));
         ps_.assign(n_, 0.0);
         pc_.assign(n_, 0.0);
@@ -279,10 +279,10 @@ private:
                 for (std::size_t j = 0; j < n_; ++j) C_(i, j) = (Cn(i, j) + Cn(j, i)) / 2.0;
         }
         eigen::symmetric(C_, ev_, B_);
-        for (std::size_t i = 0; i < n_; ++i) D_[i] = std::sqrt(std::max(ev_[i], 0.0));
+        for (std::size_t i = 0; i < n_; ++i) D_[i] = std::sqrt((std::max)(ev_[i], 0.0));
         if (o_.enhanced) {                                                                  // (27)
             const double low = *std::min_element(ev_.begin(), ev_.end());
-            if (low > 0.0) sigma_ = std::max(sigma_, std::sqrt(o_.lambda_min / low));
+            if (low > 0.0) sigma_ = (std::max)(sigma_, std::sqrt(o_.lambda_min / low));
         }
     }
 
@@ -338,7 +338,7 @@ private:
                 double t = 0.0;
                 for (std::size_t j = 0; j < k; ++j) {
                     double r = 0.0;                                                          // (V diag(sqrt w) V^T)_ij
-                    for (std::size_t l = 0; l < k; ++l) r += V(i, l) * std::sqrt(std::max(w[l], 0.0)) * V(j, l);
+                    for (std::size_t l = 0; l < k; ++l) r += V(i, l) * std::sqrt((std::max)(w[l], 0.0)) * V(j, l);
                     t += r * G[v][j];
                 }
                 root.push_back(t);
@@ -379,7 +379,7 @@ private:
             const double lo = qmin_[v];
             double sum = 0.0, over = 0.0;
             for (double& t : q_[v]) {
-                t = std::max(t, lo);
+                t = (std::max)(t, lo);
                 sum += t;
                 over += t - lo;
             }

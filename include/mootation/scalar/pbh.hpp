@@ -184,13 +184,13 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
                     if (y.size() != n) throw std::runtime_error("pbh: the perturb hook changed the point's length");
                     for (std::size_t j = 0; j < n; ++j)
                         y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(y[j], P.lo[j], P.hi[j])
-                                                           : std::min(P.hi[j], std::max(P.lo[j], y[j]));
+                                                           : (std::min)(P.hi[j], (std::max)(P.lo[j], y[j]));
                 } else {
                     for (std::size_t j = 0; j < n; ++j) {
                         const double moved = y[j] + (2.0 * rnd::uniform01(rng) - 1.0) * step *
                                                         (absolute ? 1.0 : search::width(P, j));
                         y[j] = periodic::is(P.periodic, j) ? periodic::wrap_into(moved, P.lo[j], P.hi[j])
-                                                           : std::min(P.hi[j], std::max(P.lo[j], moved));
+                                                           : (std::min)(P.hi[j], (std::max)(P.lo[j], moved));
                     }
                 }
                 (void)rnd::uniform01(rng);                                           // PBH-4
@@ -209,17 +209,17 @@ inline Result run_pbh(const Problem& P, double eq_tol, bool has_tol0, double eq_
                 }
                 ++steps;
                 log.add(c.x, c.f, first_kid + static_cast<long long>(p));
-                std::size_t near = 0, worst = 0;
+                std::size_t nearby = 0, worst = 0;
                 double dn = std::numeric_limits<double>::infinity();
                 for (std::size_t q = 0; q < pop.size(); ++q) {
                     const double dq = d(c, pop[q]);
                     if (dq < dn) {
                         dn = dq;
-                        near = q;
+                        nearby = q;
                     }
                     if (search::better(pop[worst], pop[q])) worst = q;
                 }
-                const std::size_t target = dn < dcut ? near : worst;
+                const std::size_t target = dn < dcut ? nearby : worst;
                 if (search::better(c, pop[target])) {
                     pop[target] = c;
                     ++accepted;

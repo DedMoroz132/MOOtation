@@ -198,7 +198,7 @@ public:
         if (w.shift > 0) {
             double size = 1.0;                             // WRAP-4, a box-less variable's scale
             const std::vector<double>& a = !x_opt.empty() ? x_opt : x0;
-            for (double v : a) size = std::max(size, std::abs(v));
+            for (double v : a) size = (std::max)(size, std::abs(v));
             std::mt19937 g = wrap_detail::generator(3, w.name, n, w.shift);
             for (std::size_t j = 0; j < nu; ++j) {
                 const auto& b = vbox[j];
