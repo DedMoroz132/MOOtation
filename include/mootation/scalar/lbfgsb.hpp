@@ -89,6 +89,17 @@
 //     same numbers in exact arithmetic (M is symmetric), q^2 + 3q operations
 //     where M c, M p and M w_b took 3 q^2. Since METHOD_VERSION 7; before,
 //     the three products and the sums over w_b gave other last digits.
+//   LB-14. Not a departure, a note (the owner's choice of 18.11): f'' has a
+//     floor, as lbfgsb.f of L-BFGS-B 3.0 in SciPy v1.13.0
+//     (scipy/optimize/lbfgsb_src/lbfgsb.f, subroutine cauchy) takes it:
+//     f2_org = f2 after the first f'', and f2 = max(epsmch * f2_org, f2)
+//     after its update at every breakpoint passed. epsmch is the machine
+//     precision as L-BFGS-B 3.0 takes it, the Fortran 90 intrinsic EPSILON
+//     (Morales and Nocedal 2011, §1.2), 2^-52 in double precision: here
+//     std::numeric_limits<double>::epsilon() (kEps). Where cancellation
+//     leaves f'' below that floor, the step to the next breakpoint is
+//     -f'/f'' at the floor, not -f'/f'' at a tiny or negative f''. Since
+//     METHOD_VERSION 8; before, f'' had no floor.
 // ============================================================================
 
 #include <algorithm>
@@ -368,6 +379,7 @@ inline Vec cauchy(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, cons
         const Vec Mp = B.mul_m(p);
         for (std::size_t i = 0; i < p.size(); ++i) fpp -= p[i] * Mp[i];
     }
+    const double fpp_org = fpp;                       // f2_org (LB-14)
     double dtmin = fpp > 0.0 ? -fp / fpp : kInf;
     double told = 0.0;
     double tt = heap.empty() ? kInf : t[heap.front()];
@@ -396,6 +408,7 @@ inline Vec cauchy(const Vec& x, const Vec& g, const Vec& lo, const Vec& hi, cons
         }
         fp = fp + dt * fpp + gb * gb + theta * gb * zb - gb * wMc;
         fpp = fpp - theta * gb * gb - 2.0 * gb * wMp - gb * gb * wMw;
+        fpp = (std::max)(kEps * fpp_org, fpp);        // f2 = max(epsmch f2_org, f2) (LB-14)
         for (std::size_t i = 0; i < q; ++i) p[i] += gb * wb[i];
         d[b] = 0.0;
         dtmin = fpp > 0.0 ? -fp / fpp : kInf;

@@ -158,7 +158,16 @@
 // a problem with a gradient change, the methods and the rest as in 5; 7 —
 // task 31: lbfgsb's Cauchy point takes one product with M per breakpoint,
 // as cauchy.f (lbfgsb.hpp LB-13): lbfgsb's runs, and every strategy's with
-// lbfgsb inside, change in their last digits.
+// lbfgsb inside, change in their last digits; 8 — the owner's choices of
+// 18.11, in one version: lbfgsb's Cauchy point puts a floor under f'' as
+// L-BFGS-B 3.0 does (lbfgsb.hpp LB-14: lbfgsb's runs, and every strategy's
+// with lbfgsb inside, change where the floor binds); a seed point on a
+// problem with residuals is evaluated and counted (SEED-2: lm and the
+// solvers on the residuals seeded so, and a resumable run's admit there);
+// irea's FEASIBILITY acts in its survival too (irea.hpp IREA-2; the
+// multi-objective side of the same release, off by default). Version 8 is
+// FROZEN until release 0.2.0: no change of these methods' trajectories
+// before it.
 // ============================================================================
 
 #include <algorithm>
@@ -201,7 +210,7 @@
 
 namespace mootation::scalar {
 
-inline constexpr int METHOD_VERSION = 7;
+inline constexpr int METHOD_VERSION = 8;
 
 // A knob as the caller gives it: a word or a number.
 struct Knob {
@@ -2176,6 +2185,14 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
 //     with warm_start = on ended in an access violation). The same for the
 //     plan's seed points of every solver (first_points) and for a member a
 //     resumable run admits (resumable.hpp RES-3).
+//   SEED-2 (only when a problem with residuals is seeded). On a problem with
+//     residuals a seed point's values are never whole: a Point carries f and
+//     g, not the residuals r~ that lm and every solver on the residuals read
+//     from the archive. Such a seed point is evaluated and counted as SEED-1
+//     has it, whatever f it brings (the owner's choice of 18.11). Before, it
+//     was planted with no residuals, and a solver that started from it read
+//     none. Point gains no residuals (their memory, n_res per point). Since
+//     METHOD_VERSION 8.
 //   POP-10. keep_points = best (task 24, §24.3.3; off by default: all)
 //     keeps the best point and the last (evaluator.hpp THE LEAN MODE): a
 //     point asked for again is evaluated again and counted (POP-2 does not

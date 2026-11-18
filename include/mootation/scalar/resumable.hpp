@@ -51,8 +51,9 @@
 //     its values as the giver's archive has them: f, the constraints' g, cv at
 //     the giver's tolerance. admit plants it in the receiver's archive
 //     (Evaluator::plant: known values, not evaluated, not counted — the giver
-//     paid for it; one whose g is not of n_cons values is evaluated and
-//     counted, scalar.hpp SEED-1) and the receiver's cv is its own
+//     paid for it; one whose g is not of n_cons values, or any member of a
+//     problem with residuals, is evaluated and counted, scalar.hpp SEED-1,
+//     SEED-2) and the receiver's cv is its own
 //     tolerance's. A member of a problem with another meaning (a level of
 //     at_param) is not a member: it is a start point (carry_start).
 //   RES-4 (only when asked: the resumable API). admit(in, Place): worst — each

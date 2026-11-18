@@ -709,9 +709,11 @@ public:
 
     // A seed point (scalar.hpp POP-7, SEED-1; the owner's choice of 18.11): planted where its values are
     // whole (f of m values, g of n_cons), as before; else evaluated, and counted, as a design's row.
+    // A problem with residuals: never whole, a seed point carries no residuals (SEED-2).
     std::size_t seed(const std::vector<double>& x, const std::vector<double>& f, const std::vector<double>& g)
     {
-        if (f.size() == static_cast<std::size_t>(m) && g.size() == static_cast<std::size_t>(n_cons))
+        if (!P.has_residuals() && f.size() == static_cast<std::size_t>(m) &&
+            g.size() == static_cast<std::size_t>(n_cons))
             return plant(x, f, g);
         return index(x);
     }

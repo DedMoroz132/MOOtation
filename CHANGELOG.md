@@ -10,6 +10,22 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Changed (the owner's choice of 18.11; METHOD_VERSION 8, frozen until 0.2.0)
+- `lbfgsb`: the Cauchy point puts a floor under f'' at every breakpoint passed, as L-BFGS-B 3.0
+  does: `f2_org = f2` after the first f'', `f2 = max(epsmch*f2_org, f2)` after each update, with
+  epsmch the machine epsilon (`lbfgsb.hpp` LB-14). `lbfgsb`'s runs, and every strategy's with
+  `lbfgsb` inside, change where the floor binds.
+- A seed point on a problem with residuals is evaluated and counted before it joins the run, whatever
+  values it brings: a `Point` carries no residuals, which `lm` and the other solvers on the residuals
+  read (SEED-2). The same for a member a resumable run's `admit` takes on such a problem. `Point`
+  gains no residuals.
+- `irea`: `ConstraintMode::FEASIBILITY` acts in the survival too, as in `nsga2` and `spea2`: the
+  feasible members of the merged population first, selected by the paper's Algorithm 4 among
+  themselves, then the infeasible ones by ascending constraint violation (IREA-2). Off by default:
+  the default runs are unchanged. `test_constraints` no longer exempts `irea` from its feasibility
+  check.
+- `METHOD_VERSION` is 8 for these three changes together, and stays 8 until release 0.2.0.
+
 ### Added (task 31, layer 4)
 - The strategy `ensemble` (`scalar/ensemble.hpp`): K resumable runs of one strategy in one run,
   with their own seeds, starts (`member_seeds`), knobs (`member_knobs`) and, optionally, levels

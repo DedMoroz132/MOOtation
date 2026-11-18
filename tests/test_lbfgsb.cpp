@@ -10,7 +10,9 @@
 // on every platform (dm:: in the problems, + - * / sqrt in the solver); at
 // n = 300 in a box, m = 5, 12, 20: the cost per iteration against m (LB-11)
 // and the runs' bits; at n = 300 and 3000 the solver's own cost per
-// evaluation against n (LB-12) and every evaluation's bits.
+// evaluation against n (LB-12) and every evaluation's bits; a run where
+// the floor under f'' (LB-14) fires and changes the run, every evaluation's
+// bits.
 // ============================================================================
 
 #include <algorithm>
@@ -352,6 +354,61 @@ int main()
                     r.nfev, r.f, static_cast<unsigned long long>(trail));
         check(copies, "ties: the scaled copies are exact at the end (their breakpoints tied throughout)");
         check(trail == 0x4351b7cba0052808ull, "ties: every evaluation's x, f, g as before LB-12 (on every platform)");
+    }
+    // the floor under f'' (LB-14, METHOD_VERSION 8): n = 50 in [-1, 1], f = sum 0.5 a_i (x_i - c_i)^2 +
+    // 1e-3 sum (x_i x_{i+1})^2 with a_i = 10^((7 i) mod 11), half the minima outside the box. Gradients over
+    // ten decades: at a Cauchy point the stiff variables' breakpoints, passed, leave f'' below
+    // epsmch f2_org three times in this run (a build that counts it), and the floor changes the run:
+    // without it (METHOD_VERSION 7) the trail is 23fae494af2b340b, 7685 evaluations. Every evaluation's
+    // bits, on every platform (+ - * / only).
+    {
+        const std::size_t n = 50;
+        Vec a(n), c(n), x0(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            double w = 1.0;
+            for (std::size_t e = 0; e < (7 * i) % 11; ++e) w *= 10.0;
+            a[i] = w;
+            c[i] = i % 2 == 0 ? 1.5 * (i % 4 == 0 ? 1.0 : -1.0) : 0.1 * static_cast<double>(i % 7) - 0.3;
+            x0[i] = 0.9 * (2.0 * static_cast<double>((997 * i + 3) % 1009) / 1009.0 - 1.0);
+        }
+        LB::Problem p;
+        p.n = n;
+        p.lo.assign(n, -1.0);
+        p.hi.assign(n, 1.0);
+        std::uint64_t trail = 1469598103934665603ull;
+        p.fg = [&](const Vec& x, Vec& g) {
+            double f = 0.0;
+            g.assign(n, 0.0);
+            for (std::size_t i = 0; i < n; ++i) {
+                const double r = x[i] - c[i];
+                f += 0.5 * a[i] * r * r;
+                g[i] += a[i] * r;
+            }
+            for (std::size_t i = 0; i + 1 < n; ++i) {
+                const double t = x[i] * x[i + 1];
+                f += 1e-3 * t * t;
+                g[i] += 2.0 * 1e-3 * t * x[i + 1];
+                g[i + 1] += 2.0 * 1e-3 * t * x[i];
+            }
+            std::uint64_t b;
+            auto put = [&](double v) {
+                std::memcpy(&b, &v, sizeof b);
+                trail = (trail ^ b) * 1099511628211ull;
+            };
+            for (double v : x) put(v);
+            put(f);
+            for (double v : g) put(v);
+            return f;
+        };
+        LB::Options o;
+        o.m = 12;
+        o.pgtol = 1e-10;
+        o.ftol = 1e-15;
+        const LB::Result r = LB::solve(p, x0, o);
+        std::printf("      floor: n %zu, %lld iterations, %lld evaluations, f %.10g, trail %016llx\n", n, r.iterations,
+                    r.nfev, r.f, static_cast<unsigned long long>(trail));
+        check(r.nfev == 4842 && trail == 0xd26ec2dfcfdd98d4ull,
+              "floor under f'' (LB-14): every evaluation's x, f, g, METHOD_VERSION 8 (on every platform)");
     }
     std::printf(g_failed ? "FAILED\n" : "all passed\n");
     return g_failed ? 1 : 0;

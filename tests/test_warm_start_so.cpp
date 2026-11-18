@@ -14,7 +14,10 @@
 //   * a start outside the box is refused;
 //   * SEED-1 (the owner's choice of 18.11): a seed point whose values are not
 //     whole is evaluated first and counted, for every population method and
-//     for a solver's plan (it was planted as it was; ga_sbx and ssga crashed).
+//     for a solver's plan (it was planted as it was; ga_sbx and ssga crashed);
+//   * SEED-2 (the owner's choice of 18.11): on a problem with residuals a seed
+//     point is never whole (it carries no residuals): lm seeded with it is lm
+//     from it as x0, the point evaluated and counted, whatever f it brought.
 
 #include <cstdio>
 #include <cstring>
@@ -172,6 +175,35 @@ int main()
         const sc::Result r = sc::run("nelder_mead", sphere(seen), 1e-6, false, 0.0, 20, 300, 3, {}, {}, 0, bare);
         check(!seen->empty() && (*seen)[0] == bare.seed_points[0].x && r.evaluations <= 300 && !r.objectives.empty(),
               "nelder_mead: a seed point without values evaluated first (SEED-1)");
+    }
+
+    // SEED-2 for lm: a seed point with its f (a wrong one) on a problem with residuals is evaluated and
+    // counted, and lm starts from it with its residuals: the run from it as x0, bit for bit
+    {
+        auto seen = std::make_shared<Rows>();
+        sc::Problem R;                                // Rosenbrock's residuals, with their Jacobian
+        R.lo = {-5.0, -5.0};
+        R.hi = {5.0, 5.0};
+        R.m = 1;
+        R.residuals = [seen](const Vec& x, Vec& r) {
+            seen->push_back(x);
+            r = {10.0 * (x[1] - x[0] * x[0]), 1.0 - x[0]};
+        };
+        R.jacobian = [](const Vec& x, Rows& J) { J = {{-20.0 * x[0], 10.0}, {-1.0, 0.0}}; };
+        sc::Start seeded;
+        seeded.has_seed_points = true;
+        seeded.seed_points.push_back({{-1.2, 1.0}, {0.0}, {}});   // f whole in size, but no residuals
+        const sc::Result a = sc::run("lm", R, 1e-6, false, 0.0, 20, 500, 3, {}, {}, 0, seeded);
+        const std::size_t asked = seen->size();
+        const bool first = !seen->empty() && (*seen)[0] == seeded.seed_points[0].x;
+        sc::Start from;
+        from.has_x0 = true;
+        from.x0 = {-1.2, 1.0};
+        const sc::Result b = sc::run("lm", R, 1e-6, false, 0.0, 20, 500, 3, {}, {}, 0, from);
+        check(first && same(a, b) && asked == seen->size() - asked && a.evaluations >= 2,
+              "lm: a seed point on a problem with residuals evaluated first and counted, the run from it as x0 (SEED-2)");
+        check(!a.objectives.empty() && a.objectives[0][0] < 1e-12,
+              "lm: seeded at (-1.2, 1), it reaches Rosenbrock's minimum (SEED-2)");
     }
 
     if (failures) {

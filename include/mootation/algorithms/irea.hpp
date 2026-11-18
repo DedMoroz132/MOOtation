@@ -60,8 +60,21 @@
 //     which is stricter than Table II of the paper, where N may differ
 //     slightly.
 // EXTENSIONS BEYOND THE PAPER: ConstraintMode::FEASIBILITY — CDP dominance in
-//   the tournament (the paper does not consider constraints); off by default.
+//   the tournament and in the survival (IREA-2; the paper does not consider
+//   constraints); off by default.
 //   Binary variables (uniform crossover + bit-flip) when bin_vars_n() > 0.
+//   IREA-2 (EXTENSION; only when constraint_mode = FEASIBILITY). With that
+//     mode (off by default) the survival takes feasibility as NSGA-II's and
+//     SPEA2's do in this library, where CDP dominance ranks S_t: every
+//     feasible member before every infeasible one, the infeasible ones by
+//     their cv. Alg. 4 selects among the feasible members of S_t, the
+//     fitness (Eq. 7) of a feasible member summed over the feasible ones
+//     only (an infeasible member dominates no feasible one under CDP); if
+//     they are fewer than N, all of them survive and the infeasible ones fill
+//     the rest by ascending cv, equal cv by F (summed over the infeasible
+//     ones). Normalization and Associate take all of S_t, as without
+//     constraints. Since 2026-11-18 (the owner's choice); before,
+//     FEASIBILITY acted in the tournament alone and the survival read no cv.
 // ============================================================================
 
 #include <algorithm>
@@ -398,12 +411,18 @@ public:
         // (11-12) fitness F(x) = Sum_{y!=x} -exp(-I(x,y)/kappa); with
         // fitness_reading = ibea (IREA-1) Eq.7 as printed, F(x) = Sum_{y!=x}
         // -exp(-I(y,x)/kappa) with the LARGEST kept, stored negated so that the
-        // smallest F still wins below.
+        // smallest F still wins below. FEASIBILITY (IREA-2): y of x's own
+        // feasibility only.
+        const bool feas = constraint_mode == ConstraintMode::FEASIBILITY;
+        std::vector<char> ok(pool, 1);                 // feasible (cv <= 0), IREA-2
+        if (feas)
+            for (int i = 0; i < pool; ++i) ok[i] = vault.get_cv(i) <= 0.0;
         std::vector<double> F(pool, 0.0);
         for (int i = 0; i < pool; ++i) {
             double s = 0.0;
             for (int j = 0; j < pool; ++j) {
                 if (i == j) continue;
+                if (ok[i] != ok[j]) continue;          // IREA-2: never without FEASIBILITY
                 if (ibea_reading_) {
                     s += dm::exp(-eps_plus(Fn[j], Fn[i]) / KAPPA_);
                     continue;
@@ -417,6 +436,25 @@ public:
 
         // (13) Associate(St) -> clusters.
         auto clusters = associate(vault, pool, Fn);
+
+        // FEASIBILITY (IREA-2): Alg. 4 among the feasible members; the
+        // infeasible ones wait, by ascending cv, then F.
+        std::vector<int> waiting;
+        if (feas) {
+            for (auto& cl : clusters) {
+                std::vector<int> kept;
+                for (int v : cl) {
+                    if (ok[v]) kept.push_back(v);
+                    else       waiting.push_back(v);
+                }
+                cl.swap(kept);
+            }
+            std::stable_sort(waiting.begin(), waiting.end(), [&](int a, int b) {
+                const double ca = vault.get_cv(a), cb = vault.get_cv(b);
+                if (ca != cb) return ca < cb;
+                return F[a] < F[b];
+            });
+        }
 
         // (14) IndicatorBasedSelection: layers by F within clusters (Alg. 4).
         for (auto& cl : clusters)
@@ -444,6 +482,10 @@ public:
                           [&](int a, int b){ return F[a] < F[b]; });
                 for (int k = 0; k < room; ++k) survivors.push_back(layers[l][k]);
             }
+        }
+        for (std::size_t k = 0; k < waiting.size() && static_cast<int>(survivors.size()) < N; ++k) {
+            vault.get_ind(waiting[k]).rank = Nf;       // IREA-2: past the feasible layers
+            survivors.push_back(waiting[k]);
         }
 
         rearrange(vault, survivors, pool);

@@ -8,7 +8,7 @@ The header is the source: there each item is given in full, with its reasons and
 about something off by default; `no: fixed` — fixed, resolved, retired, or not a deviation. The
 column is read from the item's wording (see the tool's docstring), not stated by the item.
 
-406 items: 319 yes, 30 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
+407 items: 319 yes, 31 no: option, 57 no: fixed. Headers that declare none: `spea2_sde`, `adaw`, `camoea`, `maoea_c`. Headers with no item this tool recognises: `dn_nsga2`, `bc_rex`, `rvea_star`, `mosa`.
 
 | algorithm | item | what | default run | file |
 |---|---|---|---|---|
@@ -200,6 +200,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 | `irea` | irea.2 | Eq. 6 as printed is a distance to a point, not a perpendicular. | yes | `irea.hpp` |
 | `irea` | irea.3 | §3.4: "if extreme point set contains duplicate extreme points, or intercepts are nonnegative [an evident typo for non-positive], then intercept can be replaced with each maximum objective functions" — a degenerate mat... | yes | `irea.hpp` |
 | `irea` | irea.4 | das_dennis::generate_exact requires N to equal the lattice point count, which is stricter than Table II of the paper, where N may differ slightly. | yes | `irea.hpp` |
+| `irea` | IREA-2 (EXTENSION; only when constraint_mode = FEASIBILITY) | With that mode (off by default) the survival takes feasibility as NSGA-II's and SPEA2's do in this library, where CDP dominance ranks S_t: every feasible member before every infeasible one, the infeasible ones by thei... | no: option | `irea.hpp` |
 | `edv` | EDV-1 (FIXED 2026-09-06, third primary-source pass) | p_m = 1/pop_size, the paper's letter: §4.2.4 is explicit and self-consistent — "the mutation probability (p_m) is set to 1/pops. | no: fixed | `edv.hpp` |
 | `edv` | EDV-2 (FIXED 2026-09-05, second primary-source pass) | Alg.3 lines 2-11 build Y one offspring at a time: each iteration draws its own parents Pa by binary tournament, "y = SBX(Pa)" yields ONE offspring y, and PM is applied to that y. | no: fixed | `edv.hpp` |
 | `edv` | EDV-3 (READING) | Alg.4 line 8 takes the angle between F(x) and d^i; | yes | `edv.hpp` |
@@ -423,7 +424,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-540 items: 418 yes, 119 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
+542 items: 420 yes, 119 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -607,6 +608,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `lbfgsb` | LB-11 | Not a departure, a note on the cost (task 30, §30.4): M and Mbar take the k x k products S^T Y, S^T S, Y^T Y, kept with the pairs: a new pair forms its row and column (k n), the others stay (task 30, §30.11; they were... | yes | `lbfgsb.hpp` |
 | `lbfgsb` | LB-12 | Not a departure, a note on the cost (task 30, §30.11): an iteration costs O(m n), but for the m^2 terms BLNZ count too (Algorithm CP's per breakpoint passed, the subspace step's per variable at a bound). | yes | `lbfgsb.hpp` |
 | `lbfgsb` | LB-13 | Not a departure, a note (task 31, the owner's word of 17.11): Algorithm CP's w_b^T M c, w_b^T M p, w_b^T M w_b ((4.11)-(4.12), at a breakpoint passed) come from one product v = M w_b, then c^T v, p^T v, w_b^T v, as L-... | yes | `lbfgsb.hpp` |
+| `lbfgsb` | LB-14 | Not a departure, a note (the owner's choice of 18.11): f'' has a floor, as lbfgsb.f of L-BFGS-B 3.0 in SciPy v1.13.0 (scipy/optimize/lbfgsb_src/lbfgsb.f, subroutine cauchy) takes it: f2_org = f2 after the first f'', a... | yes | `lbfgsb.hpp` |
 | `line_search` | LS-1 | Unbracketed, case 4 takes the far end a_t + 4 (a_t - a_l) (MT give no interpolant there without a_u; | yes | `line_search.hpp` |
 | `line_search` | LS-6 | Unbracketed, case 3 takes the farther of alpha_c and alpha_s from a_t (the words: the closer, "to be cautious"), alpha_c being the far end where the cubic has no minimizer beyond a_t (the words: alpha_s); then (2.2)'s... | yes | `line_search.hpp` |
 | `line_search` | LS-3 | Before the switch to phi, psi stands in for phi in §4's cases only where the trial has a lower phi than a_l but not the sufficient decrease (phi_t <= phi_l, psi_t > 0), phi elsewhere (the words: psi until the switch). | yes | `line_search.hpp` |
@@ -836,6 +838,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | POP-6 | The population is the method's own (np), not pop_size: the papers' sizes are part of the methods (lshade's N_init = 18 D, pso's 20). pop_size still sets the observer's stride (evaluator.hpp). | yes | `scalar.hpp` |
 | `scalar` | POP-7 | The first population is the method's draw. | yes | `scalar.hpp` |
 | `scalar` | SEED-1 (only when a seed point lacks values) | A seed point whose values are not whole (f not of n_objs values, g not of n_cons) is evaluated and counted, as a design's row, before it joins (the owner's choice of 18.11; | yes | `scalar.hpp` |
+| `scalar` | SEED-2 (only when a problem with residuals is seeded) | On a problem with residuals a seed point's values are never whole: a Point carries f and g, not the residuals r~ that lm and every solver on the residuals read from the archive. | yes | `scalar.hpp` |
 | `scalar` | POP-10 | keep_points = best (task 24, §24.3.3; off by default: all) keeps the best point and the last (evaluator.hpp THE LEAN MODE): a point asked for again is evaluated again and counted (POP-2 does not hold), so a method tha... | no: option | `scalar.hpp` |
 | `scalar` | POP-11 (only when asked: the resumable API) | ga_sbx and ssga are resumable (task 31, layer 3; resumable.hpp): class GaRun keeps the GA, its generator and the evaluator between pieces, the first population begin(), a step one generation of the loop (population.hp... | no: option | `scalar.hpp` |
 | `scalar` | POP-8 | lshade's MAX_NFE is the run's budget unless lshade_max_nfe is set: §III's MAX_NFE is the budget the run is given. | yes | `scalar.hpp` |

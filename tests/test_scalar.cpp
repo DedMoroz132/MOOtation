@@ -240,10 +240,10 @@ void methods()
     bool gap = false, version = false;
     for (const auto& [key, v] : r.settings) {
         gap = gap || (key == "sub_plan" && v == "gap");
-        version = version || (key == "method_version" && v == "7");
+        version = version || (key == "method_version" && v == "8");
     }
     check(r.ignored == std::vector<std::string>{"eta_c"} && gap && version,
-          "scalar: knobs taken, ignored and reported; method_version 7");
+          "scalar: knobs taken, ignored and reported; method_version 8");
     // sqp_line_search (SQP-6 to SQP-9): powell by default, stop and accept
     // runs of their own, within the budget, reported
     for (const char* how : {"", "stop", "accept"}) {

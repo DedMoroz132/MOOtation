@@ -14,7 +14,8 @@
 //   * budget_units (STOP-2): budget, the default since method version 6,
 //     keeps eleven strategies with lbfgsb inside within their budget in
 //     used()'s units on a problem with a gradient; evaluations gives
-//     cc2d22c's runs (method version 5) of the same, bit for bit (kOld);
+//     cc2d22c's runs (method version 5) of the same, bit for bit (kOld;
+//     coevolution's line is method version 8's, lbfgsb.hpp LB-14);
 //   * STOP-6: coevolution on the user's restrict_to counts the subproblem's
 //     evaluations (outside) and goes on to its budget; derived() keeps the
 //     earlier deadline and the clock;
@@ -167,7 +168,9 @@ unsigned long long hash_of(const Vec& x)
 
 // cases()' runs on cc2d22c (method version 5), the same knobs: evaluations,
 // gradient calls, the best f, hash_of(its x) (written by the driver of the
-// task's report, layer1\old_runs.cpp, built on cc2d22c)
+// task's report, layer1\old_runs.cpp, built on cc2d22c); coevolution's is
+// method version 8's: lbfgsb's floor under f'' (LB-14) moves it, the others
+// stay
 struct OldRun {
     long long evaluations, grad_calls;
     double f;
@@ -183,7 +186,7 @@ const OldRun kOld[] = {
     {351, 332, 0x1.18fd76747a561p-52, 0xd3044cf3def3830fULL},     // halving
     {3000, 58, 0x1.87b1ba38d15b6p-50, 0x1f2994f6d17534e2ULL},     // memetic
     {393, 294, 0x1.718feba288a00p-61, 0x2dc15374aa4e8edaULL},     // tiktak
-    {2992, 2990, 0x1.d9d37479289e5p+1, 0xd33bdd948a14191dULL},    // coevolution
+    {2998, 2995, 0x1.d9d36f3e725d2p+1, 0xee7c65c84b18ffc4ULL},    // coevolution (version 8)
     {3000, 2938, 0x1.86bb87d4b6e64p-47, 0x43302588f09c974cULL},   // lns
     {166, 147, 0x1.392688d7eaf85p-47, 0xe4820e6704b3d832ULL},     // multistart
 };

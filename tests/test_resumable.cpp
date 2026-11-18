@@ -12,7 +12,9 @@
 //     interface's reads between the pieces change nothing;
 //   * set_budget before the first piece is the run with that budget;
 //   * admit: the member planted (not evaluated), by each Place and by the
-//     caller's rule; cluster_ga's islands refuse it;
+//     caller's rule; cluster_ga's islands refuse it; on a problem with
+//     residuals (SEED-2) the member is evaluated and counted, its f the
+//     problem's, for basin_hopping and ga_sbx;
 //   * operators and set_operators carry the portfolios' weights; a portfolio
 //     of other operators is refused;
 //   * the time of scalar::run (max_seconds) in the result (RES-8);
@@ -100,6 +102,18 @@ sc::Problem rastrigin(std::vector<Vec>* seen)
         };
     };
     P.crossover_ops = {{"half", blend(0.5)}, {"third", blend(1.0 / 3.0)}};
+    return P;
+}
+
+// Rosenbrock's residuals in [-5, 5]^2, with their Jacobian (SEED-2)
+sc::Problem rosenbrock_residuals()
+{
+    sc::Problem P;
+    P.lo.assign(2, -5.0);
+    P.hi.assign(2, 5.0);
+    P.m = 1;
+    P.residuals = [](const Vec& x, Vec& r) { r = {10.0 * (x[1] - x[0] * x[0]), 1.0 - x[0]}; };
+    P.jacobian = [](const Vec& x, sc::Rows& J) { J = {{-20.0 * x[0], 10.0}, {-1.0, 0.0}}; };
     return P;
 }
 
@@ -416,6 +430,41 @@ int main()
               "ga_sbx: admit puts the optimum in the worst member's place, not evaluated");
         h->advance();
         check(h->result().objectives[0][0] == 0.0, "ga_sbx: the run keeps it (elitist)");
+    }
+
+    // admit on a problem with residuals (SEED-2, the owner's choice of 18.11): a member carries no
+    // residuals, so it is evaluated and counted, and its f is the problem's, not the one it brought
+    {
+        const sc::Problem R = rosenbrock_residuals();
+        sc::Member at_min;
+        at_min.x = {1.0, 1.0};
+        at_min.f = 5.0;                                // wrong on purpose: the problem's f there is 0
+        at_min.cv = 0.0;
+        // basin_hopping's first lm run ends at (1, 1) itself, already in the archive: a point off the minimum
+        sc::Member off_min;
+        off_min.x = {0.5, 0.25};
+        off_min.f = 0.0;                               // wrong on purpose: the problem's f there is 0.125
+        off_min.cv = 0.0;
+        const Case bh{"basin_hopping", {{"inner", word("{\"solver\":\"lm\"}")}, {"start_budget", number(60)}}};
+        std::unique_ptr<sc::Resumable> w = start(bh, R, 1500);
+        w->begin();
+        const long long spent = w->ledger().spent;
+        check(w->admit({off_min}, sc::Place::worst) == 1 && w->ledger().spent == spent + 1 &&
+                  w->members().size() == 1 && std::fabs(w->members()[0].f - 0.125) < 1e-15,
+              "basin_hopping on residuals: admit evaluates the member and counts it, its f the problem's (SEED-2)");
+        w->advance();
+        check(w->done() && w->result().objectives[0][0] == 0.0 && w->result().evaluations <= 1500,
+              "basin_hopping on residuals: the walk goes on from it to the end (SEED-2)");
+
+        const Case ga{"ga_sbx", {{"np", number(10)}}};
+        std::unique_ptr<sc::Resumable> h = start(ga, R, 1500);
+        h->begin();
+        const long long at = h->ledger().spent;
+        check(h->admit({at_min}, sc::Place::worst) == 1 && h->ledger().spent == at + 1 &&
+                  h->best_points(1)[0].f == 0.0 && h->members().size() == 10,
+              "ga_sbx on residuals: admit evaluates the member and counts it, its f the problem's (SEED-2)");
+        h->advance();
+        check(h->result().objectives[0][0] == 0.0, "ga_sbx on residuals: the run keeps it (elitist)");
     }
 
     // operators (RES-6)
