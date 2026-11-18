@@ -1061,7 +1061,7 @@ inline const std::vector<std::string>& strategy_names()
 {
     static const std::vector<std::string> v{"multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl",
                                             "basin_hopping", "ils", "memetic", "tiktak", "data_continuation", "pap",
-                                            "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder"};
+                                            "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder", "ensemble"};
     return v;
 }
 
@@ -1090,6 +1090,9 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
 inline Result run_reformulation(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
                                 long long budget, unsigned seed, const Knobs& knobs, Observer observer,
                                 int record_every, const Start& start);
+inline Result run_ensemble(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
+                           long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every,
+                           const Start& start);
 inline Result run_replica_ladder(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
                                  long long budget, unsigned seed, const Knobs& knobs, Observer observer,
                                  int record_every, const Start& start);
@@ -1388,6 +1391,9 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
     if (name == "replica_ladder")
         return run_replica_ladder(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
                                   record_every, start);
+    if (name == "ensemble")                                                          // task 31, layer 4
+        return run_ensemble(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer),
+                            record_every, start);
     if (name == "shrink")
         return run_shrink(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer), record_every,
                           start);
@@ -1420,3 +1426,4 @@ inline Result run_strategy(const std::string& name, const Problem& P, double eq_
 #include "replica.hpp"
 #include "catcma_run.hpp"
 #include "resumable_run.hpp"
+#include "ensemble.hpp"

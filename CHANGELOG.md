@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 31, layer 4)
+- The strategy `ensemble` (`scalar/ensemble.hpp`): K resumable runs of one strategy in one run,
+  with their own seeds, starts (`member_seeds`), knobs (`member_knobs`) and, optionally, levels
+  of the problem's parameter (`member_params`), one budget and one deadline; every
+  `exchange_every` steps an exchange: `migrate` (islands: `topology = ring | full | random`,
+  `migrants`, `migrant_pick = best | random | diverse`, `migrant_place = worst |
+  worst_if_better`) or `swap` (replica exchange over a knob or over the parameter). One member
+  without an exchange is the strategy's run; without an exchange the members are independent runs.
+- `replica_ladder` with `rl_mode = resume`: the replicas are resumable runs, never restarted.
+  The default `rl_mode = pieces` runs as before.
+
 ### Fixed (task 31)
 - A seed point whose values are missing or incomplete (`f` not of `n_objs` values, `g` not of
   `n_cons`) is evaluated and counted before it joins the run, instead of being planted as it was

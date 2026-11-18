@@ -132,7 +132,15 @@
 //     the migration) are placed into island i by step 3's rule (migrated
 //     counts those taken). The answer is the run's archive's best, as
 //     before; Result::population holds every island's members. Not here:
-//     an island's own parameter of the problem (at_param).
+//     an island's own parameter of the problem (at_param). The islands of
+//     30.16 without restarts are the strategy ensemble (ensemble.hpp; task
+//     31, layer 4) with inner = cluster_ga: independent members, each with
+//     its archive, its rounds of local searches, its seed and its share of
+//     the budget, and migrate between them (any topology, pick and place,
+//     at_param levels). cga_islands stays the islands above — one archive
+//     (a point one island evaluated is free for the others), one round of
+//     every island's local searches, one count of their seeds — so its
+//     numbers are not the ensemble's and are those of before.
 //   CGA-7. The operator portfolios (task 30, §30.7; off by default: the one
 //     crossover and mutation above). crossover = ops, mutation = ops: the
 //     problem's crossover_ops, mutate_ops (named hooks of crossover's and

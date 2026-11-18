@@ -423,7 +423,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-531 items: 418 yes, 110 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
+540 items: 418 yes, 119 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -536,6 +536,14 @@ Their readings, from every comment of each file (the first column the file's nam
 | `eki` | EKI-4 | J = max(10, 2 n) by default; gamma = 1 (the residuals taken as divided by the noise's sigma); perturb = true (their p. 7: without the perturbation the results were less accurate); tau = 1.5 (their tau > 1). | yes | `eki.hpp` |
 | `eki` | EKI-5 | The answer: the mean of the last ensemble, evaluated once; the best member evaluated on the way is returned beside it. | yes | `eki.hpp` |
 | `eki` | EKI-6 | The draws: one std::mt19937 seeded with seed; the initial ensemble around x0 member after member, then eta per iteration member after member, rnd::normal01. | yes | `eki.hpp` |
+| `ensemble` | ENS-1 (only when asked: the ensemble strategy) | The budget is split once (split_budget) and a member keeps its share: one that ends early (its target, its stall, its own rule) leaves the rest unspent, not handed to the others, so that K members without an exchange... | no: option | `ensemble.hpp` |
+| `ensemble` | ENS-2 (only when asked: the ensemble strategy) | An exchange's evaluations (a migrant carried to another level, a configuration carried over a parameter) are charged to the member whose problem evaluated them: its budget is lowered by one each (Resumable::set_budget... | no: option | `ensemble.hpp` |
+| `ensemble` | ENS-3 (only when asked: the ensemble strategy) | A migrant between members on one problem keeps the giver's values (RES-3: planted, not counted); between levels of the parameter it is carried (param.hpp carried) and evaluated at the receiver's level (ENS-2), a faile... | no: option | `ensemble.hpp` |
+| `ensemble` | ENS-4 (only when asked: the ensemble strategy) | A configuration (swap) is a member's members (a walk's point, a population), its energy E the f of its best member; an accepted exchange hands each member the other's (admit, Place::all). | no: option | `ensemble.hpp` |
+| `ensemble` | ENS-5 (only when asked: the ensemble strategy) | The answer: the best (less violating, then lower f; the first of equals) of the members on the problem itself; with every member at a level of the parameter, the last member's (the ladder ends at the level wanted, RL-4). | no: option | `ensemble.hpp` |
+| `ensemble` | ENS-6 (only when asked: the ensemble strategy) | The end: the stop rule before a round (budget, deadline, stall, max_steps); a member's target ends the run after its round; every member ended; 100 rounds in a row that spend nothing (idle, SRCH-10). stopped_by: targe... | no: option | `ensemble.hpp` |
+| `ensemble` | ENS-7 (only when asked: the ensemble strategy) | threads > 1 advances the members of a round in that many threads, each member's run in one thread (a round within it runs in that thread, STRAT-7); what the problem does besides evaluating is replayed member by member... | no: option | `ensemble.hpp` |
+| `ensemble` | ENS-8 (only when asked: the ensemble strategy) | The observer and record_every go to the member only where there is one (PARAM-5's rule for the levels of shrink): K runs would report K counts of their own. | no: option | `ensemble.hpp` |
 | `evaluator` | SUCC-1 | Off by default. A point is handed over once: where it is met again it is not evaluated again (the archive), and neither is its verdict asked again. | no: option | `evaluator.hpp` |
 | `evaluator` | SUCC-2 | Off by default. The cost is charged after the call, so a call may take the spending past the budget; the run then ends at its next ask (BudgetSpent), as after a gradient's cost. | no: option | `evaluator.hpp` |
 | `evaluator` | SUCC-3 | Off by default. In a strategy's start (strategy.hpp, View) the start's own run asks, its View charges the cost to the start's allowance and keeps the verdict, and the run's evaluator takes that verdict when the round... | no: option | `evaluator.hpp` |
@@ -746,6 +754,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `replica` | RL-2 | The geometric ladder is this library's default where no list is given (Hukushima and Nemoto choose their temperatures by the acceptance; their rule is not taken up). | yes | `replica.hpp` |
 | `replica` | RL-3 | An exchange's uniform comes from one stream seeded by the run's seed, drawn only where Delta > 0 (W = 1 otherwise). | yes | `replica.hpp` |
 | `replica` | RL-4 | The answer: over a parameter the last level's best piece (the ladder ends at the level wanted); over a knob the best piece of any replica (all solve the problem itself). | yes | `replica.hpp` |
+| `replica` | RL-5 | rl_mode = pieces \| resume (task 31, layer 4; off by default: pieces, the runs above). resume: a replica is one resumable run of the inner strategy (resumable.hpp; resumable_names()), never restarted — the members of a... | no: option | `replica.hpp` |
 | `restarts` | RST-1 | One set of termination criteria for both, H09's (§2.2): AH05's are the same in substance (equalfunvalhist, TolFun, TolX, noeffectaxis, noeffectcoord, conditioncov) but for TolFun over the last generation's values; | yes | `restarts.hpp` |
 | `restarts` | RST-2 | U[0,1]² of λ_s is the square of one uniform number; the second draw (σ⁰) is another (H09: "independent uniformly distributed numbers"). | yes | `restarts.hpp` |
 | `restarts` | RST-3 | "Half of the recent large budget": half of the evaluations of the last run of regime 1. | yes | `restarts.hpp` |

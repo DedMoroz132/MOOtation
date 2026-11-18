@@ -113,6 +113,7 @@ set(MOOTATION_TESTS
     test_stop_rule
     test_moves
     test_resumable
+    test_ensemble_run
     test_clocks
     test_windows_first)
 

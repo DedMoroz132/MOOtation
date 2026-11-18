@@ -41,7 +41,8 @@
 // (their bests in the settings, replica_best).
 //
 // Knobs: inner, rl_over (knob | param), rl_knob, rl_levels, rl_K (4),
-// rl_lo, rl_hi, rl_beta (1), rl_fs (1), swap_every (0: no exchange).
+// rl_lo, rl_hi, rl_beta (1), rl_fs (1), swap_every (0: no exchange), rl_mode
+// (pieces | resume; RL-5).
 //
 // READINGS:
 //   RL-1. Over a parameter the replicas carry configurations between two
@@ -57,6 +58,21 @@
 //   RL-4. The answer: over a parameter the last level's best piece (the
 //     ladder ends at the level wanted); over a knob the best piece of any
 //     replica (all solve the problem itself).
+//   RL-5. rl_mode = pieces | resume (task 31, layer 4; off by default:
+//     pieces, the runs above). resume: a replica is one resumable run of the
+//     inner strategy (resumable.hpp; resumable_names()), never restarted —
+//     the members of an ensemble (ensemble.hpp) with the exchange swap.
+//     Replica m: its level's problem and knobs, the seed of its first piece
+//     above (start_seed(seed, m)), the run's start, budget / K of the budget
+//     (the pieces' share at swap_every = 0); a round advances every replica
+//     by swap_every of its budget (RES-2: whole steps, the step that crosses
+//     it finishes), then the neighbours' exchange (RL-1, RL-3, the same
+//     stream) of the replicas' current configurations (the walk's point,
+//     not a piece's best; ensemble.hpp ENS-4), its evaluations charged to
+//     the replicas' budgets (ENS-2). A replica that reaches the target ends
+//     the run after its round. swap_every = 0 is the runs of rl_mode =
+//     pieces bit for bit (one piece each, the same seeds, budgets and
+//     problems), the settings one row more (rl_mode).
 // ============================================================================
 
 #include <algorithm>
@@ -73,6 +89,13 @@
 
 namespace mootation::scalar {
 
+// rl_mode = resume (RL-5): the replicas as an ensemble's members (ensemble.hpp)
+inline Result replica_resumed(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
+                              long long budget, unsigned seed, const Start& start, const std::string& inner,
+                              const std::vector<Problem>& Q, const std::vector<Knobs>& kn, const std::vector<double>& lv,
+                              bool over_param, double beta, double fs, long long every, strategy::StopRule& stop,
+                              strategy::Ledger& ledger, double grad_cost, std::vector<std::string> ignored);
+
 inline Result run_replica_ladder(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
                                  long long budget, unsigned seed, const Knobs& knobs, Observer observer,
                                  int record_every, const Start& start)
@@ -81,8 +104,9 @@ inline Result run_replica_ladder(const Problem& P, double eq_tol, bool has_tol0,
     (void)observer;
     (void)record_every;
     StrategyKnobs k("replica_ladder", knobs, {"inner", "rl_over", "rl_knob", "rl_levels", "rl_K", "rl_lo", "rl_hi",
-                                              "rl_beta", "rl_fs", "swap_every"});
+                                              "rl_beta", "rl_fs", "swap_every", "rl_mode"});
     const Inner inner = k.inner("inner");
+    const bool resume = k.find("rl_mode") && k.word("rl_mode", "pieces", {"pieces", "resume"}) == "resume";   // RL-5
     const bool over_param = k.word("rl_over", "knob", {"knob", "param"}) == "param";
     const double beta = k.number("rl_beta", 1.0), fs = k.number("rl_fs", 1.0);
     const long long every = k.whole("swap_every", 0, 0);
@@ -135,6 +159,12 @@ inline Result run_replica_ladder(const Problem& P, double eq_tol, bool has_tol0,
     double grad_cost = 1.0;                                           // the inner solver's, where it takes one
     for (const auto& kv : inner.knobs)
         if (kv.first == "grad_cost" && !kv.second.is_word) grad_cost = kv.second.number;
+    if (resume) {                                                                     // RL-5
+        std::vector<Knobs> kn;
+        for (std::size_t m = 0; m < K; ++m) kn.push_back(knobs_at(m));
+        return replica_resumed(P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, start, inner.name, Q, kn, lv,
+                               over_param, beta, fs, every, stop, ledger, grad_cost, k.ignored());
+    }
     long long pieces = 0, tried = 0, swapped = 0;
     double best_f = std::numeric_limits<double>::infinity();                         // STOP-3
     std::vector<Vec> x(K);
