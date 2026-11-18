@@ -410,9 +410,14 @@ int main(int argc, char** argv)
 
     // the clocks (30.12)
     {
-        const double c0 = sc::cpu_seconds(), u0 = sc::unbiased_seconds();
-        busy(40000.0);                                  // Windows' processor time moves by ticks of ~15.6 ms
-        check(sc::cpu_seconds() - c0 >= 0.015 && sc::unbiased_seconds() - u0 >= 0.03,
+        // work until both have gone on (Windows' processor time moves by ticks of ~15.6 ms), at most 10 s
+        // of the wall clock: a runner that gives the process little of its time takes longer, not fails
+        const double c0 = sc::cpu_seconds(), u0 = sc::unbiased_seconds(), w0 = sc::clock_seconds();
+        double acc = 0.0;
+        while ((sc::cpu_seconds() - c0 < 0.015 || sc::unbiased_seconds() - u0 < 0.03) &&
+               sc::clock_seconds() - w0 < 10.0)
+            for (int k = 0; k < 200; ++k) acc += std::sqrt(static_cast<double>(k) + acc * 1e-9);
+        check(acc > 0.0 && sc::cpu_seconds() - c0 >= 0.015 && sc::unbiased_seconds() - u0 >= 0.03,
               "cpu and unbiased clocks go on with work");
         check(sc::clock_of("cpu") == sc::Clock::cpu && std::string(sc::clock_name(sc::Clock::unbiased)) == "unbiased",
               "time_clock's words");
