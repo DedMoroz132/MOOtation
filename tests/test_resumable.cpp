@@ -3,10 +3,28 @@
 //   * the interface can be implemented and driven through a pointer to it;
 //   * best_member and member_of read the archive;
 //   * carry_points' helpers: takes_population, carry_start, split_budget;
-//   * a strategy without the resumable run is refused by start_resumable.
+//   * a strategy without the resumable run is refused by start_resumable;
+//   * RES-1, the layer's check: basin_hopping, ils, cluster_ga (one
+//     population, islands, multi_dynamic, afpo, operator portfolios), ga_sbx
+//     and ssga — scalar::run, the resumable run in one piece, in pieces of one
+//     step and in pieces of a spend are one run, bit for bit: the same points
+//     evaluated in the same order, the same answer, counts and settings; the
+//     interface's reads between the pieces change nothing;
+//   * set_budget before the first piece is the run with that budget;
+//   * admit: the member planted (not evaluated), by each Place and by the
+//     caller's rule; cluster_ga's islands refuse it;
+//   * operators and set_operators carry the portfolios' weights; a portfolio
+//     of other operators is refused;
+//   * the time of scalar::run (max_seconds) in the result (RES-8);
+//   * carry_points in shrink (PARAM-10): 1 is the run of before; N points
+//     carried to every level, as instances of basin_hopping or as cluster_ga's
+//     seed points; a solver that is not resumable carries one; beside
+//     shrink_carry = population refused.
 
+#include <cmath>
 #include <cstdio>
 #include <memory>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -28,6 +46,14 @@ void check(bool ok, const std::string& what)
 }
 
 sc::Knob word(const std::string& w) { return {true, w, 0.0}; }
+sc::Knob number(double v) { return {false, "", v}; }
+
+std::string setting(const sc::Result& r, const std::string& key)
+{
+    for (const auto& kv : r.settings)
+        if (kv.first == key) return kv.second;
+    return "";
+}
 
 sc::Problem sphere(std::size_t n)
 {
@@ -42,6 +68,66 @@ sc::Problem sphere(std::size_t n)
     };
     return P;
 }
+
+double rastrigin_of(const Vec& x)
+{
+    double s = 10.0 * static_cast<double>(x.size());
+    for (double v : x) s += v * v - 10.0 * std::cos(2.0 * 3.14159265358979323846 * v);
+    return s;
+}
+
+// Rastrigin in 4 variables; every point evaluated goes to *seen, in order
+sc::Problem rastrigin(std::vector<Vec>* seen)
+{
+    sc::Problem P;
+    P.lo.assign(4, -5.12);
+    P.hi.assign(4, 5.12);
+    P.m = 1;
+    P.evaluate = [seen](const Vec& x, Vec& f, Vec&) {
+        if (seen) seen->push_back(x);
+        f.assign(1, rastrigin_of(x));
+    };
+    auto shift = [](std::size_t j) {
+        return [j](Vec& y, std::mt19937& g) { y[j] += 0.5 * (2.0 * mootation::rnd::uniform01(g) - 1.0); };
+    };
+    P.mutate_ops = {{"x0", shift(0)}, {"x1", shift(1)}, {"x2", shift(2)}};
+    auto blend = [](double w) {
+        return [w](const Vec& a, const Vec& b, Vec& c1, Vec& c2, std::mt19937&) {
+            for (std::size_t j = 0; j < a.size(); ++j) {
+                c1[j] = w * a[j] + (1.0 - w) * b[j];
+                c2[j] = (1.0 - w) * a[j] + w * b[j];
+            }
+        };
+    };
+    P.crossover_ops = {{"half", blend(0.5)}, {"third", blend(1.0 / 3.0)}};
+    return P;
+}
+
+// Rastrigin in 2 variables on [-L, L]^2: a parameter for shrink (PARAM-10)
+sc::Problem rastrigin_at(double L)
+{
+    sc::Problem P;
+    P.lo.assign(2, -L);
+    P.hi.assign(2, L);
+    P.m = 1;
+    P.param = L;
+    P.evaluate = [](const Vec& x, Vec& f, Vec&) { f.assign(1, rastrigin_of(x)); };
+    P.at_param = [](double L2) { return rastrigin_at(L2); };
+    P.rescale = [](Vec& x, double from, double to) {
+        for (double& v : x) v *= to / from;
+    };
+    return P;
+}
+
+bool same(const sc::Result& a, const sc::Result& b)
+{
+    return a.objectives == b.objectives && a.variables == b.variables && a.cv == b.cv &&
+           a.evaluations == b.evaluations && a.grad_calls == b.grad_calls && a.settings == b.settings &&
+           a.ignored == b.ignored && a.population == b.population && a.stopped_by == b.stopped_by &&
+           a.used == b.used;
+}
+
+const char* kNM = "{\"solver\":\"nelder_mead\"}";
 
 // The smallest run behind the interface: a step evaluates the next point of
 // a line, one member. It shows the interface can be implemented and driven.
@@ -127,6 +213,28 @@ private:
     }
 };
 
+struct Case {
+    std::string name;
+    sc::Knobs knobs;
+};
+
+std::unique_ptr<sc::Resumable> start(const Case& c, const sc::Problem& P, long long budget)
+{
+    return sc::start_resumable(c.name, P, 1e-6, false, 0.0, 1, budget, 11, c.knobs, {}, 0, {});
+}
+
+// the interface's reads, between pieces (they must change nothing)
+void read_all(const sc::Resumable& r)
+{
+    (void)r.members();
+    (void)r.best_points(3);
+    (void)r.best();
+    (void)r.operators();
+    (void)r.summary();
+    (void)r.steps();
+    (void)r.ledger().left();
+}
+
 }   // namespace
 
 int main()
@@ -176,7 +284,7 @@ int main()
                   sc::split_budget(9, 3) == std::vector<long long>{3, 3, 3},
               "split_budget: equal shares, the first ones a unit more");
     }
-    // a strategy without the resumable run (RES: resumable_names)
+    // a strategy without the resumable run
     {
         const sc::Problem P = sphere(2);
         bool refused = false;
@@ -187,6 +295,231 @@ int main()
         }
         check(refused, "lbfgsb is refused by start_resumable");
     }
+
+    // ── RES-1: one piece = k pieces, bit for bit ─────────────────────────────
+    const sc::Knob nm = word(kNM);
+    const std::vector<Case> cases{
+        {"basin_hopping", {{"inner", nm}, {"start_budget", number(60)}}},
+        {"basin_hopping", {{"inner", nm}, {"start_budget", number(60)}, {"step", word("portfolio")},
+                           {"op_select", word("adaptive_pursuit")}}},
+        {"ils", {{"inner", nm}, {"start_budget", number(60)}, {"ils_accept", word("restart")}, {"ils_restart", number(3)}}},
+        {"cluster_ga", {{"inner", nm}, {"start_budget", number(60)}, {"cga_pop", number(6)}}},
+        {"cluster_ga", {{"inner", nm}, {"start_budget", number(60)}, {"cga_pop", number(6)}, {"mutation", word("ops")},
+                        {"crossover", word("ops")}, {"cga_mut_rate", number(0.5)}, {"op_select", word("adaptive_pursuit")}}},
+        {"cluster_ga", {{"inner", nm}, {"start_budget", number(60)}, {"cga_pop", number(4)}, {"cga_islands", number(3)},
+                        {"cga_migrate_every", number(2)}}},
+        {"cluster_ga", {{"inner", nm}, {"start_budget", number(60)}, {"cga_pop", number(5)},
+                        {"cga_replace", word("multi_dynamic")}}},
+        {"cluster_ga", {{"inner", nm}, {"start_budget", number(60)}, {"cga_pop", number(5)}, {"cga_replace", word("afpo")}}},
+        {"ga_sbx", {{"np", number(20)}}},
+        {"ga_sbx", {{"np", number(20)}, {"ga_mutation", word("ops")}, {"op_select", word("probability_matching")}}},
+        {"ssga", {{"np", number(20)}}},
+    };
+    const long long budget = 6000;                       // every strategy cut into several pieces
+    for (std::size_t q = 0; q < cases.size(); ++q) {
+        const Case& c = cases[q];
+        const std::string tag = c.name + " #" + std::to_string(q);
+        std::vector<Vec> s0, s1, s2, s3;
+        const sc::Problem P0 = rastrigin(&s0), P1 = rastrigin(&s1), P2 = rastrigin(&s2), P3 = rastrigin(&s3);
+        const sc::Result r0 = sc::run(c.name, P0, 1e-6, false, 0.0, 1, budget, 11, c.knobs, {}, 0, {});
+        std::unique_ptr<sc::Resumable> a = start(c, P1, budget);
+        a->advance();
+        const sc::Result r1 = a->result();
+        std::unique_ptr<sc::Resumable> b = start(c, P2, budget);
+        long long pieces = 0;
+        while (b->advance(sc::Piece{0.0, 1})) {
+            read_all(*b);
+            ++pieces;
+        }
+        const sc::Result r2 = b->result();
+        std::unique_ptr<sc::Resumable> d = start(c, P3, budget);
+        long long cuts = 0;
+        while (d->advance(sc::Piece{97.0, 0})) {
+            read_all(*d);
+            ++cuts;
+        }
+        const sc::Result r3 = d->result();
+        check(same(r0, r1) && s0 == s1, tag + ": scalar::run = the resumable run in one piece (" +
+                                            std::to_string(r0.evaluations) + " evaluations)");
+        check(same(r0, r2) && s0 == s2 && pieces > 3,
+              tag + ": = " + std::to_string(pieces + 1) + " pieces of one step, the same points in the same order");
+        check(same(r0, r3) && s0 == s3 && cuts > 3, tag + ": = " + std::to_string(cuts + 1) + " pieces of spend 97");
+    }
+
+    // set_budget before the first piece: the run with that budget (RES-5)
+    {
+        const Case c{"basin_hopping", {{"inner", nm}, {"start_budget", number(60)}}};
+        std::vector<Vec> s0, s1;
+        const sc::Problem P0 = rastrigin(&s0), P1 = rastrigin(&s1);
+        const sc::Result r0 = sc::run(c.name, P0, 1e-6, false, 0.0, 1, 700, 11, c.knobs, {}, 0, {});
+        std::unique_ptr<sc::Resumable> a = start(c, P1, 3000);
+        a->set_budget(700);
+        a->advance();
+        check(same(r0, a->result()) && s0 == s1, "set_budget(700) before the first piece: the run of budget 700");
+    }
+
+    // admit (RES-3, RES-4)
+    {
+        const sc::Problem P = rastrigin(nullptr);
+        sc::Member opt;
+        opt.x = Vec(4, 0.0);
+        opt.f = 0.0;
+        opt.cv = 0.0;
+        const Case bh{"basin_hopping", {{"inner", nm}, {"start_budget", number(60)}}};
+        std::unique_ptr<sc::Resumable> w = start(bh, P, 1500);
+        w->begin();
+        const long long spent = w->ledger().spent;
+        check(w->admit({opt}, sc::Place::worst) == 1 && w->members().size() == 1 && w->members()[0].f == 0.0 &&
+                  w->ledger().spent == spent && w->best().f == 0.0,
+              "basin_hopping: admit sets the walk's point, planted, not evaluated; the run's best is it");
+        sc::Member worse = opt;
+        worse.x = Vec(4, 1.0);
+        worse.f = rastrigin_of(worse.x);
+        check(w->admit({worse}, sc::Place::worst_if_better) == 0, "basin_hopping: worst_if_better keeps a better point");
+        w->advance();
+        check(w->result().objectives[0][0] == 0.0, "basin_hopping: the walk goes on from the admitted point");
+
+        const Case cg{"cluster_ga", {{"inner", nm}, {"start_budget", number(60)}, {"cga_pop", number(5)}}};
+        std::unique_ptr<sc::Resumable> g = start(cg, P, 1500);
+        g->advance(sc::Piece{0.0, 2});
+        const long long before = g->ledger().spent;
+        check(g->admit({opt}, sc::Place::worst_if_better) == 1 && g->admit({opt}, sc::Place::worst_if_better) == 0 &&
+                  g->ledger().spent == before,
+              "cluster_ga: worst_if_better takes the optimum once (step 3's cga_de), not evaluated");
+        bool has = false;
+        for (const sc::Member& m : g->members()) has = has || m.f == 0.0;
+        check(has && g->members().size() == 5 && g->best_points(1)[0].f == 0.0, "cluster_ga: the member is in, best first");
+        const std::vector<sc::Member> two{worse, worse};
+        check(g->admit(two, sc::Place::all) == 2 && g->members()[0].x == worse.x && g->members()[1].x == worse.x,
+              "cluster_ga: all replaces the first members");
+        check(g->admit({opt}, [](const std::vector<sc::Member>&, const sc::Member&) { return 4LL; }) == 1 &&
+                  g->members()[4].f == 0.0,
+              "cluster_ga: the caller's rule picks the place");
+        const Case isl{"cluster_ga", {{"inner", nm}, {"start_budget", number(60)}, {"cga_pop", number(3)},
+                                      {"cga_islands", number(2)}}};
+        std::unique_ptr<sc::Resumable> i2 = start(isl, P, 1500);
+        i2->begin();
+        bool refused = false;
+        try {
+            i2->admit({opt}, sc::Place::worst);
+        } catch (const std::invalid_argument&) {
+            refused = true;
+        }
+        check(refused && i2->members().size() == 6, "cluster_ga with islands: members are every island's; admit refused");
+
+        const Case ga{"ga_sbx", {{"np", number(10)}}};
+        std::unique_ptr<sc::Resumable> h = start(ga, P, 1500);
+        h->begin();
+        const long long at = h->ledger().spent;
+        check(h->admit({opt}, sc::Place::worst) == 1 && h->best_points(1)[0].f == 0.0 && h->ledger().spent == at &&
+                  h->members().size() == 10,
+              "ga_sbx: admit puts the optimum in the worst member's place, not evaluated");
+        h->advance();
+        check(h->result().objectives[0][0] == 0.0, "ga_sbx: the run keeps it (elitist)");
+    }
+
+    // operators (RES-6)
+    {
+        const sc::Problem P = rastrigin(nullptr);
+        const Case c{"cluster_ga", {{"inner", nm}, {"start_budget", number(60)}, {"cga_pop", number(6)},
+                                    {"mutation", word("ops")}, {"crossover", word("ops")}, {"cga_mut_rate", number(0.5)},
+                                    {"op_select", word("adaptive_pursuit")}}};
+        std::unique_ptr<sc::Resumable> a = start(c, P, 1500), b = start(c, P, 1500);
+        a->advance(sc::Piece{0.0, 5});
+        const sc::Operators o = a->operators();
+        b->set_operators(o);
+        check(o.mutation.on() && o.crossover.on() && b->operators().mutation.P == o.mutation.P &&
+                  b->operators().crossover.Q == o.crossover.Q && o.mutation.P != std::vector<double>(3, 1.0 / 3.0),
+              "cluster_ga: the portfolios' weights carried by set_operators");
+        sc::Operators other = o;
+        other.mutation.names = {"a", "b", "c"};
+        bool refused = false;
+        try {
+            b->set_operators(other);
+        } catch (const std::invalid_argument&) {
+            refused = true;
+        }
+        check(refused, "set_operators: a portfolio of other operators refused");
+        const Case w{"basin_hopping", {{"inner", nm}, {"start_budget", number(60)}}};
+        std::unique_ptr<sc::Resumable> h = start(w, P, 1500);
+        h->advance(sc::Piece{0.0, 12});
+        sc::Operators s = h->operators();
+        check(s.has_step && s.step != 0.05, "basin_hopping: the adapted step, " + std::to_string(s.step));
+        s.step = 0.2;
+        h->set_operators(s);
+        check(h->operators().step == 0.2, "basin_hopping: set_operators sets the step");
+    }
+
+    // the time of scalar::run (RES-8)
+    {
+        const sc::Problem P = rastrigin(nullptr);
+        const Case c{"basin_hopping", {{"inner", nm}, {"start_budget", number(60)}, {"max_seconds", number(1000)}}};
+        const sc::Result r0 = sc::run(c.name, P, 1e-6, false, 0.0, 1, 800, 11, c.knobs, {}, 0, {});
+        std::unique_ptr<sc::Resumable> a = start(c, P, 800);
+        a->advance();
+        const sc::Result r1 = a->result();
+        check(same(r0, r1) && setting(r1, "max_seconds") == "1000" && setting(r1, "time_up") == "no" &&
+                  !setting(r1, "spend").empty(),
+              "max_seconds: the deadline's settings and the ledger's, as scalar::run's");
+    }
+
+    // carry_points in shrink (PARAM-10)
+    {
+        const sc::Problem P = rastrigin_at(5.12);
+        sc::Start from;
+        from.has_x0 = true;
+        from.x0 = {3.0, -2.0};
+        const char* bh = "{\"inner\":{\"solver\":\"nelder_mead\"},\"solver\":\"basin_hopping\",\"start_budget\":60}";
+        const char* cga = "{\"cga_init\":\"seed_points\",\"cga_pop\":4,\"inner\":{\"solver\":\"nelder_mead\"},"
+                          "\"solver\":\"cluster_ga\",\"start_budget\":60}";
+        auto shrink = [&](const char* inner, double carry) {
+            sc::Knobs k{{"shrink_step", word("ladder")}, {"shrink_ladder", word("[5.12, 4, 3]")},
+                        {"inner", word(inner)}};
+            if (carry > 0) k.push_back({"carry_points", number(carry)});
+            return sc::run("shrink", P, 1e-6, false, 0.0, 1, 3000, 7, k, {}, 0, from);
+        };
+        const sc::Result d = shrink(bh, 0), one = shrink(bh, 1);
+        check(d.objectives == one.objectives && d.variables == one.variables && d.evaluations == one.evaluations &&
+                  setting(one, "shrink_carried_points") == "[0,1,1]",
+              "carry_points = 1: the run of before, bit for bit");
+        const sc::Result three = shrink(bh, 3), again = shrink(bh, 3);
+        check(setting(three, "shrink_carried_points") == "[0,3,3]" && same(three, again) && three.evaluations <= 3000,
+              "carry_points = 3, basin_hopping: 3 points to every level, an instance each, " +
+                  setting(three, "shrink_carried_points"));
+        const sc::Result pop = shrink(cga, 3);
+        check(setting(pop, "shrink_carried_points") == "[0,3,3]" && setting(pop, "init_seeded") == "2",
+              "carry_points = 3, cluster_ga with seed_points: one run from the 3 points (x0 and 2 seeds)");
+        // what carry promises a population ga: the points arrive as x0 and the design's rows, evaluated first
+        {
+            std::vector<Vec> seen;
+            sc::Problem G = rastrigin_at(4.0);
+            G.evaluate = [&seen](const Vec& x, Vec& f, Vec&) {
+                seen.push_back(x);
+                f.assign(1, rastrigin_of(x));
+            };
+            const sc::Knobs gk{{"np", number(10)}, {"warm_start", word("on")}};
+            const sc::strategy::Inner gi{"ga_sbx", gk};
+            const sc::Rows pts{{1.0, -1.0}, {2.0, 0.5}, {-3.0, 3.5}};
+            const sc::detail::CarryLevel cl =
+                sc::detail::carry_level(gi, G, 1e-6, false, 0.0, 1, 500, 7, sc::Start(), pts, 3);
+            check(seen.size() >= 3 && seen[0] == pts[0] && seen[1] == pts[1] && seen[2] == pts[2] &&
+                      cl.parts.size() == 1 && cl.parts[0].evaluations <= 500 && !cl.points.empty() &&
+                      cl.points.size() <= 3 && setting(cl.parts[0], "warm_start") == "on",
+                  "carry_points = 3, ga_sbx with warm_start: one run, the 3 points its first rows, evaluated first");
+        }
+        const sc::Result lb = shrink(kNM, 3);
+        check(setting(lb, "shrink_carried_points") == "[0,1,1]",
+              "carry_points = 3, nelder_mead (not resumable): it holds one point");
+        bool refused = false;
+        try {
+            sc::Knobs k{{"shrink_carry", word("population")}, {"carry_points", number(2)}, {"inner", word(cga)}};
+            sc::run("shrink", P, 1e-6, false, 0.0, 1, 1000, 7, k, {}, 0, from);
+        } catch (const std::invalid_argument&) {
+            refused = true;
+        }
+        check(refused, "carry_points beside shrink_carry = population refused");
+    }
+
     std::printf("%s\n", g_failed ? "FAILED" : "all passed");
     return g_failed ? 1 : 0;
 }

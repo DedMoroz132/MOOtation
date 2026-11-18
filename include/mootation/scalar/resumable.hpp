@@ -79,9 +79,11 @@
 //     the run's answer first, then best_points' others. A strategy that takes
 //     a population (takes_population: cluster_ga with cga_init = seed_points,
 //     ga_sbx and ssga with warm_start = on) gets them as its start
-//     (carry_start: x0 the first, seed points the rest, their values unknown);
-//     any other is run once from each point, the budget split (split_budget).
-//     N = 1 is the run of before, bit for bit.
+//     (carry_start: x0 the first, seed points the rest, their values unknown;
+//     ga_sbx and ssga take the rest as the design's rows, evaluated: POP-7
+//     plants seed points as known values); any other is run once from each
+//     point, the budget split (split_budget). N = 1 is the run of before, bit
+//     for bit.
 //   RES-8 (only when asked: the resumable API). The problem: a run keeps a
 //     reference to P (Evaluator), so P outlives it; with max_seconds or
 //     time_clock in the knobs the run holds its own copy of P with the

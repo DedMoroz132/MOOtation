@@ -423,7 +423,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-526 items: 417 yes, 106 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
+530 items: 417 yes, 110 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -493,6 +493,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `cluster_ga` | CGA-5 | cga_init = uniform \| around_x0 \| seed_points (task 30, §30.5; off by default: uniform, step 0 above). around_x0: members 2 ... | no: option | `cluster_ga.hpp` |
 | `cluster_ga` | CGA-6 | cga_islands = I (task 30, §30.8; off by default: 1, the one population above). | no: option | `cluster_ga.hpp` |
 | `cluster_ga` | CGA-7 | The operator portfolios (task 30, §30.7; off by default: the one crossover and mutation above). crossover = ops, mutation = ops: the problem's crossover_ops, mutate_ops (named hooks of crossover's and mutate's form),... | no: option | `cluster_ga.hpp` |
+| `cluster_ga` | CGA-8 (only when asked: the resumable API) | cluster_ga is resumable (task 31, layer 3; resumable.hpp): class ClusterGa keeps the generations' state between pieces, a step a generation; run_cluster_ga is ClusterGa in one piece. | no: option | `cluster_ga.hpp` |
 | `cluster_ga` | CGA-1 | the cut and splice of a and b over the point blocks of g | yes | `cluster_ga.hpp` |
 | `cmaes` | INJ-1 | The strategy's own parameters stay the tutorial's (Table 1 of the report lists those of [5], Hansen & Kern 2004; the report itself advises keeping the original strategy parameters, p. 7). | yes | `cmaes.hpp` |
 | `cmaes` | INJ-2 | Δσ_max = 1.0 as the report's Table 1 has it (its text on p. 5 says the factor exp(0.6)); c_y = sqrt(n) + 2n/(n + 2), c_y^m = sqrt(2n) + 2n/(n + 2) (Table 1). | yes | `cmaes.hpp` |
@@ -708,6 +709,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `param` | PARAM-7 (only when asked: max_seconds) | The run's deadline (scalar.hpp TIME-1; task 30, §30.1): problem_at gives the problem at L the earlier of its own deadline and P's, so a level's run ends at the run's deadline; shrink starts no level once the deadline... | no: option | `param.hpp` |
 | `param` | PARAM-8 | shrink_count = budget \| evaluations (task 30, §30.2; budget by default since the owner's choice of 16.11, method version 5; evaluations: the runs before). | yes | `param.hpp` |
 | `param` | PARAM-9 | shrink_carry = point \| population (task 30, §30.6; off by default: point, the level from one point). population: the inner solver is cluster_ga with cga_init = seed_points (else refused); a level starts from the carri... | no: option | `param.hpp` |
+| `param` | PARAM-10 | carry_points = N (task 31, layer 3; resumable.hpp RES-7; off by default: the one point above). | no: option | `param.hpp` |
 | `pbest` | PB-1 | The trial's draws: x_pbest, r1, r2, j_rand, then one U(0, 1) a coordinate, j_rand's included, v_j taken where U < CR or j = j_rand (de.hpp draws the same way). r1 and r2 are drawn again until they differ as asked; r2... | yes | `pbest.hpp` |
 | `pbest` | PB-2 | "The best" of P: ranked by the comparison of evo.hpp, ties by index; x_pbest is drawn from the first `top`, and may be x_i or x_r1. | yes | `pbest.hpp` |
 | `pbest` | PB-3 | sym (task 19, symmetry.hpp SYM-8; off by default): after the draws, x_pbest, x_r1 and x~_r2 aligned to x_i (align), or the four canonical (canon); no draw changes, and sym = off is the trial as before. | no: option | `pbest.hpp` |
@@ -825,6 +827,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | POP-6 | The population is the method's own (np), not pop_size: the papers' sizes are part of the methods (lshade's N_init = 18 D, pso's 20). pop_size still sets the observer's stride (evaluator.hpp). | yes | `scalar.hpp` |
 | `scalar` | POP-7 | The first population is the method's draw. | yes | `scalar.hpp` |
 | `scalar` | POP-10 | keep_points = best (task 24, §24.3.3; off by default: all) keeps the best point and the last (evaluator.hpp THE LEAN MODE): a point asked for again is evaluated again and counted (POP-2 does not hold), so a method tha... | no: option | `scalar.hpp` |
+| `scalar` | POP-11 (only when asked: the resumable API) | ga_sbx and ssga are resumable (task 31, layer 3; resumable.hpp): class GaRun keeps the GA, its generator and the evaluator between pieces, the first population begin(), a step one generation of the loop (population.hp... | no: option | `scalar.hpp` |
 | `scalar` | POP-8 | lshade's MAX_NFE is the run's budget unless lshade_max_nfe is set: §III's MAX_NFE is the budget the run is given. | yes | `scalar.hpp` |
 | `scalar` | POP-9 | sym = off \| canon \| align (task 19, §19.2.2; symmetry.hpp SYM-7 ... | yes | `scalar.hpp` |
 | `scalar` | TIME-1 (only when asked: max_seconds) | The deadline is absolute and goes with the problem: a strategy's starts (their views, their threads) and its inner runs keep the one deadline of the run, on its clock; a run inside a run with its own max_seconds sets... | no: option | `scalar.hpp` |
@@ -851,6 +854,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `search` | SRCH-22 | Off by default. step = box \| user \| portfolio (task 31, layer 2; moves.hpp MOVE-1 ... | no: option | `search.hpp` |
 | `search` | SRCH-20 | basin_hopping with bh_accept = threshold and its adaptive step (no ladder) warns once (mootation::warn): DTS is meant for a fixed move (SRCH-16); the run itself is unchanged. | yes | `search.hpp` |
 | `search` | SRCH-21 | memetic on a problem with decode (task 24, §24.1.1, §24.1.2; off by default): a builtin local solver searches only the variables its start's genome has active (hooks.hpp active_of; the subproblem restricted(P, x, acti... | no: option | `search.hpp` |
+| `search` | SRCH-23 (only when asked: the resumable API) | ils and basin_hopping are resumable (task 31, layer 3; resumable.hpp): class Walk keeps the walk's state between pieces, a step one pass of the loop above; run_walk is Walk in one piece. | no: option | `search.hpp` |
 | `search` | SRCH-10 | ils and basin_hopping: 100 steps in a row that spend nothing end the walk (as RST-8, SRCH-9); mlsl: an iteration that spends nothing ends it (its sample would grow without end); basin_hopping's step grows to the box's... | yes | `search.hpp` |
 | `sep_cmaes` | SEP-1 | Line 7's "sqrt(1 - (1 - c_sigma)^2 g)" is (1 - c_sigma)^(2g), as in the CMA-ES literature it comes from. | yes | `sep_cmaes.hpp` |
 | `sep_cmaes` | SEP-2 | E\|\|N(0, I)\|\| = sqrt(n) (1 - 1/(4n) + 1/(21 n^2)). | yes | `sep_cmaes.hpp` |

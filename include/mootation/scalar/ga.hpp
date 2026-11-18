@@ -386,6 +386,23 @@ public:
     std::size_t best() const { return evo::best(f_, v_); }
     // a migrant (pap, task 19): the worst member's place where it is better
     void migrate(const Vec& x, double f, double v) { evo::replace_worst(x_, f_, v_, x, f, v); }
+    // task 31, layer 3 (resumable.hpp RES-4, RES-6): member i becomes x with its f and v; the worst
+    // member's place where x is better, and whether it took it; the portfolios replaced
+    void put(std::size_t i, const Vec& x, double f, double v)
+    {
+        x_[i] = x;
+        f_[i] = f;
+        v_[i] = v;
+    }
+    bool replace_worst_if_better(const Vec& x, double f, double v)
+    {
+        return evo::replace_worst(x_, f_, v_, x, f, v) < x_.size();
+    }
+    void set_portfolios(const moves::Portfolio& x, const moves::Portfolio& m)
+    {
+        o_.xport = x;
+        o_.mport = m;
+    }
 
 private:
     // the child's mutation; its tag (GA-12): the portfolio's index, 0 the mutate hook, -1 the builtin

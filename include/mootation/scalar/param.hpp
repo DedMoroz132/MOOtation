@@ -46,7 +46,8 @@
 // Knobs: inner, shrink_step (geometric), shrink_rho, shrink_lo, shrink_tol,
 // ilsqn_dec, ilsqn_inc, idts_theta, idts_delta, idts_min, shrink_ladder,
 // shrink_rounds (0: until the budget or the rule ends), start_budget,
-// shrink_count (budget; PARAM-8), shrink_carry (point; PARAM-9).
+// shrink_count (budget; PARAM-8), shrink_carry (point; PARAM-9), carry_points
+// (off; PARAM-10).
 //
 // READINGS:
 //   PARAM-1. problem_at refuses a problem without at_param, a non-finite L,
@@ -99,6 +100,21 @@
 //     the next starts from the point alone, its members 2 ... K uniform.
 //     shrink_carried: every level's carried members with the point (0 for
 //     the first level).
+//   PARAM-10. carry_points = N (task 31, layer 3; resumable.hpp RES-7; off
+//     by default: the one point above). A level carries its N best points
+//     to the next (each by rescale, as the point): the level's answer first,
+//     then its runs' answers and best_points. An inner solver that takes a
+//     population (takes_population) starts from all of them (x0 and seed
+//     points; ga_sbx and ssga: x0 and the design's rows, evaluated, as POP-7
+//     plants seed points as known values); any other is run once from each,
+//     the level's allowance
+//     split (split_budget), the seeds start_seed(the level's, q) after the
+//     first, and the level is its best run (its target first, then
+//     violation, then f), its counts every run's. Only a resumable inner
+//     solver holds more than its answer, so with another the levels carry
+//     one point each. N = 1 is the level of before, bit for bit; beside
+//     shrink_carry = population refused. shrink_carried_points: every
+//     level's points carried in (0 for the first).
 // ============================================================================
 
 #include <algorithm>
@@ -106,11 +122,13 @@
 #include <cstdio>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "periodic.hpp"
+#include "resumable.hpp"
 #include "strategy.hpp"
 
 namespace mootation::scalar {
@@ -157,6 +175,96 @@ inline bool reached(const Problem& Q, const Result& r)
     return feasible && r.objectives[0][0] <= Q.stop_at;
 }
 
+namespace detail {
+
+// a level's run from carried points (RES-7): once from all of them where the
+// inner solver takes a population, else once from each, the allowance
+// split. The best run (its target reached first, then less violating, then
+// lower f; the first of equals), every run, and the N best points the level
+// carries on (the best run's answer first, then the runs' answers and their
+// best_points by violation and f, the first of equals, each point once).
+struct CarryLevel {
+    Result best;
+    std::vector<Result> parts;
+    Rows points;
+};
+
+inline CarryLevel carry_level(const strategy::Inner& inner, const Problem& Q, double eq_tol, bool has_tol0,
+                              double eq_tol0, int pop_size, long long allowance, unsigned level_seed,
+                              const Start& first, const Rows& from, std::size_t N)
+{
+    std::vector<Start> starts;
+    if (from.empty()) starts.push_back(first);
+    else if (takes_population(inner.name, inner.knobs)) {
+        Start st = carry_start(from);
+        if (inner.name != "cluster_ga") {                                           // POP-7: rows to evaluate
+            st.design.clear();
+            for (const Point& q : st.seed_points) st.design.push_back(q.x);
+            st.has_design = !st.design.empty();
+            st.has_seed_points = false;
+            st.seed_points.clear();
+        }
+        starts.push_back(st);
+    }
+    else
+        for (const Vec& x : from) starts.push_back(search::at(x));
+    const std::vector<long long> shares = split_budget(allowance, starts.size());
+    CarryLevel out;
+    std::vector<Member> pool;
+    bool have = false, have_ok = false;
+    auto worse = [](const Result& a, const Result& b) {                             // b better than a
+        if (b.objectives.empty()) return false;
+        if (a.objectives.empty()) return true;
+        const double ca = a.cv.empty() ? 0.0 : a.cv[0], cb = b.cv.empty() ? 0.0 : b.cv[0];
+        if (ca != cb) return cb < ca;
+        return b.objectives[0][0] < a.objectives[0][0];
+    };
+    for (std::size_t q = 0; q < starts.size(); ++q) {
+        if (shares[q] <= 0) continue;
+        const unsigned s = q == 0 ? level_seed : strategy::start_seed(level_seed, static_cast<std::uint64_t>(q));
+        Result r;
+        std::vector<Member> mine;
+        if (listed(resumable_names(), inner.name)) {
+            std::unique_ptr<Resumable> rr =
+                start_resumable(inner.name, Q, eq_tol, has_tol0, eq_tol0, pop_size, shares[q], s, inner.knobs, {}, 0,
+                                starts[q]);
+            rr->advance();
+            mine = rr->best_points(N);
+            r = rr->result();
+        } else {
+            r = run(inner.name, Q, eq_tol, has_tol0, eq_tol0, pop_size, shares[q], s, inner.knobs, {}, 0, starts[q]);
+        }
+        out.parts.push_back(r);
+        if (r.objectives.empty()) continue;
+        Member a;
+        a.x = r.variables[0];
+        a.f = r.objectives[0][0];
+        a.cv = r.cv.empty() ? 0.0 : r.cv[0];
+        pool.push_back(a);
+        pool.insert(pool.end(), mine.begin(), mine.end());
+        const bool ok = reached(Q, r);
+        if (!have || (ok && !have_ok) || (ok == have_ok && worse(out.best, r))) {
+            out.best = r;
+            have = true;
+            have_ok = ok;
+        }
+    }
+    if (!have) {
+        if (!out.parts.empty()) out.best = out.parts[0];
+        return out;
+    }
+    out.points.push_back(out.best.variables[0]);
+    std::stable_sort(pool.begin(), pool.end(),
+                     [](const Member& u, const Member& v) { return u.cv != v.cv ? u.cv < v.cv : u.f < v.f; });
+    for (const Member& m : pool) {
+        if (out.points.size() >= N) break;
+        if (std::find(out.points.begin(), out.points.end(), m.x) == out.points.end()) out.points.push_back(m.x);
+    }
+    return out;
+}
+
+}   // namespace detail
+
 inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size, long long budget,
                          unsigned seed, const Knobs& knobs, Observer observer, int record_every, const Start& start)
 {
@@ -165,7 +273,8 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
     (void)record_every;                                                              // PARAM-5
     StrategyKnobs k("shrink", knobs, {"inner", "shrink_step", "shrink_rho", "shrink_lo", "shrink_tol", "ilsqn_dec",
                                       "ilsqn_inc", "idts_theta", "idts_delta", "idts_min", "shrink_ladder",
-                                      "shrink_rounds", "start_budget", "shrink_count", "shrink_carry"});
+                                      "shrink_rounds", "start_budget", "shrink_count", "shrink_carry",
+                                      "carry_points"});
     const Inner inner = k.inner("inner");
     const std::string rule = k.word("shrink_step", "geometric", {"geometric", "bisect", "ilsqn", "idts", "ladder"});
     const double rho = k.number("shrink_rho", 0.99), tol = k.number("shrink_tol", 1e-6);
@@ -197,6 +306,9 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
             throw std::invalid_argument("shrink: shrink_carry = population needs inner cluster_ga with cga_init = "
                                         "seed_points (PARAM-9)");
     }
+    const long long carry_n = k.find("carry_points") ? k.whole("carry_points", 1, 1) : 0;    // RES-7
+    if (carry_n > 0 && carry_pop)
+        throw std::invalid_argument("shrink: carry_points and shrink_carry = population: one of them (RES-7)");
     double lo_b = 0.0;
     if (rule == "bisect") {
         lo_b = k.number("shrink_lo", std::numeric_limits<double>::quiet_NaN());
@@ -212,6 +324,8 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
     bool have_best = false;
     Vec x_best, x_last;
     Rows pop_best, pop_last;                                                         // PARAM-9
+    Rows pts_best, pts_last;                                                         // RES-7: the levels' points
+    std::string carried_points = "[";
     std::string carried_sizes = "[";
     double L_last = P.param;
     std::string trail = "[";
@@ -261,20 +375,47 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
         }
         if (carry_pop)
             carried_sizes += (levels ? "," : "") + std::to_string(levels ? st.seed_points.size() + 1 : 0);
-        const Result r = run(inner.name, Q, eq_tol, has_tol0, eq_tol0, pop_size, allowance,
-                             start_seed(seed, static_cast<std::uint64_t>(levels)), inner.knobs, {}, 0, st);
-        spent += r.evaluations;
-        grads += r.grad_calls;
+        Result r;
+        std::vector<Result> parts;                                                   // RES-7: the level's runs
+        Rows level_pts;
+        if (carry_n > 1) {
+            Rows from;
+            if (levels > 0) {
+                const Rows& pts = rule == "ladder" ? pts_last : (have_best ? pts_best : pts_last);
+                const double from_L = rule == "ladder" ? L_last : (have_best ? L_best : L_last);
+                for (const Vec& x : pts) from.push_back(carried(P, Q, x, from_L, L));
+            }
+            carried_points += (levels ? "," : "") + std::to_string(from.size());
+            detail::CarryLevel cl = detail::carry_level(inner, Q, eq_tol, has_tol0, eq_tol0, pop_size, allowance,
+                                                        start_seed(seed, static_cast<std::uint64_t>(levels)), start,
+                                                        from, static_cast<std::size_t>(carry_n));
+            r = cl.best;
+            parts = cl.parts;
+            level_pts = cl.points;
+        } else {
+            r = run(inner.name, Q, eq_tol, has_tol0, eq_tol0, pop_size, allowance,
+                    start_seed(seed, static_cast<std::uint64_t>(levels)), inner.knobs, {}, 0, st);
+            parts = {r};
+            if (carry_n == 1) carried_points += (levels ? "," : "") + std::string(levels ? "1" : "0");
+        }
         double grad_cost = 1.0;                                                      // PARAM-8
         if (std::find(r.ignored.begin(), r.ignored.end(), "grad_cost") == r.ignored.end())
             for (const auto& kv : inner.knobs)
                 if (kv.first == "grad_cost" && !kv.second.is_word) grad_cost = kv.second.number;
-        const double cost = static_cast<double>(r.evaluations) + grad_cost * static_cast<double>(r.grad_calls) +
-                            r.success_spent + r.hook_spent + r.delta_spent;
+        long long level_evals = 0, level_grads = 0;
+        double cost = 0.0;
+        for (const Result& part : parts) {
+            spent += part.evaluations;
+            grads += part.grad_calls;
+            level_evals += part.evaluations;
+            level_grads += part.grad_calls;
+            cost += static_cast<double>(part.evaluations) + grad_cost * static_cast<double>(part.grad_calls) +
+                    part.success_spent + part.hook_spent + part.delta_spent;
+            ledger.add(part, grad_cost);
+        }
         charged += cost;
-        ledger.add(r, grad_cost);
-        counts += (levels ? "," : "") + std::string("[") + std::to_string(r.evaluations) + "," +
-                  std::to_string(r.grad_calls) + "," + param_text(cost) + "]";
+        counts += (levels ? "," : "") + std::string("[") + std::to_string(level_evals) + "," +
+                  std::to_string(level_grads) + "," + param_text(cost) + "]";
         const bool ok = reached(Q, r);
         trail += (levels ? "," : "") + std::string("[") + param_text(L) + "," + (ok ? "1" : "0") + "]";
         if (levels == 0) first = r;
@@ -282,6 +423,7 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
         if (!r.variables.empty()) {
             x_last = r.variables[0];
             pop_last = r.population;
+            pts_last = level_pts;
             L_last = L;
         }
         stop.step(ok && (!have_best || L < L_best || rule == "ladder"));            // STOP-3: a lower level that succeeded
@@ -298,6 +440,7 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
             L_best = L;
             x_best = r.variables[0];
             pop_best = r.population;
+            pts_best = level_pts;
         }
         if (past_deadline(P)) {                                                      // PARAM-7: not the rule's end
             stopped = "deadline";
@@ -336,6 +479,7 @@ inline Result run_shrink(const Problem& P, double eq_tol, bool has_tol0, double 
     if (P.deadline < std::numeric_limits<double>::infinity()) out.settings.push_back({"stopped_by", stopped});
     out.settings.push_back({"shrink_counts", counts + "]"});                                 // PARAM-8
     if (carry_pop) out.settings.push_back({"shrink_carried", carried_sizes + "]"});           // PARAM-9
+    if (carry_n > 0) out.settings.push_back({"shrink_carried_points", carried_points + "]"});  // RES-7
     return out;
 }
 

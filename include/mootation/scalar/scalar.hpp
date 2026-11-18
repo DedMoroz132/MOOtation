@@ -2173,6 +2173,12 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
 //     hold), so a method that repeats points spends more; one that does not
 //     runs as with every point kept. keep_points goes to the settings only
 //     where given.
+//   POP-11 (only when asked: the resumable API). ga_sbx and ssga are
+//     resumable (task 31, layer 3; resumable.hpp): class GaRun keeps the GA,
+//     its generator and the evaluator between pieces, the first population
+//     begin(), a step one generation of the loop (population.hpp); their
+//     run is GaRun in one piece. The members are the mu parents; admit
+//     worst_if_better is pap's migrant (evo.hpp replace_worst).
 //   POP-8. lshade's MAX_NFE is the run's budget unless lshade_max_nfe is
 //     set: §III's MAX_NFE is the budget the run is given.
 //   POP-9. sym = off | canon | align (task 19, §19.2.2; symmetry.hpp SYM-7
@@ -2328,9 +2334,19 @@ private:
 
 }   // namespace detail
 
-inline Result run_population(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
-                             double eq_tol0, int pop_size, long long budget, unsigned seed,
-                             const Knobs& knobs, Observer observer, int record_every, const Start& start)
+namespace detail {
+
+// What every population method reads before its own knobs (POP-5, POP-7):
+// the checks, the knobs, the start's rows
+struct PopulationStart {
+    PopulationKnobs k;
+    bool warm = false;
+    Rows seeds;
+    std::size_t np = 0;
+};
+
+inline PopulationStart population_start(const std::string& name, const Problem& P, const Knobs& knobs,
+                                        const Start& start)
 {
     if (P.m != 1)
         throw std::invalid_argument(name + " is a single-objective algorithm: n_objs must be 1, got " +
@@ -2341,15 +2357,17 @@ inline Result run_population(const std::string& name, const Problem& P, double e
     if (start.has_x0 && start.x0.size() != P.lo.size())
         throw std::invalid_argument(name + ": x0 has " + std::to_string(start.x0.size()) + " values for " +
                                     std::to_string(P.lo.size()) + " variables");
-    detail::PopulationKnobs k(name, knobs);
+    PopulationStart ps{PopulationKnobs(name, knobs), false, {}, 0};
+    PopulationKnobs& k = ps.k;
     const bool cma = name == "sep_cmaes";
-    const bool warm = !cma && k.given("warm_start") && k.word("warm_start", "off", {"off", "on"}) == "on";
+    ps.warm = !cma && k.given("warm_start") && k.word("warm_start", "off", {"off", "on"}) == "on";
+    const bool warm = ps.warm;
     if (start.has_x0 && !cma && !warm) k.ignored.push_back("x0");                   // POP-7
     if (start.has_design && !warm) k.ignored.push_back("init");
     if (start.has_seed_points && !warm) k.ignored.push_back("seed_points");
     std::sort(k.ignored.begin(), k.ignored.end());
     // the first population's first rows (POP-7): x0, the seed points or the design
-    Rows seeds;
+    Rows& seeds = ps.seeds;
     if (warm) {
         if (start.has_x0) seeds.push_back(start.x0);
         if (start.has_seed_points)
@@ -2367,9 +2385,317 @@ inline Result run_population(const std::string& name, const Problem& P, double e
                                                 " is outside the box (variable " + std::to_string(j) + ")");
         }
     }
+    ps.np = k.np();
+    return ps;
+}
+
+}   // namespace detail
+
+// ga_sbx and ssga as a resumable run (task 31, layer 3; resumable.hpp): the
+// GA, its generator and the evaluator kept between pieces, a step one
+// generation (population.hpp's loop, one pass). The first population is
+// begin(). run_population's ga_sbx and ssga are GaRun in one piece (RES-1).
+class GaRun : public Resumable {
+public:
+    std::unique_ptr<Problem> own;                       // RES-8: the run's copy of the problem, where it has one
+    std::function<void(Result&)> tail;                  // ... and what scalar::run adds to the result
+
+    GaRun(const std::string& name, const Problem& P, double eq_tol, bool has_tol0, double eq_tol0, int pop_size,
+          long long budget, unsigned seed, const Knobs& knobs, Observer observer, int record_every, const Start& start)
+        : name_(name), ps_(detail::population_start(name, P, knobs, start)), rng_(seed),
+          ev_(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every)
+    {
+        detail::PopulationKnobs& k = ps_.k;
+        if (k.given("keep_points")) ev_.lean = k.word("keep_points", "all", {"all", "best"}) == "best";   // POP-10
+        if (ps_.warm && start.has_seed_points)                                      // POP-7: known, free
+            for (const Point& q : start.seed_points) ev_.plant(q.x, q.f, q.g);
+        const Vec lo = P.lo, hi = P.hi;
+        ga::Options o = name == "ssga" ? ga::ssga() : ga::ga_sbx();
+        o.seeds = ps_.seeds;
+        if (ps_.np) o.mu = ps_.np;
+        o.pc = k.number("pc", o.pc);
+        o.eta_c = k.number("eta_c", o.eta_c);
+        o.pm = k.number("pm", o.pm);
+        o.eta_m = k.number("eta_m", o.eta_m);
+        o.tournament = k.whole("ga_tournament", o.tournament);
+        o.sym = k.sym(P);
+        o.block_uniform = k.block("ga_block_uniform", P);
+        o.block_mutation = k.block("ga_block_mutation", P);
+        if ((o.block_uniform > 0.0 || o.block_mutation > 0.0) && o.sym.groups.empty())
+            o.sym.groups = P.sym_blocks;                                              // GA-7, GA-8
+        // the user's genome (task 24, §24.1.2; ga.hpp GA-9 ... GA-11), where asked for
+        auto user = [&](const char* knob, const std::vector<std::string>& words) {
+            return k.given(knob) && k.word(knob, "builtin", words) == "user";
+        };
+        // ... or a portfolio of them (task 31, layer 2; ga.hpp GA-12)
+        auto how = [&](const char* knob) {
+            return k.given(knob) ? k.word(knob, "builtin", {"builtin", "user", "ops"}) : std::string("builtin");
+        };
+        const std::string x_how = how("ga_crossover"), m_how = how("ga_mutation");
+        if (x_how == "user") {
+            if (!P.crossover) throw std::invalid_argument(name + ": ga_crossover = user: the problem gives no crossover");
+            o.user_crossover = P.crossover;
+        }
+        if (m_how == "user") {
+            if (!P.mutate) throw std::invalid_argument(name + ": ga_mutation = user: the problem gives no mutate");
+            o.user_mutate = P.mutate;
+        }
+        if (x_how == "ops" || m_how == "ops") {                                      // GA-12
+            if (x_how == "ops" && P.crossover_ops.empty())
+                throw std::invalid_argument(name + ": ga_crossover = ops: the problem gives no crossover_ops");
+            if (m_how == "ops" && P.mutate_ops.empty())
+                throw std::invalid_argument(name + ": ga_mutation = ops: the problem gives no mutate_ops");
+            double alpha = 0.8, beta = 0.8;
+            const int rule = moves::rule_of(k, name, alpha, beta);
+            if (x_how == "ops") {
+                for (const auto& op : P.crossover_ops) o.crossover_ops.push_back(op.second);
+                o.xport.start(moves::names_of(P.crossover_ops), rule,
+                              moves::pmin_of(k, name, rule, P.crossover_ops.size()), alpha, beta);
+            }
+            if (m_how == "ops") {
+                for (const auto& op : P.mutate_ops) o.mutate_ops.push_back(op.second);
+                o.mport.start(moves::names_of(P.mutate_ops), rule, moves::pmin_of(k, name, rule, P.mutate_ops.size()),
+                              alpha, beta);
+            }
+        }
+        o.on_child = P.on_child;                                                     // MOVE-4
+        if (user("ga_init", {"builtin", "user"})) {
+            if (!P.sample) throw std::invalid_argument(name + ": ga_init = user: the problem gives no sample");
+            o.user_sample = P.sample;
+        }
+        const std::string repair =
+            k.given("ga_repair") ? k.word("ga_repair", "builtin", {"builtin", "user", "off"}) : "builtin";
+        if (repair == "user") {
+            if (!P.repair) throw std::invalid_argument(name + ": ga_repair = user: the problem gives no repair");
+            o.user_repair = P.repair;
+        }
+        o.clip = repair == "builtin";
+        o.decode = P.decode;
+        ops_on_ = !o.crossover_ops.empty() || !o.mutate_ops.empty();
+        if ((o.user_crossover || o.user_mutate || ops_on_) && (o.block_uniform > 0.0 || o.block_mutation > 0.0))
+            throw std::invalid_argument(name + ": the block operators are the builtin's (GA-7, GA-8), not with the user's");
+        m_ = std::make_unique<ga::GA>(lo, hi, o, rng_);
+        k.size(m_->mu());
+    }
+
+    const std::string& name() const override { return name_; }
+
+    void begin() override                                                         // the first population
+    {
+        if (begun_) return;
+        begun_ = true;
+        if (m_->done()) {
+            over_ = true;
+            return;
+        }
+        generation();
+    }
+
+    bool advance(const Piece& piece = Piece()) override
+    {
+        const double from = ev_.counted();
+        begin();
+        long long taken = 0;
+        while (!over_) {
+            if ((piece.steps > 0 && taken >= piece.steps) || (piece.spend > 0.0 && ev_.counted() - from >= piece.spend)) {
+                if (m_->done()) over_ = true;                                         // RES-2: the run's end found now
+                break;
+            }
+            if (m_->done()) {
+                over_ = true;
+                break;
+            }
+            generation();
+            ++steps_;
+            ++taken;
+        }
+        return !over_;
+    }
+
+    bool done() const override { return over_; }
+    long long steps() const override { return steps_; }
+    const Evaluator& ledger() const override { return ev_; }
+
+    void set_budget(long long budget) override                                      // RES-5
+    {
+        ev_.limit = ev_.limit == ev_.budget ? budget : (std::min)(ev_.limit, budget);
+        ev_.budget = budget;
+    }
+
+    std::vector<Member> members() const override
+    {
+        std::vector<Member> out;
+        for (std::size_t i = 0; i < m_->population().size(); ++i) out.push_back(member_at(i));
+        return out;
+    }
+
+    // RES-7: the k best members (evo.hpp's order, stable)
+    std::vector<Member> best_points(std::size_t k) const override
+    {
+        std::vector<std::size_t> order(m_->population().size());
+        for (std::size_t i = 0; i < order.size(); ++i) order[i] = i;
+        const Vec& f = m_->values();
+        const Vec& v = m_->violations();
+        std::stable_sort(order.begin(), order.end(),
+                         [&](std::size_t a, std::size_t b) { return evo::better(f[a], v[a], f[b], v[b]); });
+        std::vector<Member> out;
+        for (std::size_t q = 0; q < order.size() && q < k; ++q) out.push_back(member_at(order[q]));
+        return out;
+    }
+
+    long long admit(const std::vector<Member>& in, Place how) override             // RES-3, RES-4
+    {
+        const std::size_t N = m_->population().size();
+        long long taken = 0;
+        std::vector<char> fresh(N, 0);
+        for (std::size_t q = 0; q < in.size() && N > 0; ++q) {
+            const std::size_t i = ev_.plant(in[q].x, {in[q].f}, in[q].g);
+            const double f = ev_.failed[i] ? std::numeric_limits<double>::quiet_NaN() : ev_.F[i][0];
+            const double v = ev_.failed[i] ? std::numeric_limits<double>::quiet_NaN() : ev_.cv(i);
+            if (how == Place::all) {
+                if (q >= N) break;
+                m_->put(q, ev_.X[i], f, v);
+                ++taken;
+                continue;
+            }
+            if (how == Place::worst_if_better) {
+                if (m_->replace_worst_if_better(ev_.X[i], f, v)) ++taken;           // evo.hpp replace_worst (pap's migrant)
+                continue;
+            }
+            std::size_t w = N;
+            for (std::size_t p = 0; p < N; ++p)
+                if (!fresh[p] && (w == N || !evo::better(m_->values()[p], m_->violations()[p], m_->values()[w],
+                                                         m_->violations()[w])))
+                    w = p;
+            if (w == N) break;
+            m_->put(w, ev_.X[i], f, v);
+            fresh[w] = 1;
+            ++taken;
+        }
+        return taken;
+    }
+
+    long long admit(const std::vector<Member>& in, const PlaceRule& rule) override
+    {
+        long long taken = 0;
+        for (const Member& mb : in) {
+            const long long at = rule(members(), mb);
+            if (at < 0 || at >= static_cast<long long>(m_->population().size())) continue;
+            const std::size_t i = ev_.plant(mb.x, {mb.f}, mb.g);
+            const double f = ev_.failed[i] ? std::numeric_limits<double>::quiet_NaN() : ev_.F[i][0];
+            const double v = ev_.failed[i] ? std::numeric_limits<double>::quiet_NaN() : ev_.cv(i);
+            m_->put(static_cast<std::size_t>(at), ev_.X[i], f, v);
+            ++taken;
+        }
+        return taken;
+    }
+
+    Operators operators() const override                                         // RES-6
+    {
+        Operators o;
+        o.mutation = m_->mutations();
+        o.crossover = m_->crossovers();
+        return o;
+    }
+
+    void set_operators(const Operators& o) override
+    {
+        moves::Portfolio x = m_->crossovers(), mu = m_->mutations();
+        if (o.mutation.on()) {
+            if (o.mutation.names != mu.names)
+                throw std::invalid_argument(name_ + ": set_operators: a portfolio of other operators (RES-6)");
+            mu = o.mutation;
+        }
+        if (o.crossover.on()) {
+            if (o.crossover.names != x.names)
+                throw std::invalid_argument(name_ + ": set_operators: a portfolio of other operators (RES-6)");
+            x = o.crossover;
+        }
+        m_->set_portfolios(x, mu);
+    }
+
+    Member best() const override { return best_member(ev_); }
+
+    std::vector<std::pair<std::string, std::string>> summary() const override
+    {
+        std::vector<std::pair<std::string, std::string>> out;
+        if (ops_on_) out.push_back({"operators", moves::operators_row(&m_->crossovers(), &m_->mutations())});   // GA-12
+        return out;
+    }
+
+    Result result() override
+    {
+        over_ = true;
+        detail::PopulationKnobs& k = ps_.k;
+        for (auto& row : summary()) k.settings.push_back(std::move(row));             // GA-12, MOVE-5
+        ev_.over = true;
+        const std::vector<std::size_t> idx = ev_.answer();
+        ev_.record(true);
+        Result r = detail::result_of(ev_, idx);
+        r.ignored = k.ignored;
+        r.settings = k.settings;
+        r.settings.push_back({"method_version", std::to_string(METHOD_VERSION)});
+        if (tail) tail(r);
+        return r;
+    }
+
+private:
+    std::string name_;
+    detail::PopulationStart ps_;
+    std::mt19937 rng_;
+    Evaluator ev_;
+    std::unique_ptr<ga::GA> m_;
+    bool ops_on_ = false;
+    int idle_ = 0;                                    // POP-2
+    bool first_ = true;
+    long long steps_ = 0;
+    bool begun_ = false, over_ = false;
+
+    // one pass of population.hpp's drive(): a generation asked, evaluated and told
+    void generation()
+    {
+        try {
+            const Rows X = m_->ask();
+            Vec f, v;
+            const bool fresh = m_->decoding() ? population::values_decoded(ev_, X, m_->invalid(), f, v)
+                                              : population::values(ev_, X, f, v);
+            if (first_ && !ev_.recorded) ev_.record();                                // gen 0: the initial population
+            first_ = false;
+            idle_ = fresh ? 0 : idle_ + 1;
+            if (idle_ >= population::kIdleGenerations) {                              // POP-2
+                over_ = true;
+                return;
+            }
+            m_->tell(f, v);
+        } catch (const BudgetSpent&) {
+            over_ = true;
+        }
+    }
+
+    // member i with its values from the archive (RES-3)
+    Member member_at(std::size_t i) const
+    {
+        return member_of(ev_, m_->population()[i], m_->values()[i], m_->violations()[i]);
+    }
+};
+
+inline Result run_population(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
+                             double eq_tol0, int pop_size, long long budget, unsigned seed,
+                             const Knobs& knobs, Observer observer, int record_every, const Start& start)
+{
+    if (name == "ga_sbx" || name == "ssga") {                                         // task 31, layer 3 (RES-1)
+        GaRun g(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs, std::move(observer), record_every,
+                start);
+        g.advance();
+        return g.result();
+    }
+    detail::PopulationStart ps = detail::population_start(name, P, knobs, start);   // POP-5, POP-7
+    detail::PopulationKnobs& k = ps.k;
+    const bool warm = ps.warm;
+    const Rows& seeds = ps.seeds;
     const std::vector<std::string> yes_no{"yes", "no"};
     const Vec lo = P.lo, hi = P.hi;
-    const std::size_t np = k.np();
+    const std::size_t np = ps.np;
 
     std::mt19937 rng(seed);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
@@ -2432,83 +2758,6 @@ inline Result run_population(const std::string& name, const Problem& P, double e
             lshade::LSHADE m(lo, hi, o, rng);
             k.size(m.np());
             population::drive(m, ev, [&] { return m.done(); });
-        } else if (name == "ga_sbx" || name == "ssga") {
-            ga::Options o = name == "ssga" ? ga::ssga() : ga::ga_sbx();
-            o.seeds = seeds;
-            if (np) o.mu = np;
-            o.pc = k.number("pc", o.pc);
-            o.eta_c = k.number("eta_c", o.eta_c);
-            o.pm = k.number("pm", o.pm);
-            o.eta_m = k.number("eta_m", o.eta_m);
-            o.tournament = k.whole("ga_tournament", o.tournament);
-            o.sym = k.sym(P);
-            o.block_uniform = k.block("ga_block_uniform", P);
-            o.block_mutation = k.block("ga_block_mutation", P);
-            if ((o.block_uniform > 0.0 || o.block_mutation > 0.0) && o.sym.groups.empty())
-                o.sym.groups = P.sym_blocks;                                              // GA-7, GA-8
-            // the user's genome (task 24, §24.1.2; ga.hpp GA-9 ... GA-11), where asked for
-            auto user = [&](const char* knob, const std::vector<std::string>& words) {
-                return k.given(knob) && k.word(knob, "builtin", words) == "user";
-            };
-            // ... or a portfolio of them (task 31, layer 2; ga.hpp GA-12)
-            auto how = [&](const char* knob) {
-                return k.given(knob) ? k.word(knob, "builtin", {"builtin", "user", "ops"}) : std::string("builtin");
-            };
-            const std::string x_how = how("ga_crossover"), m_how = how("ga_mutation");
-            if (x_how == "user") {
-                if (!P.crossover) throw std::invalid_argument(name + ": ga_crossover = user: the problem gives no crossover");
-                o.user_crossover = P.crossover;
-            }
-            if (m_how == "user") {
-                if (!P.mutate) throw std::invalid_argument(name + ": ga_mutation = user: the problem gives no mutate");
-                o.user_mutate = P.mutate;
-            }
-            if (x_how == "ops" || m_how == "ops") {                                      // GA-12
-                if (x_how == "ops" && P.crossover_ops.empty())
-                    throw std::invalid_argument(name + ": ga_crossover = ops: the problem gives no crossover_ops");
-                if (m_how == "ops" && P.mutate_ops.empty())
-                    throw std::invalid_argument(name + ": ga_mutation = ops: the problem gives no mutate_ops");
-                double alpha = 0.8, beta = 0.8;
-                const int rule = moves::rule_of(k, name, alpha, beta);
-                if (x_how == "ops") {
-                    for (const auto& op : P.crossover_ops) o.crossover_ops.push_back(op.second);
-                    o.xport.start(moves::names_of(P.crossover_ops), rule,
-                                  moves::pmin_of(k, name, rule, P.crossover_ops.size()), alpha, beta);
-                }
-                if (m_how == "ops") {
-                    for (const auto& op : P.mutate_ops) o.mutate_ops.push_back(op.second);
-                    o.mport.start(moves::names_of(P.mutate_ops), rule, moves::pmin_of(k, name, rule, P.mutate_ops.size()),
-                                  alpha, beta);
-                }
-            }
-            o.on_child = P.on_child;                                                     // MOVE-4
-            if (user("ga_init", {"builtin", "user"})) {
-                if (!P.sample) throw std::invalid_argument(name + ": ga_init = user: the problem gives no sample");
-                o.user_sample = P.sample;
-            }
-            const std::string repair =
-                k.given("ga_repair") ? k.word("ga_repair", "builtin", {"builtin", "user", "off"}) : "builtin";
-            if (repair == "user") {
-                if (!P.repair) throw std::invalid_argument(name + ": ga_repair = user: the problem gives no repair");
-                o.user_repair = P.repair;
-            }
-            o.clip = repair == "builtin";
-            o.decode = P.decode;
-            const bool ops_on = !o.crossover_ops.empty() || !o.mutate_ops.empty();
-            if ((o.user_crossover || o.user_mutate || ops_on) && (o.block_uniform > 0.0 || o.block_mutation > 0.0))
-                throw std::invalid_argument(name + ": the block operators are the builtin's (GA-7, GA-8), not with the user's");
-            ga::GA m(lo, hi, o, rng);
-            k.size(m.mu());
-            auto operators = [&] {                                                       // GA-12, MOVE-5
-                if (ops_on) k.settings.push_back({"operators", moves::operators_row(&m.crossovers(), &m.mutations())});
-            };
-            try {
-                population::drive(m, ev, [&] { return m.done(); });
-            } catch (const BudgetSpent&) {
-                operators();
-                throw;
-            }
-            operators();
         } else if (name == "g3_pcx") {
             ga::G3Options o;
             o.seeds = seeds;
@@ -2652,69 +2901,107 @@ inline void ledger_settings(Result& r)
 
 }   // namespace detail
 
-inline Result run(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
-                  double eq_tol0, int pop_size, long long budget, unsigned seed, const Knobs& knobs,
-                  Observer observer, int record_every, const Start& start)
-{
-    const ops::RepairCounts before = ops::repair_counts();
-    const double t0 = clock_seconds();
-    double max_seconds = 0.0;
+namespace detail {
+
+// THE TIME of a run (TIME-1 ... TIME-4): what scalar::run reads from the knobs
+// before the run, and adds to its result after; start_resumable's runs the
+// same (resumable.hpp RES-8)
+struct RunTime {
+    ops::RepairCounts before;
+    double t0 = 0.0, cpu0 = 0.0, max_seconds = 0.0;
     bool has_clock = false, asked = false;
     Clock chosen = Clock::wall;
-    Knobs rest;
+    Knobs rest;                                         // the knobs without max_seconds and time_clock
+    bool timed = false;                                 // max_seconds or time_clock: the run's problem a copy,
+    Clock clock = Clock::wall;                          // ... on this clock
+    double deadline = std::numeric_limits<double>::infinity();   // ... with this deadline
+};
+
+inline RunTime run_time(const Problem& P, const Knobs& knobs)
+{
+    RunTime t;
+    t.before = ops::repair_counts();
+    t.t0 = clock_seconds();
     for (const auto& kv : knobs) {
-        asked = asked || kv.first == "stall" || kv.first == "max_steps" || kv.first == "budget_units";
+        t.asked = t.asked || kv.first == "stall" || kv.first == "max_steps" || kv.first == "budget_units";
         if (kv.first == "time_clock") {                                             // clocks.hpp
             if (!kv.second.is_word) throw std::invalid_argument("time_clock must be a word: wall, unbiased, cpu");
-            chosen = clock_of(kv.second.word);
-            has_clock = true;
+            t.chosen = clock_of(kv.second.word);
+            t.has_clock = true;
             continue;
         }
         if (kv.first != "max_seconds") {
-            rest.push_back(kv);
+            t.rest.push_back(kv);
             continue;
         }
         if (kv.second.is_word || !(kv.second.number > 0.0) || !std::isfinite(kv.second.number))
             throw std::invalid_argument("max_seconds must be a number of seconds > 0");
-        max_seconds = kv.second.number;
+        t.max_seconds = kv.second.number;
     }
-    const double cpu0 = has_clock ? cpu_seconds() : 0.0;
-    Result r;
-    if (max_seconds > 0.0 || has_clock) {             // TIME-1
-        Problem Q = P;
-        if (has_clock) {
-            if (P.deadline < std::numeric_limits<double>::infinity() && P.time_clock != chosen)
-                throw std::invalid_argument(std::string("time_clock = ") + clock_name(chosen) +
-                                            ": a run within a run with a deadline keeps its clock, " +
-                                            clock_name(P.time_clock) + " (TIME-1)");
-            Q.time_clock = chosen;
-        }
-        if (max_seconds > 0.0)
-            Q.deadline = (std::min)(P.deadline,
-                                  (Q.time_clock == Clock::wall ? t0 : clock_seconds(Q.time_clock)) + max_seconds);
-        r = detail::run_named(name, Q, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, rest,
-                              std::move(observer), record_every, start);
-        if (max_seconds > 0.0) {
-            r.time_up = clock_seconds(Q.time_clock) >= Q.deadline;
-            r.settings.insert(r.settings.end(), {{"max_seconds", detail::g_format(max_seconds)},
-                                                 {"time_up", r.time_up ? "yes" : "no"}});
-        }
-    } else {
-        r = detail::run_named(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,
-                              std::move(observer), record_every, start);
+    t.cpu0 = t.has_clock ? cpu_seconds() : 0.0;
+    t.timed = t.max_seconds > 0.0 || t.has_clock;
+    if (!t.timed) return t;
+    t.clock = P.time_clock;                                                         // TIME-1
+    t.deadline = P.deadline;
+    if (t.has_clock) {
+        if (P.deadline < std::numeric_limits<double>::infinity() && P.time_clock != t.chosen)
+            throw std::invalid_argument(std::string("time_clock = ") + clock_name(t.chosen) +
+                                        ": a run within a run with a deadline keeps its clock, " +
+                                        clock_name(P.time_clock) + " (TIME-1)");
+        t.clock = t.chosen;
     }
-    r.seconds = clock_seconds() - t0;                 // TIME-3
-    r.repairs = ops::repair_counts() - before;
-    if (has_clock) {
-        r.cpu_seconds = cpu_seconds() - cpu0;
-        r.settings.insert(r.settings.end(), {{"time_clock", clock_name(chosen)},
+    if (t.max_seconds > 0.0)
+        t.deadline = (std::min)(P.deadline, (t.clock == Clock::wall ? t.t0 : clock_seconds(t.clock)) + t.max_seconds);
+    return t;
+}
+
+// the run's problem with its clock and deadline (t.timed)
+inline Problem timed_problem(const Problem& P, const RunTime& t)
+{
+    Problem Q = P;
+    Q.time_clock = t.clock;
+    Q.deadline = t.deadline;
+    return Q;
+}
+
+inline void run_tail(const std::string& name, const RunTime& t, Result& r)
+{
+    if (t.max_seconds > 0.0) {
+        r.time_up = clock_seconds(t.clock) >= t.deadline;
+        r.settings.insert(r.settings.end(), {{"max_seconds", detail::g_format(t.max_seconds)},
+                                             {"time_up", r.time_up ? "yes" : "no"}});
+    }
+    r.seconds = clock_seconds() - t.t0;               // TIME-3
+    r.repairs = ops::repair_counts() - t.before;
+    if (t.has_clock) {
+        r.cpu_seconds = cpu_seconds() - t.cpu0;
+        r.settings.insert(r.settings.end(), {{"time_clock", clock_name(t.chosen)},
                                              {"wall_seconds", detail::g_format(r.seconds)},
                                              {"cpu_seconds", detail::g_format(r.cpu_seconds)}});
     }
     const bool costs = r.hook_spent > 0.0 || r.success_spent > 0.0 || r.delta_spent > 0.0 || r.outside_evals > 0 ||
                        r.outside_grads > 0;
-    if ((asked || costs || max_seconds > 0.0 || has_clock) && detail::listed(strategy_names(), name))
+    if ((t.asked || costs || t.max_seconds > 0.0 || t.has_clock) && detail::listed(strategy_names(), name))
         detail::ledger_settings(r);                   // stop_rule.hpp STOP-4
+}
+
+}   // namespace detail
+
+inline Result run(const std::string& name, const Problem& P, double eq_tol, bool has_tol0,
+                  double eq_tol0, int pop_size, long long budget, unsigned seed, const Knobs& knobs,
+                  Observer observer, int record_every, const Start& start)
+{
+    const detail::RunTime t = detail::run_time(P, knobs);
+    Result r;
+    if (t.timed) {                                    // TIME-1
+        const Problem Q = detail::timed_problem(P, t);
+        r = detail::run_named(name, Q, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, t.rest,
+                              std::move(observer), record_every, start);
+    } else {
+        r = detail::run_named(name, P, eq_tol, has_tol0, eq_tol0, pop_size, budget, seed, knobs,
+                              std::move(observer), record_every, start);
+    }
+    detail::run_tail(name, t, r);
     return r;
 }
 

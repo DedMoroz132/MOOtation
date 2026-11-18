@@ -14,7 +14,12 @@ always listed under **Changed** or **Removed**.
 - The resumable run of a strategy (`scalar/resumable.hpp`): `start_resumable` with the arguments of
   `scalar::run`, then `advance` by pieces of the budget or of steps, `members` and `admit`,
   `best_points`, `operators` and `set_operators`, `best`, `summary`, `result`; the helpers of
-  `carry_points` (`takes_population`, `carry_start`, `split_budget`). Nothing runs differently.
+  `carry_points` (`takes_population`, `carry_start`, `split_budget`, `member_of`, `best_member`).
+- `basin_hopping`, `ils`, `cluster_ga`, `ga_sbx` and `ssga` are resumable: their state between pieces is
+  kept, never evaluated again, and a run cut into pieces is the run in one piece, bit for bit; their
+  one-call runs are the resumable run in one piece.
+- `shrink`'s `carry_points = N`: a level hands the next its N best points (a population solver starts
+  from all of them, any other runs once from each with the level's budget split); off by default.
 
 ### Changed (task 31, layer 2)
 - `ga_sbx` and `ssga` with `ga_crossover = user` hand the crossover hook c1 and c2 of n values,
