@@ -707,6 +707,15 @@ public:
         return keep(x, f, g, bad, key, false);
     }
 
+    // A seed point (scalar.hpp POP-7, SEED-1; the owner's choice of 18.11): planted where its values are
+    // whole (f of m values, g of n_cons), as before; else evaluated, and counted, as a design's row.
+    std::size_t seed(const std::vector<double>& x, const std::vector<double>& f, const std::vector<double>& g)
+    {
+        if (f.size() == static_cast<std::size_t>(m) && g.size() == static_cast<std::size_t>(n_cons))
+            return plant(x, f, g);
+        return index(x);
+    }
+
     bool known(const std::vector<double>& x) const { return where_.count(key_of(x)) != 0; }
 
     // the archive index of the point whose key (bytes) is given, else npos: one lookup

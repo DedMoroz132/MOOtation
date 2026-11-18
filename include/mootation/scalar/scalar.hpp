@@ -520,7 +520,7 @@ inline std::vector<std::size_t> first_points(Evaluator& ev, const Start& st, int
         return i;
     };
     if (st.has_seed_points) {
-        for (const Point& p : st.seed_points) out.push_back(noted(ev.plant(p.x, p.f, p.g)));
+        for (const Point& p : st.seed_points) out.push_back(noted(ev.seed(p.x, p.f, p.g)));   // SEED-1
     } else if (st.has_design) {
         for (const Vec& x : st.design) out.push_back(noted(ev.index(x)));
     } else if (uniform_default) {
@@ -2154,8 +2154,8 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
 //   POP-7. The first population is the method's draw. With warm_start = on
 //     (task 24, §24.4.1; off by default) its first rows are the start
 //     (scalar/evo.hpp): x0, then the
-//     seed points (planted, their values known: no evaluation) or else the
-//     design's rows (init), at most the population's size; the uniform draw
+//     seed points (planted, their values known: no evaluation; SEED-1) or
+//     else the design's rows (init), at most the population's size; the uniform draw
 //     is made in full all the same, so that the run's stream goes on as
 //     without a start. Seed points past the population's size stay in the
 //     archive (and the answer), outside the population; design rows past it
@@ -2167,6 +2167,15 @@ inline Result run_local(const std::string& name, const Problem& P, double eq_tol
 //     strategy hands its inner solver x0 (search::at), which a population
 //     method has always ignored, so that the strategies' runs stay as they
 //     were; warm_start goes to the settings only where given.
+//   SEED-1 (only when a seed point lacks values). A seed point whose values
+//     are not whole (f not of n_objs values, g not of n_cons) is evaluated
+//     and counted, as a design's row, before it joins (the owner's choice of
+//     18.11; Evaluator::seed); one with whole values is planted as before,
+//     free. Before, it was planted
+//     as it was and the run read values it did not have (ga_sbx and ssga
+//     with warm_start = on ended in an access violation). The same for the
+//     plan's seed points of every solver (first_points) and for a member a
+//     resumable run admits (resumable.hpp RES-3).
 //   POP-10. keep_points = best (task 24, §24.3.3; off by default: all)
 //     keeps the best point and the last (evaluator.hpp THE LEAN MODE): a
 //     point asked for again is evaluated again and counted (POP-2 does not
@@ -2407,8 +2416,12 @@ public:
     {
         detail::PopulationKnobs& k = ps_.k;
         if (k.given("keep_points")) ev_.lean = k.word("keep_points", "all", {"all", "best"}) == "best";   // POP-10
-        if (ps_.warm && start.has_seed_points)                                      // POP-7: known, free
-            for (const Point& q : start.seed_points) ev_.plant(q.x, q.f, q.g);
+        try {
+            if (ps_.warm && start.has_seed_points)                                  // POP-7, SEED-1
+                for (const Point& q : start.seed_points) ev_.seed(q.x, q.f, q.g);
+        } catch (const BudgetSpent&) {
+            over_ = true;                                                           // the seeds spent the budget
+        }
         const Vec lo = P.lo, hi = P.hi;
         ga::Options o = name == "ssga" ? ga::ssga() : ga::ga_sbx();
         o.seeds = ps_.seeds;
@@ -2484,6 +2497,7 @@ public:
     {
         if (begun_) return;
         begun_ = true;
+        if (over_) return;                                                          // SEED-1: the seeds spent it
         if (m_->done()) {
             over_ = true;
             return;
@@ -2549,7 +2563,13 @@ public:
         long long taken = 0;
         std::vector<char> fresh(N, 0);
         for (std::size_t q = 0; q < in.size() && N > 0; ++q) {
-            const std::size_t i = ev_.plant(in[q].x, {in[q].f}, in[q].g);
+            std::size_t i = 0;
+            try {
+                i = ev_.seed(in[q].x, {in[q].f}, in[q].g);                          // RES-3, SEED-1
+            } catch (const BudgetSpent&) {
+                over_ = true;
+                break;
+            }
             const double f = ev_.failed[i] ? std::numeric_limits<double>::quiet_NaN() : ev_.F[i][0];
             const double v = ev_.failed[i] ? std::numeric_limits<double>::quiet_NaN() : ev_.cv(i);
             if (how == Place::all) {
@@ -2581,7 +2601,13 @@ public:
         for (const Member& mb : in) {
             const long long at = rule(members(), mb);
             if (at < 0 || at >= static_cast<long long>(m_->population().size())) continue;
-            const std::size_t i = ev_.plant(mb.x, {mb.f}, mb.g);
+            std::size_t i = 0;
+            try {
+                i = ev_.seed(mb.x, {mb.f}, mb.g);                                   // RES-3, SEED-1
+            } catch (const BudgetSpent&) {
+                over_ = true;
+                break;
+            }
             const double f = ev_.failed[i] ? std::numeric_limits<double>::quiet_NaN() : ev_.F[i][0];
             const double v = ev_.failed[i] ? std::numeric_limits<double>::quiet_NaN() : ev_.cv(i);
             m_->put(static_cast<std::size_t>(at), ev_.X[i], f, v);
@@ -2700,9 +2726,9 @@ inline Result run_population(const std::string& name, const Problem& P, double e
     std::mt19937 rng(seed);
     Evaluator ev(P, eq_tol, has_tol0, eq_tol0, budget, pop_size, std::move(observer), record_every);
     if (k.given("keep_points")) ev.lean = k.word("keep_points", "all", {"all", "best"}) == "best";   // POP-10
-    if (warm && start.has_seed_points)                                              // POP-7: known, free
-        for (const Point& q : start.seed_points) ev.plant(q.x, q.f, q.g);
     try {
+        if (warm && start.has_seed_points)                                          // POP-7, SEED-1
+            for (const Point& q : start.seed_points) ev.seed(q.x, q.f, q.g);
         if (name == "de") {
             de::Options o;
             o.seeds = seeds;

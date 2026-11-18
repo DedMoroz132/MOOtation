@@ -423,7 +423,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-530 items: 417 yes, 110 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
+531 items: 418 yes, 110 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -826,6 +826,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `scalar` | POP-5 | Every bound must be finite: the methods draw their first population uniformly in the box (sep_cmaes its mean), and the papers' boxes are where they search. | yes | `scalar.hpp` |
 | `scalar` | POP-6 | The population is the method's own (np), not pop_size: the papers' sizes are part of the methods (lshade's N_init = 18 D, pso's 20). pop_size still sets the observer's stride (evaluator.hpp). | yes | `scalar.hpp` |
 | `scalar` | POP-7 | The first population is the method's draw. | yes | `scalar.hpp` |
+| `scalar` | SEED-1 (only when a seed point lacks values) | A seed point whose values are not whole (f not of n_objs values, g not of n_cons) is evaluated and counted, as a design's row, before it joins (the owner's choice of 18.11; | yes | `scalar.hpp` |
 | `scalar` | POP-10 | keep_points = best (task 24, §24.3.3; off by default: all) keeps the best point and the last (evaluator.hpp THE LEAN MODE): a point asked for again is evaluated again and counted (POP-2 does not hold), so a method tha... | no: option | `scalar.hpp` |
 | `scalar` | POP-11 (only when asked: the resumable API) | ga_sbx and ssga are resumable (task 31, layer 3; resumable.hpp): class GaRun keeps the GA, its generator and the evaluator between pieces, the first population begin(), a step one generation of the loop (population.hp... | no: option | `scalar.hpp` |
 | `scalar` | POP-8 | lshade's MAX_NFE is the run's budget unless lshade_max_nfe is set: §III's MAX_NFE is the budget the run is given. | yes | `scalar.hpp` |

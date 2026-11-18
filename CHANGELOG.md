@@ -10,6 +10,13 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Fixed (task 31)
+- A seed point whose values are missing or incomplete (`f` not of `n_objs` values, `g` not of
+  `n_cons`) is evaluated and counted before it joins the run, instead of being planted as it was
+  (the owner's choice of 18.11): `ga_sbx` and `ssga` with `warm_start = on` crashed on one; the
+  other population methods, the solvers' first points and the resumable runs' `admit` take the same
+  path. Seed points with whole values are planted as before.
+
 ### Added (task 31, layer 3)
 - The resumable run of a strategy (`scalar/resumable.hpp`): `start_resumable` with the arguments of
   `scalar::run`, then `advance` by pieces of the budget or of steps, `members` and `admit`,

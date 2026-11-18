@@ -625,7 +625,7 @@ public:
     {
         if (in.empty()) return 0;
         const search::Found c = planted(in[0]);
-        if (how == Place::worst_if_better && !search::better(c, cur_)) return 0;
+        if (!c.ok || (how == Place::worst_if_better && !search::better(c, cur_))) return 0;
         cur_ = c;
         return 1;
     }
@@ -635,7 +635,9 @@ public:
         long long taken = 0;
         for (const Member& m : in)
             if (rule(members(), m) == 0) {
-                cur_ = planted(m);
+                const search::Found c = planted(m);
+                if (!c.ok) break;
+                cur_ = c;
                 ++taken;
             }
         return taken;
@@ -820,11 +822,18 @@ private:
         ++s_;
     }
 
-    // a member from elsewhere, planted in the archive (RES-3)
+    // a member from elsewhere, planted in the archive (RES-3; evaluated where its values are not whole,
+    // SEED-1: not ok where that evaluation ended the run)
     search::Found planted(const Member& m)
     {
-        const std::size_t i = ev_->plant(m.x, {m.f}, m.g);
+        std::size_t i = 0;
         search::Found c;
+        try {
+            i = ev_->seed(m.x, {m.f}, m.g);                                         // RES-3, SEED-1
+        } catch (const BudgetSpent&) {
+            over_ = true;                                                           // its evaluation ended the run
+            return c;
+        }
         c.x = ev_->X[i];
         c.f = ev_->F[i][0];
         c.cv = ev_->cv(i);

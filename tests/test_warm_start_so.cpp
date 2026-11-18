@@ -11,7 +11,10 @@
 //     own first rows gives the run without a start, bit for bit;
 //   * ipop's and bipop's x0 is the first run's mean: x0 equal to the mean
 //     they would draw gives the run without x0, bit for bit;
-//   * a start outside the box is refused.
+//   * a start outside the box is refused;
+//   * SEED-1 (the owner's choice of 18.11): a seed point whose values are not
+//     whole is evaluated first and counted, for every population method and
+//     for a solver's plan (it was planted as it was; ga_sbx and ssga crashed).
 
 #include <cstdio>
 #include <cstring>
@@ -96,6 +99,20 @@ int main()
         for (const auto& w : seeded.ignored) listed = listed || w == "seed_points";
         check(!listed, m + ": the seed points are not reported as ignored");
 
+        // SEED-1 (the owner's choice of 18.11): a seed point without its values, or with too few, is
+        // evaluated and counted before it joins (it was planted as it was: ga_sbx and ssga crashed)
+        {
+            auto seen = std::make_shared<Rows>();
+            sc::Start bare;
+            bare.has_seed_points = true;
+            bare.seed_points.push_back({{0.5, 0.5, 0.5, 0.5}, {}, {}});
+            bare.seed_points.push_back({{-0.5, 0.5, -0.5, 0.5}, {}, {1.0}});
+            const sc::Result r = sc::run(m, sphere(seen), 1e-6, false, 0.0, 20, 500, 3, kWarm, {}, 0, bare);
+            check(seen->size() >= 2 && (*seen)[0] == bare.seed_points[0].x && (*seen)[1] == bare.seed_points[1].x &&
+                      r.evaluations <= 500 && !r.objectives.empty(),
+                  m + ": seed points without whole values evaluated first, counted (SEED-1)");
+        }
+
         // x0 and a design: the first rows, evaluated first and in order
         auto asked = std::make_shared<Rows>();
         sc::Start sd;
@@ -144,6 +161,17 @@ int main()
         bool listed = false;
         for (const auto& w : c.ignored) listed = listed || w == "x0";
         check(!listed, m + ": x0 is not reported as ignored");
+    }
+
+    // SEED-1 for a solver's plan (detail::first_points): the seed point without values evaluated
+    {
+        auto seen = std::make_shared<Rows>();
+        sc::Start bare;
+        bare.has_seed_points = true;
+        bare.seed_points.push_back({{0.5, 0.5, 0.5, 0.5}, {}, {}});
+        const sc::Result r = sc::run("nelder_mead", sphere(seen), 1e-6, false, 0.0, 20, 300, 3, {}, {}, 0, bare);
+        check(!seen->empty() && (*seen)[0] == bare.seed_points[0].x && r.evaluations <= 300 && !r.objectives.empty(),
+              "nelder_mead: a seed point without values evaluated first (SEED-1)");
     }
 
     if (failures) {

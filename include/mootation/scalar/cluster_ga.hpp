@@ -427,6 +427,7 @@ public:
         std::vector<char> fresh(pop_.size(), 0);
         for (std::size_t q = 0; q < in.size(); ++q) {
             const search::Found c = planted(in[q]);
+            if (!c.ok) break;
             if (how == Place::all) {
                 if (q >= pop_.size()) break;
                 put(q, c);
@@ -455,7 +456,9 @@ public:
         for (const Member& m : in) {
             const long long at = rule(members(), m);
             if (at < 0 || at >= static_cast<long long>(pop_.size())) continue;
-            put(static_cast<std::size_t>(at), planted(m));
+            const search::Found c = planted(m);
+            if (!c.ok) break;
+            put(static_cast<std::size_t>(at), c);
             ++taken;
         }
         return taken;
@@ -1029,11 +1032,18 @@ private:
         if (q < age_.size()) age_[q] = 1;
     }
 
-    // a member from elsewhere, planted in the archive (RES-3)
+    // a member from elsewhere, planted in the archive (RES-3; evaluated where its values are not whole,
+    // SEED-1: not ok where that evaluation ended the run)
     search::Found planted(const Member& m)
     {
-        const std::size_t i = ev_->plant(m.x, {m.f}, m.g);
+        std::size_t i = 0;
         search::Found c;
+        try {
+            i = ev_->seed(m.x, {m.f}, m.g);                                         // RES-3, SEED-1
+        } catch (const BudgetSpent&) {
+            over_ = true;                                                           // its evaluation ended the run
+            return c;
+        }
         c.x = ev_->X[i];
         c.f = ev_->F[i][0];
         c.cv = ev_->cv(i);
