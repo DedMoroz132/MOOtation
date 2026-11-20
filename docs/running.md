@@ -2605,6 +2605,40 @@ too — not at one objective, whose runs read no reference (task 24).
 Two runners in one results folder at once are not supported; each leaves a
 store whose runner still beats unrepaired.
 
+#### The pool's size by free memory
+
+```bash
+<build>/engine/mootation run camp.toml --workers auto_mem --threads 8 --mem-share 0.5
+```
+
+sizes the pool by memory (task 32, layer 5; off by default — `--workers N`
+runs as before). The first job runs alone, as a trial, and the process's
+peak working set after it less its working set before it is a job's peak.
+Then the pool has
+
+    min(threads, floor(mem_share x (free + held) / peak)) workers, at least 1,
+
+free being the system's free memory (Windows `GlobalMemoryStatusEx`'s
+`ullAvailPhys`, Linux `/proc/meminfo`'s `MemAvailable`) and held what the
+engine's process holds above its level before the trial — its own jobs'
+memory, which it would otherwise count against itself. The size is decided
+again before the jobs handed out after each job's end, so memory other
+programs take or give back moves it; a smaller size lets the surplus finish
+the job it is on, as a lower `_workers.txt` does, and `_workers.txt` still
+caps it. Little free memory gives one worker, never a refusal. `--threads`
+is the cap (half the hardware's threads by default); `--mem-share` defaults
+to the campaign's `memory_share` where it is set, else 0.5. Where the system
+gives no free memory or no peak (macOS without `_SC_AVPHYS_PAGES`), the size
+is the cap and the line says the protection is off. Each change of the size
+is a line on stderr (`auto_mem: 3 worker(s) of 8 (a job's peak ..., free
+..., held ..., mem_share 0.5)`), `_runner.json` carries the last decision
+under `auto_mem`, and `--report FILE` lists every change. Which thread runs a
+job does not change its record, so the store is the one a numbered pool
+writes. `include/mootation/mem_workers.hpp` has the readings and the count
+for a pool of one's own (a batch executor's): `start_trial()`, one item,
+`end_trial()` — or `set_peak()` with a child process's peak — then
+`decide()` before every batch.
+
 ### Benchmark campaigns from C++ alone
 
 A machine with a C++17 compiler and CMake runs a campaign of the built-in

@@ -2,8 +2,8 @@
 // ============================================================================
 // mootation — the campaign engine in C++ (task 17, stage 5, step 6).
 //
-//     mootation run <campaign.toml> [--workers N] [--shard i/n] [--only i,j,...]
-//                   [--force] [--registry FILE] [--quiet]
+//     mootation run <campaign.toml> [--workers N | auto_mem] [--threads N] [--mem-share S]
+//                   [--shard i/n] [--only i,j,...] [--force] [--registry FILE] [--quiet]
 //     mootation store ls|check|repair|compact|merge <campaign folder> ...
 //     mootation refs build [--problems A,B] [--n-ref N] [--rebuild] [--extend]
 //                          [--workers N] [--registry FILE] [--data DIR]
@@ -22,7 +22,9 @@
 // JSON, which `python -m mootation.run.campaign` reads when it hands a
 // campaign over). While it runs, <results>/_workers.txt sets the size of the
 // pool (0 drains it) and <results>/_runner.json is its heartbeat, as the
-// Python runner's. It reads the problem registry as data (the repository's
+// Python runner's. --workers auto_mem (task 32, layer 5; engine.hpp's
+// POOL-MEM-1 ... 5) sizes the pool by the free memory and a trial job's peak,
+// at most --threads. It reads the problem registry as data (the repository's
 // data/registry.json; where it looks for it: newest_registry below,
 // docs/running.md) and the cache of references (`mootation refs build`).
 //
@@ -43,6 +45,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -93,7 +96,8 @@ namespace js = mootation::json;
 namespace {
 
 const char* kUsage =
-    "usage: mootation run <campaign.toml> [--workers N] [--shard i/n] [--only i,j,... | --only @FILE]\n"
+    "usage: mootation run <campaign.toml> [--workers N | auto_mem] [--threads N] [--mem-share S]\n"
+    "                     [--shard i/n] [--only i,j,... | --only @FILE]\n"
     "                     [--force] [--registry FILE] [--report FILE] [--quiet]\n"
     "       mootation store ls|check|repair|compact|merge|export <campaign folder> ...\n"
     "       mootation refs build [--problems A,B] [--n-ref N] [--rebuild] [--extend] [--workers N]\n"
@@ -103,13 +107,21 @@ const char* kUsage =
     "       mootation <command> --help\n";
 
 const char* kRunUsage =
-    "usage: mootation run <campaign.toml> [--workers N] [--shard i/n] [--only i,j,... | --only @FILE]\n"
+    "usage: mootation run <campaign.toml> [--workers N | auto_mem] [--threads N] [--mem-share S]\n"
+    "                     [--shard i/n] [--only i,j,... | --only @FILE]\n"
     "                     [--force] [--registry FILE] [--report FILE] [--quiet]\n"
     "\n"
     "Runs the jobs of a campaign the C++ engine takes (its config as python -m\n"
     "mootation.run.campaign reads it) into its store; the others are left to the\n"
     "Python engine and counted at the end.\n"
     "  --workers N      the pool's threads (default: half the hardware's)\n"
+    "  --workers auto_mem\n"
+    "                   the pool's size by memory: a trial job alone measures a job's peak, then\n"
+    "                   min(threads, mem_share x free memory / peak), at least 1, decided again\n"
+    "                   as jobs end\n"
+    "  --threads N      with auto_mem: the cap (default: half the hardware's)\n"
+    "  --mem-share S    with auto_mem: the share of the free memory, in (0, 1] (default: the\n"
+    "                   campaign's memory_share where set, else 0.5)\n"
     "  --shard i/n      the jobs i, i + n, i + 2n, ... (0 <= i < n)\n"
     "  --only LIST      only these job indices (comma-separated, or @FILE)\n"
     "  --force          run again the jobs already done\n"
@@ -139,6 +151,21 @@ struct UsageError : std::invalid_argument {
     UsageError(std::string p, std::string u, const std::string& what)
         : std::invalid_argument(what), prog(std::move(p)), usage(std::move(u)) {}
 };
+
+// a number argument, or the usage error argparse gives
+double float_arg(const std::string& prog, const char* usage, const std::string& flag, const std::string& v)
+{
+    std::size_t used = 0;
+    double x = 0.0;
+    try {
+        x = std::stod(v, &used);
+    } catch (const std::exception&) {
+        used = 0;
+    }
+    if (used == 0 || used != v.size())
+        throw UsageError(prog, usage, "argument " + flag + ": invalid float value: '" + v + "'");
+    return x;
+}
 
 // an integer argument, or the usage error argparse gives
 long long int_arg(const std::string& prog, const char* usage, const std::string& flag, const std::string& v)
@@ -297,14 +324,28 @@ int run(const std::vector<std::string>& args)
     opt.workers = static_cast<int>(std::max(1u, std::thread::hardware_concurrency() / 2));
     std::filesystem::path registry, report;
     bool quiet = false;
+    std::optional<int> threads;
     for (std::size_t k = 0; k < args.size(); ++k) {
         const std::string& a = args[k];
         auto value = [&]() -> const std::string& {
             if (k + 1 >= args.size()) throw UsageError(prog, kRunUsage, "argument " + a + ": expected one argument");
             return args[++k];
         };
-        if (a == "--workers") opt.workers = static_cast<int>(int_arg(prog, kRunUsage, a, value()));
-        else if (a == "--shard") {
+        if (a == "--workers") {
+            const std::string v = value();
+            if (v == "auto_mem") opt.auto_mem = true;
+            else {
+                opt.workers = static_cast<int>(int_arg(prog, kRunUsage, a, v));
+                opt.auto_mem = false;
+            }
+        } else if (a == "--threads") {
+            threads = static_cast<int>(int_arg(prog, kRunUsage, a, value()));
+            if (*threads < 1) throw UsageError(prog, kRunUsage, "argument --threads: at least 1");
+        } else if (a == "--mem-share") {
+            opt.mem_share = float_arg(prog, kRunUsage, a, value());
+            if (!(*opt.mem_share > 0.0 && *opt.mem_share <= 1.0))
+                throw UsageError(prog, kRunUsage, "argument --mem-share: a share in (0, 1]");
+        } else if (a == "--shard") {
             const std::string v = value();
             const auto slash = v.find('/');
             if (slash == std::string::npos) throw UsageError(prog, kRunUsage, "argument --shard: i/n, not '" + v + "'");
@@ -332,6 +373,9 @@ int run(const std::vector<std::string>& args)
         else throw UsageError(prog, kRunUsage, "unrecognized arguments: " + a + " (one campaign at a time)");
     }
     if (config.empty()) throw UsageError(prog, kRunUsage, "the following arguments are required: config");
+    if (!opt.auto_mem && (threads || opt.mem_share))
+        throw UsageError(prog, kRunUsage, "arguments --threads and --mem-share: with --workers auto_mem only");
+    if (threads) opt.workers = *threads;
     if (registry.empty()) registry = newest_registry();
     const cg::ProblemRegistry preg = load_problems(registry);
     const auto source = mootation::store::file::path_of(config);
@@ -350,6 +394,7 @@ int run(const std::vector<std::string>& args)
                  "finished: done %zu, failed %zu, timeout %zu, skipped %zu, pending %zu, left to the Python engine %zu\n",
                  c.done, c.failed, c.timeout, c.skipped, c.pending, left);
     for (const auto& [why, n] : c.left) std::fprintf(stderr, "  %zu: %s\n", n, why.c_str());
+    if (quiet && !c.auto_mem.empty()) std::fprintf(stderr, "%s\n", cg::describe(c.auto_mem.back()).c_str());
     if (!report.empty()) {
         // for the Python engine, which runs the jobs left to it (campaign.py --engine)
         js::Value r = js::Value::object(), jobs = js::Value::array(), why = js::Value::object();
@@ -362,6 +407,11 @@ int run(const std::vector<std::string>& args)
         r.set("pending", js::Value::integer(static_cast<std::int64_t>(c.pending)));
         r.set("left", jobs);
         r.set("left_by_reason", why);
+        if (opt.auto_mem) {                              // engine.hpp POOL-MEM-4
+            js::Value sizes = js::Value::array();
+            for (const auto& d : c.auto_mem) sizes.items.push_back(cg::to_value(d));
+            r.set("auto_mem", sizes);
+        }
         std::ofstream(report, std::ios::binary) << js::dump(r, 1) << "\n";
     }
     return c.failed ? 1 : 0;

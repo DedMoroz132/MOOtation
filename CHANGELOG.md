@@ -26,6 +26,15 @@ always listed under **Changed** or **Removed**.
   check.
 - `METHOD_VERSION` is 8 for these three changes together, and stays 8 until release 0.2.0.
 
+### Added (task 32, layer 5: workers by free memory)
+- `mootation run --workers auto_mem` (`EngineOptions::auto_mem`): a trial job alone measures a job's
+  peak working set; the pool then has min(threads, floor(mem_share x (free + held) / peak)) workers,
+  at least 1, decided again as jobs end, with the system's free memory (`GlobalMemoryStatusEx`,
+  `MemAvailable`). `--threads` caps it, `--mem-share` sets the share. The decisions are in the
+  counts, the heartbeat and `--report`. Off by default: `--workers N` runs as before.
+- `mem_workers.hpp`: the free memory, the process's working set and peak, and the count for a pool
+  of one's own (a batch executor's), with injectable readers.
+
 ### Added (task 31, layer 4)
 - The strategy `ensemble` (`scalar/ensemble.hpp`): K resumable runs of one strategy in one run,
   with their own seeds, starts (`member_seeds`), knobs (`member_knobs`) and, optionally, levels

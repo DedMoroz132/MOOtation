@@ -13,6 +13,27 @@
 // checked against) and the cache of references (references.hpp). A job the
 // engine does not run (job_run.hpp's refusal) is left pending and counted
 // apart with its reason: the Python engine runs it.
+//
+// THE POOL BY FREE MEMORY (task 32, layer 5; EngineOptions::auto_mem, off by
+// default; mem_workers.hpp's AUTO-MEM-1 ... 6):
+//   POOL-MEM-1. The first job to run is the trial: it runs alone, and the
+//     process's peak after it less its working set before it is a job's
+//     peak (AUTO-MEM-2).
+//   POOL-MEM-2. The pool's size is then min(workers, floor(mem_share x (free
+//     + held) / peak)), at least 1, and at most _workers.txt's number as
+//     before: `workers` is the cap (threads). It is decided anew before the
+//     jobs handed out after each job's end (a batch): the pool's control
+//     reads _workers.txt every 1.5 s and decides when a job has ended since
+//     its last decision. A smaller size lets the surplus finish the job it is
+//     on and leave, as a lower _workers.txt does.
+//   POOL-MEM-3. mem_share: the option's, else [campaign] memory_share where
+//     it is set (> 0), else 0.5.
+//   POOL-MEM-4. The decisions that changed the size (the first included) are
+//     the counts' auto_mem, each with the peak, the free memory, the memory
+//     held and the size; the heartbeat (_runner.json) carries the last one.
+//   POOL-MEM-5. Which thread ran which job does not change a record
+//     (test_engine: four threads and one write the same bytes), so the
+//     records are those of a numbered pool.
 // ============================================================================
 
 #include <algorithm>
@@ -32,6 +53,7 @@
 #include <thread>
 #include <vector>
 
+#include "../mem_workers.hpp"
 #include "../run_core.hpp"
 #include "../settings.hpp"
 #include "../store/pack.hpp"
@@ -497,6 +519,10 @@ struct EngineOptions {
     long long pid = 0;
     std::string host;
     std::function<void(const std::string&)> say;                  // progress lines; unset: silent
+    // workers = auto_mem (POOL-MEM-1 ... 5): `workers` is then the cap
+    bool auto_mem = false;
+    std::optional<double> mem_share;                              // POOL-MEM-3
+    mem::Readers mem_readers;                                     // the system's; a test gives its own
 };
 
 struct EngineCounts {
@@ -504,7 +530,39 @@ struct EngineCounts {
     std::size_t pending = 0;                                      // not run: the campaign drained (_workers.txt 0)
     std::map<std::string, std::size_t> left;                      // to Python, by reason
     std::vector<std::int64_t> left_jobs;                          // their indices, in the campaign's order
+    std::vector<mem::Decision> auto_mem;                          // the pool's sizes by memory (POOL-MEM-4)
 };
+
+// a decision of the pool by memory as JSON: bytes, null where unknown
+inline json::Value to_value(const mem::Decision& d)
+{
+    auto bytes = [](const std::optional<std::uint64_t>& b) {
+        return b ? json::Value::integer(static_cast<std::int64_t>(*b)) : json::Value::null();
+    };
+    json::Value v = json::Value::object();
+    v.set("workers", json::Value::integer(d.workers));
+    v.set("threads", json::Value::integer(d.threads));
+    v.set("mem_share", json::Value::number(d.mem_share));
+    v.set("peak", bytes(d.peak));
+    v.set("free", bytes(d.free_memory));
+    v.set("held", json::Value::integer(static_cast<std::int64_t>(d.held)));
+    return v;
+}
+
+// the decision as a line, sizes in MB
+inline std::string describe(const mem::Decision& d)
+{
+    auto mb = [](const std::optional<std::uint64_t>& b) {
+        return b ? std::to_string((*b + (std::uint64_t{1} << 19)) >> 20) + " MB" : std::string("unknown");
+    };
+    std::ostringstream share;
+    share << d.mem_share;
+    std::string s = "auto_mem: " + std::to_string(d.workers) + " worker(s) of " + std::to_string(d.threads) +
+                    " (a job's peak " + mb(d.peak) + ", free " + mb(d.free_memory) + ", held " +
+                    mb(std::optional<std::uint64_t>(d.held)) + ", mem_share " + share.str() + ")";
+    if (!d.peak || !d.free_memory) s += ": the memory cannot be read here, the protection is off";
+    return s;
+}
 
 // campaign.json as run_campaign writes it (json.dumps(..., indent=1), text mode)
 inline void write_campaign_json(const std::filesystem::path& root, const Config& cfg, const CampaignSpec& spec,
@@ -681,6 +739,30 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
     int active = 0, want = 0;
     std::set<std::int64_t> running;
     std::exception_ptr crash;
+    // the pool by memory (POOL-MEM-1 ... 5): the trial, then the sizes
+    std::optional<mem::AutoMem> am;
+    if (opt.auto_mem)
+        am.emplace(opt.workers, opt.mem_share ? *opt.mem_share : spec.memory_share > 0.0 ? spec.memory_share : 0.5,
+                   opt.mem_readers);
+    bool trial = opt.auto_mem;                // the first job runs alone
+    int mem_cap = opt.workers;
+    std::optional<std::size_t> decided_at;    // `finished` at the last decision
+    std::optional<mem::Decision> last_decision;
+    auto decide = [&]() {                     // under `lock`
+        const mem::Decision d = am->decide();
+        decided_at = finished;
+        mem_cap = d.workers;
+        if (!last_decision || last_decision->workers != d.workers) {
+            counts.auto_mem.push_back(d);
+            if (opt.say) opt.say(describe(d));
+        }
+        last_decision = d;
+    };
+    auto end_trial = [&]() {                  // under `lock`
+        trial = false;
+        am->end_trial();
+        decide();
+    };
     auto worker = [&]() {
         SegmentWriter writer(store_dir, static_cast<std::uint64_t>(spec.segment_mb) << 20, opt.pid, opt.host,
                              {{"code_stamp", preg.code_stamp}, {"trajectory_version", "2"}, {"detmath_path", "detmath"}});
@@ -688,8 +770,8 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
             std::size_t k = 0;
             {
                 std::lock_guard<std::mutex> g(lock);
-                // surplus, or nothing left: leave
-                if (active > want || next >= todo.size() || crash) {
+                // surplus, or nothing left, or the trial's job done (POOL-MEM-1): leave
+                if (active > want || next >= todo.size() || crash || (trial && next > 0)) {
                     --active;
                     changed.notify_all();
                     return;
@@ -774,25 +856,38 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
         st.set("done", json::Value::integer(static_cast<std::int64_t>(counts.done)));
         st.set("failed", json::Value::integer(static_cast<std::int64_t>(counts.failed)));
         st.set("running", ids);
+        if (am) {                                        // POOL-MEM-4
+            json::Value m = last_decision ? to_value(*last_decision) : json::Value::object();
+            m.set("trial", json::Value::boolean(trial));
+            st.set("auto_mem", m);
+        }
         detail::write_text_file(*root / kRunnerFile, json::dump(st, 1));
     };
     write_workers(*root, opt.workers);
     const int ceiling = (std::max)(1, static_cast<int>(std::thread::hardware_concurrency()));
     std::vector<std::thread> pool;
     std::string state = "running";
+    if (am) am->start_trial();                // nothing of the pool runs yet
     {
         using clock = std::chrono::steady_clock;
         clock::time_point last_read{}, last_beat{};
         std::unique_lock<std::mutex> g(lock);
         while (finished < todo.size() && !(crash && active == 0)) {
             const auto now = clock::now();
-            if (pool.empty() || now - last_read >= std::chrono::milliseconds(1500)) {
+            const bool trial_done = trial && next > 0 && active == 0;
+            if (pool.empty() || now - last_read >= std::chrono::milliseconds(1500) || trial_done) {
                 last_read = now;
                 g.unlock();
                 const int asked = read_workers(*root, opt.workers);
                 g.lock();
                 want = (std::min)(asked, ceiling);
-                const int wanted = static_cast<int>(std::min<std::size_t>(want, running.size() + (todo.size() - next)));
+                if (am) {                                // POOL-MEM-1, 2
+                    if (trial && next > 0 && active == 0) end_trial();
+                    else if (!trial && decided_at != finished) decide();
+                    want = (std::min)(want, trial ? 1 : mem_cap);
+                }
+                int wanted = static_cast<int>(std::min<std::size_t>(want, running.size() + (todo.size() - next)));
+                if (trial && next > 0) wanted = 0;       // the trial's job runs alone
                 for (; active < wanted && !crash; ++active) pool.emplace_back(worker);
                 if (want == 0 && active == 0) {
                     state = "stopped";                   // drained on request
@@ -809,6 +904,7 @@ inline EngineCounts run_campaign(const std::string& text, const std::filesystem:
     }
     for (auto& t : pool) t.join();
     std::lock_guard<std::mutex> g(lock);
+    if (am && trial && next > 0 && !crash) end_trial();   // the trial was the only job: its peak still reported
     beat(state == "running" ? "finished" : state);
     counts.pending = todo.size() - finished;
     if (crash) std::rethrow_exception(crash);

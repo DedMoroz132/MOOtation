@@ -5,9 +5,9 @@
 // (rpcndr.h), interface and the rest are defined, and then the library's
 // umbrella headers — the algorithms (mootation.hpp), the single-objective
 // methods and strategies (scalar/scalar.hpp) and the campaign engine
-// (campaign/engine.hpp). The library calls min and max in parentheses,
-// (std::min)(a, b), (std::numeric_limits<T>::max)(), and names nothing near,
-// far or small. A short run of each kind shows the code runs; that it runs
+// (campaign/engine.hpp, with the readings of memory of mem_workers.hpp). The
+// library calls min and max in parentheses, (std::min)(a, b),
+// (std::numeric_limits<T>::max)(), and names nothing near, far or small. A short run of each kind shows the code runs; that it runs
 // as before is the other tests' (golden_fingerprints, test_stop_rule's
 // cc2d22c runs). Elsewhere the same headers without windows.h.
 
@@ -57,6 +57,15 @@ int main()
           "basin_hopping after windows.h runs and finds the minimum");
     const sc::Result m = sc::run("cmaes", P, 1e-6, false, 0.0, 10, 1000, 3, {}, {}, 0, sc::Start{});
     check(!m.objectives.empty() && m.objectives[0][0] < 1e-6, "cmaes after windows.h runs and finds the minimum");
+    const auto free_mem = mootation::mem::free_bytes();
+    const auto own = mootation::mem::process_memory();
+#if defined(_WIN32) || defined(__linux__)
+    check(free_mem && *free_mem > 0 && own && own->current && own->peak >= *own->current,
+          "the free memory and the process's working set read after windows.h");
+#else
+    check(!own || own->peak > 0, "the process's peak reads (or is unknown) here");
+    (void)free_mem;
+#endif
     std::printf("%s\n", g_failed ? "FAILED" : "all passed");
     return g_failed ? 1 : 0;
 }

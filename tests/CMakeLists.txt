@@ -115,6 +115,7 @@ set(MOOTATION_TESTS
     test_resumable
     test_ensemble_run
     test_clocks
+    test_auto_mem
     test_windows_first)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
