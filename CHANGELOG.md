@@ -10,6 +10,17 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 32, layer 4)
+- The strategy `sweep` (`scalar/sweep.hpp`): a plan over the problem's box (a design of
+  `designs.hpp` or a full grid; integer coordinates by their values) whose faces move outward
+  where the best points sit on them: when at least `edge_share` of the `top_k` best points lie
+  within `edge_tol` of a face, the face moves by `expand_step`, a share of the coordinate's
+  starting width (an integer coordinate by one value at least), up to `hard_lo` / `hard_hi`,
+  and the plan adds points in the new layer. One budget; `sweep_budget` caps the plan, and with
+  `inner` the plan's `carry_points` best points start the inner solver. The settings give the
+  box after every step and every face moved. Without hard bounds wider than the box it is the
+  plain plan.
+
 ### Changed (the owner's choice of 18.11; METHOD_VERSION 8, frozen until 0.2.0)
 - `lbfgsb`: the Cauchy point puts a floor under f'' at every breakpoint passed, as L-BFGS-B 3.0
   does: `f2_org = f2` after the first f'', `f2 = max(epsmch*f2_org, f2)` after each update, with

@@ -114,6 +114,7 @@ set(MOOTATION_TESTS
     test_moves
     test_resumable
     test_ensemble_run
+    test_sweep
     test_clocks
     test_auto_mem
     test_windows_first)

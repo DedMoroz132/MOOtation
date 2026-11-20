@@ -424,7 +424,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-542 items: 420 yes, 119 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
+549 items: 420 yes, 126 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -947,6 +947,13 @@ Their readings, from every comment of each file (the first column the file's nam
 | `subspace` | LNS-2 | lns_window = worst needs the contributions hook; the window is that variable with its neighbors (the hook) or the lns_size - 1 after it; a tie for the largest contribution takes the first. | yes | `subspace.hpp` |
 | `subspace` | LNS-3 | The draws per step: the window's variable (random) and then the window's new values, from one stream seeded by the run's seed. | yes | `subspace.hpp` |
 | `subspace` | LNS-4 | Without start_budget the first run (every variable, from the start) gets a tenth of the budget and every repair a twentieth of what is left, plus one: the paper-free choice of this library, so that the first point is... | yes | `subspace.hpp` |
+| `sweep` | SWEEP-1 (only when asked: the sweep strategy) | The step of a face is a share of the coordinate's starting width, for real and integer coordinates alike, not a step in the coordinate's units: one knob for coordinates of any scale (an integer count beside a length o... | no: option | `sweep.hpp` |
+| `sweep` | SWEEP-2 (only when asked: the sweep strategy) | With the hard bounds equal to the box (their default) or the edge rule never firing, the run is the plain plan: the same points in the same order, its answer and counts bit for bit; the settings then show no expansion. | no: option | `sweep.hpp` |
+| `sweep` | SWEEP-3 (only when asked: the sweep strategy) | Faces that cannot move: a listed coordinate whose values are not consecutive whole numbers (no value lies outside its list), a periodic coordinate (its period is the box), a real coordinate of starting width 0 (a shar... | no: option | `sweep.hpp` |
+| `sweep` | SWEEP-4 (only when asked: the sweep strategy) | The plan never evaluates a point outside the hard bounds: a face stops at its hard bound, a grid's last level is the bound itself, and every design point of a layer lies between the old face and the new one. | no: option | `sweep.hpp` |
+| `sweep` | SWEEP-5 (only when asked: the sweep strategy) | The run's start (x0, seed points) is not a point of the plan; with inner it starts the inner solver only where the plan gave no point. | no: option | `sweep.hpp` |
+| `sweep` | SWEEP-6 (only when asked: the sweep strategy) | With inner the answer is the better (the less violating, then the lower f; the plan's on a tie) of the plan's best point and the inner runs' best (param.hpp carry_level); improvements are the plan's records only. | no: option | `sweep.hpp` |
+| `sweep` | SWEEP-7 (only when asked: the sweep strategy) | The face's band is a share of the starting width, and by default the plan's own spacing: a space-filling design of N points in n coordinates leaves about N^(-1/n) of the width between neighbours, so a narrower band wo... | no: option | `sweep.hpp` |
 | `symmetry` | SYM-1 | Ties: Step 1 takes the first non-covered zero in row-major order and the Preliminaries star in row-major order, so the assignment is a function of the matrix: equal blocks or equal costs give the same answer every time. | yes | `symmetry.hpp` |
 | `symmetry` | SYM-2 | A zero is an entry equal to 0.0. In floating point Step 3 makes the least non-covered entry exactly 0 (y - y), so the zero the method needs is there; the other entries carry the rounding of the subtractions, which can... | yes | `symmetry.hpp` |
 | `symmetry` | SYM-3 | align(x, ref) with x a permutation of ref's blocks returns ref bit for bit: the permutation's cost is 0, the least possible, and the result copies x's blocks, which are ref's. | yes | `symmetry.hpp` |
