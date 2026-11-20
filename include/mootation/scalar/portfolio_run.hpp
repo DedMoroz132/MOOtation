@@ -64,12 +64,18 @@
 // keep (the default) leaves the rest of its share unspent, as ensemble's
 // ENS-1; share hands it to the members still running.
 //
+// THE DIMINISHING RETURNS (task 32, layer 5; off by default): with
+// diminish_ratio or diminish_abs the run ends after the round whose gain in
+// the best f of all members is below diminish_ratio times the first measured
+// gain > 0, or below diminish_abs (stop_rule.hpp STOP-8, PF-10).
+//
 // Knobs: members, member_seeds, member_rng, op_select (fixed |
 // probability_matching | adaptive_pursuit | successive_halving), op_pmin,
 // op_alpha, op_beta, piece_budget, piece_steps, round_pieces (1), reward (own
 // | all), share_best (off | on), leftover (keep | share), threads (1); stall,
 // max_steps, budget_units (stop_rule.hpp; the step is a round; budget_units
-// goes to every member that does not give its own).
+// goes to every member that does not give its own), diminish_ratio,
+// diminish_abs (0: off; STOP-8).
 //
 // READINGS:
 //   PF-1 (only when asked: the portfolio_run strategy). The budget: with
@@ -142,6 +148,23 @@
 //     member's run, bit for bit, with every rule: its budget is the run's,
 //     the draws need no uniform, and its pieces are the run in one piece
 //     (RES-1).
+//   PF-10 (only when asked: diminish_ratio or diminish_abs). The
+//     diminishing returns (stop_rule.hpp STOP-8). The round is the
+//     portfolio's round, the stop rule's step: round_pieces pieces drawn
+//     (the portfolio rules), a round k of successive_halving, its last
+//     member's run to the end. The total objective is the best of all
+//     members (ens::better: less violating, then lower f), after the
+//     round's share_best and pieces. A round's gain is measured where the
+//     best before it and the best after it are both feasible (cv not > 0):
+//     their f's difference; else (no point yet: always the first round; a
+//     violating best) not measured. The rule is told after the round's
+//     outcomes and its target, before idle; it ends the run with
+//     stopped_by = diminishing (the settings then say stopped_by, whatever
+//     the other knobs, and pf_gains, every round's gain, null where not
+//     measured). Its arithmetic is made after the round from the members'
+//     bests, so 1 thread and N give the same run (PF-7). A round should hold
+//     what makes the gain: with round_pieces = 1 and several members a round
+//     is one member's piece, and a member that gains nothing ends the run.
 // ============================================================================
 
 #include <algorithm>
@@ -189,6 +212,7 @@ struct Plan {
     bool leftover_share = false;          // leftover = share
     unsigned stream = 0;                  // the draws (PF-3)
     int threads = 1;
+    strategy::Diminish diminish;          // PF-10 (off: nothing measured)
 };
 
 // what the run did
@@ -203,7 +227,8 @@ struct Outcome {
     long long withheld = 0;               // the rests kept (PF-4)
     json::Value history = json::Value::array();   // [round, member, pieces, spent, improvement, reward]
     json::Value halving = json::Value::array();   // S_k of each round (PF-6)
-    std::string why;                      // the rule's end, target, deadline or idle; empty: the members'
+    std::string why;                      // the rule's end, target, deadline, idle or diminishing; empty: the members'
+    strategy::Diminish diminish;          // PF-10: the rounds' gains
 };
 
 // a member's resumable run from its spec, with the budget it starts with
@@ -379,7 +404,10 @@ inline Outcome run(const Problem& P, long long budget, const Plan& plan, strateg
     };
     Member so_far;
     long long idle = 0;
-    // after a round: the stop rule's step, the target, idle; whether the run goes on
+    out.diminish = plan.diminish;
+    Member dim_from;                                                                  // PF-10: the best before the round
+    if (out.diminish.on()) dim_from = best_of_all();
+    // after a round: the stop rule's step, the target, the diminishing returns, idle; whether the run goes on
     auto after = [&](bool target, double before) {
         const Member now = best_of_all();
         const bool improved = ens::better(now, so_far);
@@ -388,6 +416,15 @@ inline Outcome run(const Problem& P, long long budget, const Plan& plan, strateg
         if (target) {
             out.why = "target";
             return false;
+        }
+        if (out.diminish.on()) {                                                      // PF-10
+            const bool measured = !dim_from.x.empty() && !now.x.empty() && !(dim_from.cv > 0.0) && !(now.cv > 0.0);
+            const double gain = measured ? dim_from.f - now.f : std::numeric_limits<double>::quiet_NaN();
+            dim_from = now;
+            if (out.diminish.round(gain)) {
+                out.why = "diminishing";
+                return false;
+            }
         }
         idle = counted() == before ? idle + 1 : 0;
         if (idle >= 100) {
@@ -567,6 +604,7 @@ inline Result run_portfolio_of_runs(const Problem& P, double eq_tol, bool has_to
     plan.threads = static_cast<int>(k.whole("threads", 1, 1));
     plan.stream = start_seed(seed, 0x9F01u);                                          // PF-3
     StopRule stop = stop_of(k);                                                       // a step a round
+    plan.diminish = diminish_of(k, "portfolio_run");                                  // PF-10
     const Knob* units = k.find("budget_units");
     plan.members.resize(K);
     for (std::size_t m = 0; m < K; ++m) {
@@ -684,6 +722,10 @@ inline Result run_portfolio_of_runs(const Problem& P, double eq_tol, bool has_to
     }
     if (o.withheld > 0) out.settings.push_back({"pf_withheld", std::to_string(o.withheld)});
     out.settings.push_back({"pf_rewards", dump(o.history)});
+    if (plan.diminish.on()) {                                                         // PF-10
+        out.settings.push_back({"pf_gains", dump(o.diminish.gains_json())});
+        out.settings.push_back({"stopped_by", why});
+    }
     return out;
 }
 

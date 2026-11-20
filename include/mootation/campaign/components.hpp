@@ -43,7 +43,9 @@
 // problem of the part picked (pick = round_robin | sensitivity), started from
 // the part's record; a better part goes into the table, the instances it
 // touches are assembled again, their points given to the family's bank and
-// the bank's closure (family.hpp FAM-5) run from them.
+// the bank's closure (family.hpp FAM-5) run from them. With diminish_ratio or
+// diminish_abs (off by default) the loop also ends when a round of pieces
+// gains too little in the total objective (COMP-12).
 //
 // READINGS:
 //   COMP-1. A part's record is better than another when it is less
@@ -116,18 +118,39 @@
 //     components_used, components_offered / components_accepted ({"run",
 //     "given"}), components_assembles, components_sensitivities,
 //     components_bank_given, components_ranking ([key, contribution] of the
-//     last sensitivity), components_stopped_by (budget, pieces, or done: no
-//     keys).
+//     last sensitivity), components_gains (with the diminishing returns'
+//     measure: COMP-12), components_stopped_by (budget, pieces, diminishing,
+//     or done: no keys).
 //   COMP-11. OFF BY DEFAULT. Without keys the loop does nothing (stopped_by
 //     done): it does not call a hook, touch the bank or the problems, nor
 //     write the bank's file, and the family's campaign is that of before.
+//   COMP-12. Off by default (task 32, layer 5; diminish_ratio or
+//     diminish_abs > 0). THE DIMINISHING RETURNS (scalar/stop_rule.hpp
+//     STOP-8), as the family's FAM-11. The round is round_pieces pieces (0,
+//     the default: as many as there are keys, so that round_robin gives each
+//     part one piece), each with its assemblies and the bank's closure; it
+//     ends at the top of the loop, after the assemblies and the closure of
+//     its last piece. The total objective is the family's: with a bank the
+//     bank's total (FAM-2) over the instances that have a record, all
+//     feasible to be measured; without one, sum w(n) f(n) of the instances'
+//     last assemblies that were ok (COMP-7), in ascending n. A round's gain
+//     is measured where the total before and after it is over the same
+//     instances (at least one): the total before less the total after. The
+//     loop ends after the round that ends the rule (stopped_by =
+//     diminishing). The measure lives in the table and its file (state's
+//     "diminish", as the bank's): a loop loaded and run on goes on with it,
+//     the loop in one piece (COMP-9); a call whose measure the rule ended, or
+//     a table without one, begins a new measure at its first piece; a call
+//     without diminish_* drops it (the table and its file then as before).
+//     Without keys the loop does nothing, as COMP-11 says.
 //
 // Options: solver ("nelder_mead"), knobs, eq_tol (1e-4), pop_size (100),
 // budget (the loop's used() in all, the file's included), piece_budget,
 // max_pieces (0: none), pick (round_robin), epsilon (pick = sensitivity:
 // > 0), scope (all), reassemble (used), closure_rounds (the bank's, 0: none),
 // seed (1), table_file ("": none), bank_file ("": none; needs a bank),
-// save_every (1).
+// save_every (1), diminish_ratio, diminish_abs (0: off), round_pieces (0: the
+// number of keys; read with the diminishing returns).
 // ============================================================================
 
 #include <algorithm>
@@ -261,6 +284,7 @@ struct Table {
     Key next;
     std::vector<std::pair<Key, double>> ranking;         // the last sensitivity's
     json::Value options = json::Value::object();         // the last call's (for the scripts)
+    fam::Measure measure;                                // COMP-12 (off: none)
 };
 
 struct Options {
@@ -280,6 +304,9 @@ struct Options {
     std::string table_file;
     std::string bank_file;
     long long save_every = 1;
+    double diminish_ratio = 0.0;                         // COMP-12 (0: off)
+    double diminish_abs = 0.0;
+    long long round_pieces = 0;                          // 0: the number of keys
 };
 
 struct Report {
@@ -426,6 +453,11 @@ inline json::Value options_json(const Options& o)
     v.set("closure_rounds", json::Value::integer(o.closure_rounds));
     v.set("seed", json::Value::integer(o.seed));
     v.set("save_every", json::Value::integer(o.save_every));
+    if (o.diminish_ratio > 0.0 || o.diminish_abs > 0.0) {                     // COMP-12: only where asked
+        v.set("diminish_ratio", json::Value::number(o.diminish_ratio));
+        v.set("diminish_abs", json::Value::number(o.diminish_abs));
+        v.set("round_pieces", json::Value::integer(o.round_pieces));
+    }
     return v;
 }
 
@@ -469,6 +501,7 @@ inline std::vector<std::pair<std::string, std::string>> settings_of(const Table&
     s.push_back({"components_sensitivities", std::to_string(T.sensitivities)});
     s.push_back({"components_bank_given", std::to_string(T.bank_given)});
     s.push_back({"components_ranking", json::dump(detail::ranking_json(T))});
+    if (T.measure.on) s.push_back({"components_gains", json::dump(T.measure.rule.gains_json())});   // COMP-12
     if (!stopped_by.empty()) s.push_back({"components_stopped_by", stopped_by});
     return s;
 }
@@ -505,6 +538,7 @@ inline std::string table_text(const Table& T, std::size_t keys, const std::strin
     st.set("pending", detail::wholes(T.pending));
     st.set("next", T.has_next ? detail::wholes(T.next) : json::Value::null());
     st.set("assembled", assembled);
+    if (T.measure.on) st.set("diminish", fam::detail::measure_json(T.measure));   // COMP-12: only where begun
     t += "\"state\": " + json::dump(st) + ",\n";
     json::Value pieces = json::Value::array();
     for (const PieceLog& p : T.pieces) {
@@ -584,6 +618,7 @@ inline Table table_of_text(const std::string& text)
         for (const auto& k : a.items[2].items) as.used_keys.push_back(key_of(k, "an assembly's key"));
         T.assembled[whole_of(a.items[0], "an assembly's n")] = std::move(as);
     }
+    if (const json::Value* d = st.find("diminish")) T.measure = fam::detail::measure_of(*d, "component table: diminish");
     for (const auto& p : field(v, "pieces").items) {
         if (p.items.size() != 4 || p.items[3].kind != json::Value::Kind::Bool)
             throw std::invalid_argument("component table: a piece is [key, used_at, budget, taken]");
@@ -657,12 +692,18 @@ public:
     Report run()
     {
         T_.options = detail::options_json(o_);
+        const bool dim = o_.diminish_ratio > 0.0 || o_.diminish_abs > 0.0;   // COMP-12
+        if (!dim) T_.measure = fam::Measure();
         std::string stopped;
         long long since_save = 0;
         if (keys_.empty()) stopped = "done";                                   // COMP-11
         while (stopped.empty()) {
             if (!settle()) {
                 stopped = "budget";
+                break;
+            }
+            if (dim && diminished()) {                                         // COMP-12
+                stopped = "diminishing";
                 break;
             }
             if (o_.max_pieces > 0 && static_cast<long long>(T_.pieces.size()) >= o_.max_pieces) {
@@ -729,6 +770,8 @@ private:
         if (o_.closure_rounds < 0) throw std::invalid_argument("components: closure_rounds >= 0");
         if (o_.save_every < 1) throw std::invalid_argument("components: save_every >= 1");
         if (!o_.bank_file.empty() && !B_) throw std::invalid_argument("components: a bank_file without a bank");
+        scalar::strategy::Diminish::check(o_.diminish_ratio, o_.diminish_abs, "components");
+        if (o_.round_pieces < 0) throw std::invalid_argument("components: round_pieces >= 0");
         if (keys_.empty()) return;                                             // COMP-11: nothing asked
         if (!C_.component_problem) throw std::invalid_argument("components: no component_problem");
         if (!C_.assemble) throw std::invalid_argument("components: no assemble");
@@ -855,6 +898,49 @@ private:
             if (!done) return false;
         }
         return true;
+    }
+
+    // COMP-12: at the top of the loop; whether the round just ended ends the loop
+    bool diminished()
+    {
+        fam::Measure& m = T_.measure;
+        const long long p = static_cast<long long>(T_.pieces.size());
+        std::vector<long long> over;
+        bool feasible = true;
+        double now = 0.0;
+        if (B_) {                                                              // the bank's total
+            for (const auto& [n, r] : B_->records) {
+                over.push_back(n);
+                feasible = feasible && !(r.cv > 0.0);
+            }
+            now = bank_total();
+        } else {                                                               // the last assemblies'
+            for (const auto& [n, a] : T_.assembled) {
+                over.push_back(n);
+                now += weight(n) * a.f;
+            }
+        }
+        auto at_start = [&]() {
+            m.start = p;
+            m.total = now;
+            m.over = over;
+            m.feasible = feasible;
+        };
+        if (!m.on || m.rule.ended) {                                           // a new measure from here
+            m = fam::Measure();
+            m.on = true;
+            m.rule.ratio = o_.diminish_ratio;
+            m.rule.abs = o_.diminish_abs;
+            at_start();
+            return false;
+        }
+        m.rule.ratio = o_.diminish_ratio;                                      // the call's
+        m.rule.abs = o_.diminish_abs;
+        const long long R = o_.round_pieces > 0 ? o_.round_pieces : static_cast<long long>(keys_.size());
+        if (p - m.start < R) return false;
+        const double g = fam::detail::gain_of(m, now, over, feasible);
+        at_start();
+        return m.rule.round(g);
     }
 
     // COMP-5

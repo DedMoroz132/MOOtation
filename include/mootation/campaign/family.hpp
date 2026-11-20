@@ -43,6 +43,8 @@
 //      certified (or evaluated) and offered, round by round, until nothing
 //      gets better or closure_rounds rounds;
 //   5. the bank to its file (every save_every pieces, and at the end).
+// With diminish_ratio or diminish_abs (off by default) the campaign also ends
+// when a round of pieces gains too little in the total objective (FAM-11).
 //
 // THE FILE (owner's decision 2 of task 32, the developer's choice; the
 // argument in the task's report): one JSON text (UTF-8, "\n" line ends,
@@ -128,12 +130,39 @@
 //     ({"run", "transfer", "given"}), family_transfer_skipped,
 //     family_closure_rounds (the rounds of every closure, in order),
 //     family_history ([used, total] after every change of the total),
-//     family_stopped_by (budget, pieces, or done: nothing to pick).
+//     family_gains (with the diminishing returns' measure: FAM-11),
+//     family_stopped_by (budget, pieces, diminishing, or done: nothing to
+//     pick).
+//   FAM-11. Off by default (task 32, layer 5; diminish_ratio or
+//     diminish_abs > 0). THE DIMINISHING RETURNS (scalar/stop_rule.hpp
+//     STOP-8). The round is round_pieces pieces (0, the default: as many as
+//     the family has instances, so that round_robin gives each one piece),
+//     each with the closures it starts; it ends at the top of the loop, after
+//     the closure of its last piece. The total objective is the bank's
+//     (FAM-2) over the instances that have a record; a round's gain is
+//     measured where the records before and after it are of the same
+//     instances (none new in the round; at least one) and all feasible (cv
+//     not > 0): the total before less the total after. A record that came
+//     in the round (no point before) or a violating one: not measured. The
+//     campaign ends after the round that ends the rule (stopped_by =
+//     diminishing). The measure lives in the bank and its file (state's
+//     "diminish": the piece the round began at, its total and instances, the
+//     gains, g1, whether the rule ended it): a campaign loaded and run on
+//     goes on with it, the campaign in one piece (FAM-9). A call whose
+//     measure the rule has ended, or a bank without one, begins a new
+//     measure at its first piece (a stage that follows a stage the rule
+//     ended starts its own); a call without diminish_* drops the measure
+//     (the bank and its file then as before). A loop of stages (calls of
+//     run with other solvers or knobs) is measured by the caller: a Diminish
+//     of its own told each cycle's gain, the totals of the reports before
+//     and after.
 //
 // Options: solver ("nelder_mead"), knobs, eq_tol (1e-4), pop_size (100),
 // budget (the campaign's used() in all, the file's included), piece_budget,
 // max_pieces (0: none), pick (round_robin), closure_rounds (0: none), seed
-// (1), bank_file ("": none), save_every (1).
+// (1), bank_file ("": none), save_every (1), diminish_ratio, diminish_abs (0:
+// off), round_pieces (0: the number of instances; read with the diminishing
+// returns).
 // ============================================================================
 
 #include <algorithm>
@@ -217,6 +246,17 @@ struct Counts {
     long long offered = 0, accepted = 0, rejected = 0;
 };
 
+// THE DIMINISHING RETURNS' measure (FAM-11; components.hpp COMP-12): the
+// round's start and its total, and the rule with the rounds' gains
+struct Measure {
+    bool on = false;                     // a measure begun (kept in the file)
+    long long start = 0;                 // the piece the round began at
+    double total = 0.0;                  // the total objective then ...
+    std::vector<long long> over;         // ... over these instances (ascending)
+    bool feasible = false;               // ... all of them feasible
+    scalar::strategy::Diminish rule;     // ratio and abs: the call's
+};
+
 // a piece of the campaign, as the bank keeps it
 struct PieceLog {
     long long n = 0;
@@ -242,6 +282,7 @@ struct Bank {
     std::vector<long long> now, next;
     std::size_t at = 0, cand = 0;
     json::Value options = json::Value::object();         // the last call's (for the scripts)
+    Measure measure;                                     // FAM-11 (off: none)
 };
 
 struct Options {
@@ -257,6 +298,9 @@ struct Options {
     unsigned seed = 1;
     std::string bank_file;
     long long save_every = 1;
+    double diminish_ratio = 0.0;                         // FAM-11 (0: off)
+    double diminish_abs = 0.0;
+    long long round_pieces = 0;                          // 0: the number of instances
 };
 
 struct Report {
@@ -362,7 +406,57 @@ inline json::Value options_json(const Options& o)
     v.set("closure_rounds", json::Value::integer(o.closure_rounds));
     v.set("seed", json::Value::integer(o.seed));
     v.set("save_every", json::Value::integer(o.save_every));
+    if (o.diminish_ratio > 0.0 || o.diminish_abs > 0.0) {                     // FAM-11: only where asked
+        v.set("diminish_ratio", json::Value::number(o.diminish_ratio));
+        v.set("diminish_abs", json::Value::number(o.diminish_abs));
+        v.set("round_pieces", json::Value::integer(o.round_pieces));
+    }
     return v;
+}
+
+// FAM-11: the measure as the file keeps it
+inline json::Value measure_json(const Measure& m)
+{
+    json::Value o = json::Value::object();
+    o.set("start", json::Value::integer(m.start));
+    o.set("total", json::Value::number(m.total));
+    o.set("over", wholes(m.over));
+    o.set("feasible", json::Value::boolean(m.feasible));
+    o.set("gains", m.rule.gains_json());
+    o.set("ref", m.rule.has_ref ? json::Value::number(m.rule.ref) : json::Value::null());
+    o.set("ended", json::Value::boolean(m.rule.ended));
+    return o;
+}
+
+inline Measure measure_of(const json::Value& o, const std::string& who)
+{
+    Measure m;
+    m.on = true;
+    m.start = whole_of(field(o, "start"), who + " start");
+    m.total = number_of(field(o, "total"), who + " total");
+    for (const auto& n : field(o, "over").items) m.over.push_back(whole_of(n, who + " over"));
+    const json::Value& f = field(o, "feasible");
+    const json::Value& e = field(o, "ended");
+    if (f.kind != json::Value::Kind::Bool || e.kind != json::Value::Kind::Bool)
+        throw std::invalid_argument(who + ": feasible and ended are true or false");
+    m.feasible = f.b;
+    m.rule.ended = e.b;
+    for (const auto& g : field(o, "gains").items)
+        m.rule.gains.push_back(g.kind == json::Value::Kind::Null ? std::numeric_limits<double>::quiet_NaN()
+                                                                 : number_of(g, who + " gains"));
+    m.rule.rounds = static_cast<long long>(m.rule.gains.size());
+    const json::Value& r = field(o, "ref");
+    m.rule.has_ref = r.kind != json::Value::Kind::Null;
+    m.rule.ref = m.rule.has_ref ? number_of(r, who + " ref") : 0.0;
+    return m;
+}
+
+// FAM-11: a round's gain from the totals at its two ends; NaN where they are not comparable
+inline double gain_of(const Measure& before, double total, const std::vector<long long>& over, bool feasible)
+{
+    if (over.empty() || over != before.over || !feasible || !before.feasible)
+        return std::numeric_limits<double>::quiet_NaN();
+    return before.total - total;
 }
 
 // FAM-9: <path>.tmp moved over <path>; a file another process holds open
@@ -416,6 +510,7 @@ inline std::vector<std::pair<std::string, std::string>> settings_of(const Bank& 
     s.push_back({"family_transfer_skipped", std::to_string(B.transfer_skipped)});
     s.push_back({"family_closure_rounds", json::dump(detail::wholes(B.closure_rounds))});
     s.push_back({"family_history", json::dump(detail::history_json(B))});
+    if (B.measure.on) s.push_back({"family_gains", json::dump(B.measure.rule.gains_json())});   // FAM-11
     if (!stopped_by.empty()) s.push_back({"family_stopped_by", stopped_by});
     return s;
 }
@@ -453,6 +548,7 @@ inline std::string bank_text(const Bank& B, double total, std::size_t instances,
     st.set("cursor", json::Value::integer(static_cast<std::int64_t>(B.cursor)));
     st.set("touched", touched);
     st.set("closure", cl);
+    if (B.measure.on) st.set("diminish", detail::measure_json(B.measure));      // FAM-11: only where begun
     t += "\"state\": " + json::dump(st) + ",\n";
     t += "\"pieces\": " + json::dump(pieces) + ",\n";
     t += "\"history\": " + json::dump(detail::history_json(B)) + ",\n";
@@ -514,6 +610,7 @@ inline Bank bank_of_text(const std::string& text)
     for (const auto& n : field(cl, "next").items) B.next.push_back(whole_of(n, "closure next"));
     B.at = static_cast<std::size_t>(whole_of(field(cl, "at"), "closure at"));
     B.cand = static_cast<std::size_t>(whole_of(field(cl, "cand"), "closure cand"));
+    if (const json::Value* d = st.find("diminish")) B.measure = detail::measure_of(*d, "family bank: diminish");
     for (const auto& p : field(v, "pieces").items) {
         if (p.items.size() != 4 || p.items[3].kind != json::Value::Kind::Bool)
             throw std::invalid_argument("family bank: a piece is [n, used_at, budget, taken]");
@@ -581,11 +678,17 @@ public:
     Report run()
     {
         B_.options = detail::options_json(o_);
+        const bool dim = o_.diminish_ratio > 0.0 || o_.diminish_abs > 0.0;   // FAM-11
+        if (!dim) B_.measure = Measure();
         std::string stopped;
         long long since_save = 0;
         for (;;) {
             if (!close()) {                                                    // FAM-5: the budget ended it
                 stopped = "budget";
+                break;
+            }
+            if (dim && diminished()) {                                         // FAM-11
+                stopped = "diminishing";
                 break;
             }
             if (o_.max_pieces > 0 && static_cast<long long>(B_.pieces.size()) >= o_.max_pieces) {
@@ -636,6 +739,8 @@ private:
         if (o_.closure_rounds < 0) throw std::invalid_argument("family: closure_rounds >= 0");
         if (o_.max_pieces < 0) throw std::invalid_argument("family: max_pieces >= 0");
         if (o_.save_every < 1) throw std::invalid_argument("family: save_every >= 1");
+        scalar::strategy::Diminish::check(o_.diminish_ratio, o_.diminish_abs, "family");
+        if (o_.round_pieces < 0) throw std::invalid_argument("family: round_pieces >= 0");
         for (const auto& [n, r] : B_.records) {                                // FAM-9: a bank of this family
             if (!in_family(n))
                 throw std::invalid_argument("family: the bank has instance " + std::to_string(n) + ", not in the family");
@@ -795,6 +900,41 @@ private:
             ++B_.round;
         }
         return true;
+    }
+
+    // FAM-11: at the top of the loop; whether the round just ended ends the campaign
+    bool diminished()
+    {
+        Measure& m = B_.measure;
+        const long long p = static_cast<long long>(B_.pieces.size());
+        std::vector<long long> over;
+        bool feasible = true;
+        for (const auto& [n, r] : B_.records) {
+            over.push_back(n);
+            feasible = feasible && !(r.cv > 0.0);
+        }
+        auto at_start = [&]() {
+            m.start = p;
+            m.total = total();
+            m.over = over;
+            m.feasible = feasible;
+        };
+        if (!m.on || m.rule.ended) {                                           // a new measure from here
+            m = Measure();
+            m.on = true;
+            m.rule.ratio = o_.diminish_ratio;
+            m.rule.abs = o_.diminish_abs;
+            at_start();
+            return false;
+        }
+        m.rule.ratio = o_.diminish_ratio;                                      // the call's
+        m.rule.abs = o_.diminish_abs;
+        const long long R = o_.round_pieces > 0 ? o_.round_pieces : static_cast<long long>(inst_.size());
+        if (p - m.start < R) return false;
+        const double now = total();
+        const double g = detail::gain_of(m, now, over, feasible);
+        at_start();
+        return m.rule.round(g);
     }
 
     bool fits(const Candidate& c)

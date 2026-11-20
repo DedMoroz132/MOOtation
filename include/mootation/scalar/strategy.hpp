@@ -1006,6 +1006,20 @@ inline StopRule stop_of(StrategyKnobs& k)
     return s;
 }
 
+// THE DIMINISHING RETURNS' knobs where given (stop_rule.hpp STOP-8):
+// diminish_ratio, diminish_abs (0: off); read only where given, so that the
+// settings are as before without them
+inline Diminish diminish_of(StrategyKnobs& k, const std::string& who)
+{
+    k.allow("diminish_ratio");
+    k.allow("diminish_abs");
+    Diminish d;
+    if (k.find("diminish_ratio")) d.ratio = k.number("diminish_ratio", 0.0);
+    if (k.find("diminish_abs")) d.abs = k.number("diminish_abs", 0.0);
+    Diminish::check(d.ratio, d.abs, who);
+    return d;
+}
+
 // budget_units = budget | evaluations (STOP-2): true for budget. evaluations
 // leaves the gradient calls out of the strategy's budget (method version 5's
 // count); the hooks' declared costs count in both (STOP-1)

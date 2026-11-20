@@ -10,6 +10,18 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 32, layer 5)
+- The diminishing returns of the campaign's loops, the stop rule's `stall` made general
+  (`scalar/stop_rule.hpp`, `Diminish`): a loop ends after the round whose gain in the total
+  objective is below `diminish_ratio` times the first measured gain above 0, or below
+  `diminish_abs`, with `stopped_by = diminishing`. It applies to `portfolio_run`'s rounds (the
+  knobs `diminish_ratio`, `diminish_abs`; the best of all members), the family's campaign and the
+  loop over the parts (`campaign::fam::Options` and `campaign::comp::Options`: `diminish_ratio`,
+  `diminish_abs`, `round_pieces`; a round as many pieces as instances or parts by default; the
+  family's total). The measure is kept in the bank's and the table's files, so a campaign loaded
+  and run on is the campaign in one piece. Off by default: without these knobs every run, bank and
+  table is as before.
+
 ### Added (task 32, layer 3)
 - Assembly from parts and the bottleneck analysis (`campaign/components.hpp`, namespace
   `campaign::comp`): a table of parts searched apart (a key of whole numbers, the part's quality

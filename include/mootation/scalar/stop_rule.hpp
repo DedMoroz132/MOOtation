@@ -101,6 +101,25 @@
 //     acceptance). With a deadline the progress is the clock's, so the run
 //     depends on the machine's speed, as where it ends already does; a run
 //     to be repeated anneals by the budget or by max_steps.
+//   STOP-8. Off by default (task 32, layer 5; diminish_ratio or diminish_abs
+//     given). THE DIMINISHING RETURNS of a loop of rounds, stall made general
+//     for the campaign level (Diminish below): portfolio_run's rounds
+//     (portfolio_run.hpp PF-10), the family's campaign (campaign/family.hpp
+//     FAM-11) and the loop over the parts (campaign/components.hpp COMP-12),
+//     each saying what its round and its total objective are. A round's gain
+//     is the total objective before it less the total after it (lower is
+//     better: a gain is a decrease). A gain is measured only where both ends
+//     have a total and the two are comparable (the loop says when: a total
+//     of feasible values over the same instances); a round not measured
+//     never ends the loop. The first measured round that gains something
+//     (g > 0) gives the reference gain g1: measured rounds that gain nothing
+//     before it give the ratio no scale (a portfolio whose best stands still
+//     in its second round would otherwise never end by the ratio). The loop
+//     ends after the round k whose measured gain g_k is
+//       g_k < diminish_abs                       (any round measured), or
+//       g_k < diminish_ratio * g1                (a round after g1's),
+//     stopped_by = diminishing. Both "less than", as the task's words. 0 is
+//     off for each; both >= 0 and finite.
 // ============================================================================
 
 #include <algorithm>
@@ -109,8 +128,10 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "../detmath.hpp"
+#include "../json.hpp"
 #include "evaluator.hpp"
 
 namespace mootation::scalar {
@@ -177,6 +198,54 @@ private:
     {
         why_ = why;
         return false;
+    }
+};
+
+// THE DIMINISHING RETURNS of a loop of rounds (task 32, layer 5; STOP-8):
+// told every round's gain (NaN: not measured), it says whether the loop ends
+struct Diminish {
+    double ratio = 0.0;                  // diminish_ratio (0: off)
+    double abs = 0.0;                    // diminish_abs (0: off)
+    long long rounds = 0;                // the rounds told, measured or not
+    std::vector<double> gains;           // every round's gain (NaN: not measured)
+    bool has_ref = false;
+    double ref = 0.0;                    // g1, the first measured gain > 0
+    bool ended = false;
+
+    bool on() const { return ratio > 0.0 || abs > 0.0; }
+
+    // the knobs' values checked (STOP-8): both >= 0 and finite
+    static void check(double ratio_, double abs_, const std::string& who)
+    {
+        if (!(ratio_ >= 0.0) || !std::isfinite(ratio_) || !(abs_ >= 0.0) || !std::isfinite(abs_))
+            throw std::invalid_argument(who + ": diminish_ratio and diminish_abs must be numbers >= 0 (0: off)");
+    }
+
+    // a round done with its gain (NaN, or not finite: not measured); whether the loop ends after it
+    bool round(double gain)
+    {
+        ++rounds;
+        const bool measured = std::isfinite(gain);
+        gains.push_back(measured ? gain : std::numeric_limits<double>::quiet_NaN());
+        if (!measured) return false;
+        if (abs > 0.0 && gain < abs) ended = true;
+        if (!has_ref) {
+            if (gain > 0.0) {
+                has_ref = true;
+                ref = gain;
+            }
+        } else if (ratio > 0.0 && gain < ratio * ref) {
+            ended = true;
+        }
+        return ended;
+    }
+
+    // every round's gain as JSON, null where not measured
+    json::Value gains_json() const
+    {
+        json::Value a = json::Value::array();
+        for (double g : gains) a.items.push_back(std::isnan(g) ? json::Value::null() : json::Value::number(g));
+        return a;
     }
 };
 

@@ -424,7 +424,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-558 items: 420 yes, 135 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
+560 items: 420 yes, 137 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -749,6 +749,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `portfolio_run` | PF-7 (only when asked: the portfolio_run strategy) | threads > 1 advances a round's members in that many threads (ensemble.hpp advance_members, ENS-7: the deferred count replayed member by member), members whose pieces are alike together, in the members' order; the roun... | no: option | `portfolio_run.hpp` |
 | `portfolio_run` | PF-8 (only when asked: the portfolio_run strategy) | The observer and record_every go to the member only where there is one (ENS-8). | no: option | `portfolio_run.hpp` |
 | `portfolio_run` | PF-9 (only when asked: the portfolio_run strategy) | One member is the member's run, bit for bit, with every rule: its budget is the run's, the draws need no uniform, and its pieces are the run in one piece (RES-1). | no: option | `portfolio_run.hpp` |
+| `portfolio_run` | PF-10 (only when asked: diminish_ratio or diminish_abs) | The diminishing returns (stop_rule.hpp STOP-8). | no: option | `portfolio_run.hpp` |
 | `pso` | PSO-1 | §VI computes chi "as shown in (4.15)"; (4.15) is the modulus of the eigenvalues, sqrt(chi). | yes | `pso.hpp` |
 | `pso` | PSO-2 | Synchronous: the whole swarm is evaluated, then every p_i and p_g are updated, then every particle moves (the pseudocode updates p_g particle by particle). | yes | `pso.hpp` |
 | `pso` | PSO-3 | "Initialize population: random x_i, v_i": v_i uniform in [-(hi - lo)/2, (hi - lo)/2] coordinate by coordinate, drawn after all positions; `v0_zero` starts at 0 (SMPSO-5 of smpso.hpp). | yes | `pso.hpp` |
@@ -920,6 +921,7 @@ Their readings, from every comment of each file (the first column the file's nam
 | `stop_rule` | STOP-5 | Off by default (with a hook's declared cost only). | no: option | `stop_rule.hpp` |
 | `stop_rule` | STOP-6 | Off by default (a derived problem only). A problem made from the run's for a run of its own (evaluator.hpp derived: a level of at_param, a formulation, the user's restrict_to) keeps the run's deadline and clock; its r... | no: option | `stop_rule.hpp` |
 | `stop_rule` | STOP-7 | Off by default (task 31, layer 2; knob_schedule given). | no: option | `stop_rule.hpp` |
+| `stop_rule` | STOP-8 | Off by default (task 32, layer 5; diminish_ratio or diminish_abs given). | no: option | `stop_rule.hpp` |
 | `strategy` | STRAT-1 | A start's generator: the run's seed for start 0, else a 32-bit word of std::seed_seq{seed, k} (the standard defines its words), so one start is the inner solver's own run, bit for bit (§3.1's test). | yes | `strategy.hpp` |
 | `strategy` | STRAT-2 | The inner solver counts what it asks for against its allowance, the points it gets free from the archive included; the strategy's budget counts only what is new. | yes | `strategy.hpp` |
 | `strategy` | STRAT-3 | The budget shared evenly: start k's allowance is budget / n, the first budget mod n starts one more. | yes | `strategy.hpp` |
