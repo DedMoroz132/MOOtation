@@ -559,9 +559,11 @@ public:
     // the family and the options are copied (their hooks with them); the bank is the caller's
     Campaign(const Family& F, Bank& B, const Options& o) : F_(F), B_(B), o_(o) { check(); }
 
-    // records given (source given): each certified or evaluated and offered;
-    // those the bank takes start a closure (FAM-5)
-    void give(long long n, const Vec& x)
+    // records given (source given: the record's label, counted on the path
+    // given; layer 3's loop gives its assemblies as "assembled",
+    // components.hpp COMP-7): each certified or evaluated and offered; those
+    // the bank takes start a closure (FAM-5)
+    void give(long long n, const Vec& x, const std::string& source = "given")
     {
         if (!in_family(n)) throw std::invalid_argument("family: instance " + std::to_string(n) + " is not in the family");
         const Problem& Q = problem(n);
@@ -569,8 +571,12 @@ public:
             throw std::invalid_argument("family: the point given for instance " + std::to_string(n) + " has " +
                                         std::to_string(x.size()) + " values, the problem " +
                                         std::to_string(Q.lo.size()));
-        if (offer_point(n, x, B_.given, "given", -1)) begin_closure(n);
+        if (offer_point(n, x, B_.given, source, -1)) begin_closure(n);
     }
+
+    // the closure alone, from where the bank has it (FAM-5; layer 3's loop
+    // after its assemblies); false where the budget ended it
+    bool closure() { return close(); }
 
     Report run()
     {

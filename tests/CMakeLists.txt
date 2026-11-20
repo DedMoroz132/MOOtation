@@ -117,6 +117,7 @@ set(MOOTATION_TESTS
     test_sweep
     test_portfolio_run
     test_family
+    test_components
     test_clocks
     test_auto_mem
     test_windows_first)

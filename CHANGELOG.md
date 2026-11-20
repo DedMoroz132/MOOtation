@@ -10,6 +10,21 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 32, layer 3)
+- Assembly from parts and the bottleneck analysis (`campaign/components.hpp`, namespace
+  `campaign::comp`): a table of parts searched apart (a key of whole numbers, the part's quality
+  and point), read and written like the family's bank (one JSON file through a temporary file and
+  a rename, `save_table`, `load_table`). The problem's `assemble(n, view)` hook makes instance `n`
+  from the parts its view shows and says which parts it used and what the assembly costs in
+  `used()`. `sensitivity` assembles every instance again on a view in which one part is better by
+  `epsilon` and ranks the parts by their weighted contribution to the family's total (`scope = all
+  | used`). The loop searches the part chosen by `pick = round_robin | sensitivity` with any
+  strategy on `component_problem(key)`, assembles the instances the better part touches
+  (`reassemble = used | all`), gives their points to the family's bank and runs the bank's closure;
+  a loop loaded and run on is the loop in one piece. Without parts nothing changes.
+- `campaign::fam::Campaign::give` takes the record's source label (default `given`), and
+  `closure()` runs the bank's closure alone.
+
 ### Added (task 32, layer 2)
 - A family of problems with a bank of the best solutions (`campaign/family.hpp`, namespace
   `campaign::fam`): instances over a whole parameter `n` (`problem_at(n)`, or `levels_of` a
