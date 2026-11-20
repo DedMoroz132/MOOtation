@@ -2639,6 +2639,24 @@ for a pool of one's own (a batch executor's): `start_trial()`, one item,
 `end_trial()` — or `set_peak()` with a child process's peak — then
 `decide()` before every batch.
 
+From Python the same pool is asked for with
+
+```bash
+python -m mootation.run.campaign camp.toml --workers auto_mem --threads 8 --mem-share 0.5
+```
+
+(or `run_campaign(cfg, workers="auto_mem", threads=8, mem_share=0.5)`): the
+command hands it to the C++ engine as `--workers auto_mem --threads N` and
+`--mem-share S` where given, so a share left out is the config's
+`[campaign] memory_share` where set, else 0.5. It needs the C++ engine (a
+campaign with `storage = "store"` of builtin problems; `--engine auto` or
+`cxx`) and fails without it rather than starting a Python pool;
+`memory_share`'s estimate still caps `--threads` where set. The jobs the
+engine leaves run in the Python pool with the engine's last count, and the
+summary's `auto_mem` lists its decisions. The other commands that take
+`--workers` (`--recompute`, the tables) run with one worker under
+`auto_mem`. `campaign.py`'s AUTO-1 ... 5 have the rules.
+
 ### Benchmark campaigns from C++ alone
 
 A machine with a C++17 compiler and CMake runs a campaign of the built-in

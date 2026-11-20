@@ -12739,6 +12739,87 @@ params = { lm_block_sample = "frac", lm_block_size = 0.5 }
 
 
 @test
+def workers_auto_mem_is_handed_to_the_cxx_engine():
+    """Task 32, layer 5 (campaign.py AUTO-1 ... 5): --workers takes a count or
+    auto_mem; the engine's arguments are --workers N, or --workers auto_mem
+    with --threads and, where given, --mem-share; run_campaign refuses
+    auto_mem with the Python engine, --threads or --mem-share without it, a
+    share out of (0, 1] and a cap below 1, and so does the command line. With
+    a C++ engine that knows auto_mem (`mootation run --help` names it): a
+    campaign run by it under auto_mem writes the runs of --workers 1, and the
+    summary carries its decisions with the share given."""
+    import argparse
+    import contextlib
+    import io
+    import subprocess
+    from mootation.run import campaign as C
+    assert C.workers_arg("auto_mem") == C.AUTO_MEM and C.workers_arg("3") == 3
+    try:
+        C.workers_arg("many")
+    except argparse.ArgumentTypeError as e:
+        assert "auto_mem" in str(e), str(e)
+    else:
+        raise AssertionError("--workers many accepted")
+    assert C.engine_pool_args(4) == ["--workers", "4"] and C.engine_pool_args(0) == ["--workers", "1"]
+    assert C.engine_pool_args(C.AUTO_MEM, threads=3) == ["--workers", "auto_mem", "--threads", "3"]
+    assert C.engine_pool_args(C.AUTO_MEM, threads=2, mem_share=0.25) == [
+        "--workers", "auto_mem", "--threads", "2", "--mem-share", "0.25"]
+    assert C.engine_pool_args(C.AUTO_MEM)[3] == str(C.default_threads()) and C.default_threads() >= 1
+    with tempfile.TemporaryDirectory() as td:
+        path = Path(td) / "c.toml"
+        path.write_text(_TASK28_BLOCKS_TOML.replace("NAME", "auto"), encoding="utf-8")
+        from mootation.run.config import load
+        cfg = load(path)
+        for kwargs, word in (({"workers": "auto_mem", "engine": "python"}, "C++ engine"),
+                             ({"workers": "auto_mem", "engine": "cxx", "mem_share": 1.5}, "--mem-share"),
+                             ({"workers": "auto_mem", "engine": "cxx", "mem_share": 0.0}, "--mem-share"),
+                             ({"workers": "auto_mem", "engine": "cxx", "threads": 0}, "--threads"),
+                             ({"workers": 2, "engine": "cxx", "threads": 4}, "auto_mem only"),
+                             ({"workers": 2, "engine": "cxx", "mem_share": 0.5}, "auto_mem only")):
+            try:
+                C.run_campaign(cfg, **kwargs)
+            except ValueError as e:
+                assert word in str(e), (kwargs, str(e))
+            else:
+                raise AssertionError(f"run_campaign accepted {kwargs}")
+        for argv in ([str(path), "--workers", "2", "--threads", "3"], [str(path), "--mem-share", "0.5"],
+                     [str(path), "--workers", "lots"]):
+            said = io.StringIO()
+            with contextlib.redirect_stderr(said):
+                try:
+                    C.main(argv)
+                except SystemExit as e:
+                    assert e.code == 2, (argv, e.code)
+                else:
+                    raise AssertionError(f"accepted {argv}")
+        exe = C.engine_path()
+        if exe is None or not _have_numpy() or _core_with("so_metrics") is None:
+            print("  skip  workers_auto_mem's campaigns: no C++ engine or _core.so_metrics"); return
+        helps = subprocess.run([str(exe), "run", "--help"], capture_output=True, text=True).stdout
+        if "auto_mem" not in helps:
+            print("  skip  workers_auto_mem's campaigns: the C++ engine predates auto_mem"); return
+        made = {}
+        for name, kwargs in (("one", {"workers": 1}),
+                             ("mem", {"workers": "auto_mem", "threads": 2, "mem_share": 0.25})):
+            p = Path(td) / f"{name}.toml"
+            p.write_text(_TASK28_BLOCKS_TOML.replace("NAME", name), encoding="utf-8")
+            cfg = load(p)
+            assert validate(cfg) == [], validate(cfg)
+            spec = C.campaign_spec(cfg)
+            with contextlib.redirect_stderr(io.StringIO()):
+                counts = C.run_campaign(cfg, engine="cxx", **kwargs)
+            made[name] = (C.out_root(cfg, spec), C.expand_jobs(cfg, spec), counts)
+        (r1, jobs, c1), (rm, _, cm) = made["one"], made["mem"]
+        assert c1["done"] == cm["done"] == 3 and "auto_mem" not in c1, (c1, cm)
+        decisions = cm["auto_mem"]
+        assert decisions and all(1 <= d["workers"] <= 2 and d["threads"] == 2 and d["mem_share"] == 0.25
+                                 for d in decisions), decisions
+        assert decisions[0]["peak"] is not None and decisions[0]["peak"] >= 1, decisions
+        for job in jobs:
+            _same_run(C.run_dir_of(r1, job), C.run_dir_of(rm, job))
+
+
+@test
 def a_campaign_of_lm_on_block_subsamples_is_the_same_on_one_and_two_workers():
     """Task 28, §28.1: lm with lm_block_sample in a campaign of three seeds:
     the C++ engine on one worker and on two, and the Python engine, write the

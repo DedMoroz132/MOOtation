@@ -2586,8 +2586,62 @@ def engine_path() -> Path | None:
     return exe if exe.is_file() else None
 
 
+# ── the pool by free memory (task 32, layer 5) ──────────────────────────────
+#
+# `--workers auto_mem` hands the pool's size to the C++ engine (`mootation run
+# --workers auto_mem`, include/mootation/campaign/engine.hpp POOL-MEM-1 ... 5):
+# a trial job alone measures a job's peak working set, then the pool has
+# min(threads, floor(mem_share x (free + held) / peak)) workers, at least 1,
+# decided again as jobs end. Off by default (`--workers N` as before).
+#   AUTO-1. The C++ engine's only: a campaign with storage = "store" of builtin
+#     problems from a config file, --engine auto or cxx; the engine is then
+#     required (an error where it is not found, not a silent Python pool).
+#   AUTO-2. threads (`--threads`) is the cap, half the machine's threads by
+#     default as the engine's own; memory_share's estimate (memory_guard.py
+#     MEM-4) caps it further where set. mem_share (`--mem-share`) is passed
+#     only when given: the engine then takes [campaign] memory_share where it
+#     is set (> 0), else 0.5.
+#   AUTO-3. The jobs the engine leaves to the Python engine run in its pool
+#     with the engine's last count (1 where it decided none); the references
+#     built before the runs are built by one worker.
+#   AUTO-4. The engine's decisions (each a dict: workers, threads, mem_share,
+#     peak, free, held; bytes, None where unknown) are the summary's
+#     "auto_mem". Where the system gives no free memory or no peak (macOS),
+#     the engine's count is the cap and its line says the protection is off.
+#   AUTO-5. The other commands that take --workers (--recompute and the
+#     tables) run with one worker under auto_mem.
+AUTO_MEM = "auto_mem"
+
+
+def workers_arg(text: str):
+    """--workers: a count, or auto_mem (AUTO-1)."""
+    if text == AUTO_MEM:
+        return AUTO_MEM
+    try:
+        return int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"a number of workers or {AUTO_MEM}, not {text!r}") from None
+
+
+def default_threads() -> int:
+    """auto_mem's cap without --threads: half the machine's threads (AUTO-2)."""
+    return max(1, (os.cpu_count() or 2) // 2)
+
+
+def engine_pool_args(workers, *, threads: int | None = None, mem_share: float | None = None) -> list:
+    """The C++ engine's arguments for the pool: --workers N, or --workers
+    auto_mem with its cap and, where given, its share (AUTO-2)."""
+    if workers != AUTO_MEM:
+        return ["--workers", str(max(1, int(workers)))]
+    args = ["--workers", AUTO_MEM, "--threads", str(max(1, int(threads or default_threads())))]
+    if mem_share is not None:
+        args += ["--mem-share", repr(float(mem_share))]
+    return args
+
+
 def _run_engine(cfg: Config, spec: "CampaignSpec", root: Path, todo: list, *, workers: int,
-                force: bool, required: bool) -> dict | None:
+                force: bool, required: bool, auto_mem: bool = False,
+                mem_share: float | None = None) -> dict | None:
     """The jobs of `todo` the C++ engine runs, run by it; its report — done,
     failed, timeout, pending (a drained pool) and the indices of the jobs it
     left (left) — or None where it did not run: not found, or stopped
@@ -2613,7 +2667,9 @@ def _run_engine(cfg: Config, spec: "CampaignSpec", root: Path, todo: list, *, wo
         only = Path(tmp) / "only.txt"
         only.write_text(",".join(str(j.index) for j in todo), encoding="utf-8")
         report = Path(tmp) / "report.json"
-        cmd = [str(exe), "run", str(cfg.source_path), "--workers", str(max(1, workers)),
+        pool = (engine_pool_args(AUTO_MEM, threads=workers, mem_share=mem_share) if auto_mem
+                else engine_pool_args(workers))
+        cmd = [str(exe), "run", str(cfg.source_path), *pool,
                "--only", "@" + str(only), "--registry", str(registry), "--report", str(report)]
         if force:
             cmd.append("--force")
@@ -2629,15 +2685,29 @@ def _run_engine(cfg: Config, spec: "CampaignSpec", root: Path, todo: list, *, wo
 
 
 def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
-                 only: list[int] | None = None, workers: int = 1,
-                 force: bool = False, build_refs: bool = True, engine: str = "python") -> dict:
+                 only: list[int] | None = None, workers: int | str = 1,
+                 force: bool = False, build_refs: bool = True, engine: str = "python",
+                 threads: int | None = None, mem_share: float | None = None) -> dict:
     """Run the campaign's jobs not done yet (all of them with force), of a
     slice (shard: part i of n) or of a list (only). engine: "python" runs
     them here; "cxx" hands a campaign with storage = "store" to the C++
     engine first and runs here only the jobs it leaves; "auto" does so where
-    the C++ engine is found and the campaign is one it runs, else "python"."""
+    the C++ engine is found and the campaign is one it runs, else "python".
+    workers = "auto_mem": the C++ engine sizes its pool by free memory, at
+    most `threads`, with the share `mem_share` (AUTO-1 ... 5)."""
     if engine not in ("auto", "python", "cxx"):
         raise ValueError(f"engine = '{engine}': auto, python or cxx")
+    auto_mem = workers == AUTO_MEM
+    if auto_mem:
+        if engine == "python":
+            raise ValueError("--workers auto_mem: the C++ engine's pool (--engine auto or cxx)")
+        if mem_share is not None and not 0.0 < float(mem_share) <= 1.0:
+            raise ValueError(f"--mem-share: a share in (0, 1], not {mem_share!r}")
+        if threads is not None and int(threads) < 1:
+            raise ValueError(f"--threads: at least 1, not {threads!r}")
+        workers = int(threads) if threads is not None else default_threads()   # the cap (AUTO-2)
+    elif threads is not None or mem_share is not None:
+        raise ValueError("--threads and --mem-share: with --workers auto_mem only")
     spec = campaign_spec(cfg)
     jobs = expand_jobs(cfg, spec)
     root = out_root(cfg, spec)
@@ -2668,7 +2738,7 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
                                 if force or status[j.index] not in ("done", "timeout")])
     print(f"{cfg.name}: {len(jobs)} jobs total, {len(selected)} in this slice, "
           f"{len(todo)} to run -> {root}", file=sys.stderr)
-    prepare_references(todo, spec.n_ref, workers=workers, build=build_refs)
+    prepare_references(todo, spec.n_ref, workers=1 if auto_mem else workers, build=build_refs)   # AUTO-3
 
     if todo and not force:
         check_trajectory_versions(root, selected)       # task 14, §10: no mixing
@@ -2697,8 +2767,16 @@ def run_campaign(cfg: Config, *, shard: tuple[int, int] | None = None,
     if engine == "cxx" and not fits:
         raise ValueError("--engine cxx: a campaign of builtin problems with storage = \"store\", "
                          "from a config file")
-    got = (_run_engine(cfg, spec, root, todo, workers=workers, force=force, required=engine == "cxx")
+    if auto_mem and not fits:                           # AUTO-1
+        raise ValueError("--workers auto_mem: a campaign of builtin problems with storage = \"store\", "
+                         "from a config file (the C++ engine's pool)")
+    got = (_run_engine(cfg, spec, root, todo, workers=workers, force=force,
+                       required=engine == "cxx" or auto_mem, auto_mem=auto_mem, mem_share=mem_share)
            if engine != "python" and fits and todo else None)
+    if got is not None and auto_mem:                    # AUTO-3, 4
+        decisions = got.get("auto_mem") or []
+        counts["auto_mem"] = decisions
+        workers = int(decisions[-1]["workers"]) if decisions else 1
     if got is not None:
         for k in ("done", "failed", "timeout"):
             if got.get(k):
@@ -4013,9 +4091,17 @@ def main(argv: list[str] | None = None) -> int:
                          "every run is there once and that the parts agree (code, problem "
                          "versions, references)")
     ap.add_argument("--job", type=int, action="append", help="run one job by index (repeatable)")
-    ap.add_argument("--workers", type=int, default=1,
+    ap.add_argument("--workers", type=workers_arg, default=1,
                     help="worker processes to start with; change it while the campaign runs by "
-                         "writing the number into <results>/_workers.txt (0 drains and stops)")
+                         "writing the number into <results>/_workers.txt (0 drains and stops); "
+                         "auto_mem: the C++ engine sizes its pool by free memory and a trial "
+                         "job's peak, at most --threads (a campaign it runs; the other commands "
+                         "then use one worker)")
+    ap.add_argument("--threads", type=int, default=None,
+                    help="with --workers auto_mem: the cap (default: half the machine's threads)")
+    ap.add_argument("--mem-share", type=float, default=None,
+                    help="with --workers auto_mem: the share of the free memory, in (0, 1] "
+                         "(default: [campaign] memory_share where set, else 0.5)")
     ap.add_argument("--force", action="store_true", help="rerun jobs already marked done")
     ap.add_argument("--engine", choices=("auto", "python", "cxx"), default="auto",
                     help="who runs the jobs: auto (the default) hands a campaign with storage = "
@@ -4210,6 +4296,11 @@ def main(argv: list[str] | None = None) -> int:
                          "duplicates, igdx), and group the algorithms by those profiles beside "
                          "their declared families (behaviour.py); CSV under <results>/_behaviour/")
     args = ap.parse_args(argv)
+    run_workers = args.workers
+    if args.workers == AUTO_MEM:
+        args.workers = 1                                # AUTO-5: the other commands
+    elif args.threads is not None or args.mem_share is not None:
+        ap.error("--threads and --mem-share: with --workers auto_mem only")
     if args.refs_dir:
         from .refs import ENV_DIR
         os.environ[ENV_DIR] = args.refs_dir           # the workers inherit it
@@ -4545,9 +4636,9 @@ def main(argv: list[str] | None = None) -> int:
         shard = None
     from .refs import MissingReferences
     try:
-        counts = run_campaign(cfg, shard=shard, only=only, workers=args.workers,
+        counts = run_campaign(cfg, shard=shard, only=only, workers=run_workers,
                               force=args.force, build_refs=not args.no_build_refs,
-                              engine=args.engine)
+                              engine=args.engine, threads=args.threads, mem_share=args.mem_share)
     except MissingReferences as e:
         print(e, file=sys.stderr)
         return 2

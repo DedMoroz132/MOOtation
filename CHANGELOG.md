@@ -34,6 +34,9 @@ always listed under **Changed** or **Removed**.
   counts, the heartbeat and `--report`. Off by default: `--workers N` runs as before.
 - `mem_workers.hpp`: the free memory, the process's working set and peak, and the count for a pool
   of one's own (a batch executor's), with injectable readers.
+- `python -m mootation.run.campaign --workers auto_mem [--threads N] [--mem-share S]` (and
+  `run_campaign(workers="auto_mem", threads=, mem_share=)`) hands the pool by memory to the C++
+  engine; the share defaults to `[campaign] memory_share` where set. It needs the C++ engine.
 
 ### Added (task 31, layer 4)
 - The strategy `ensemble` (`scalar/ensemble.hpp`): K resumable runs of one strategy in one run,
