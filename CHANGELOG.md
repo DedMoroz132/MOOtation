@@ -10,6 +10,22 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 32, layer 2)
+- A family of problems with a bank of the best solutions (`campaign/family.hpp`, namespace
+  `campaign::fam`): instances over a whole parameter `n` (`problem_at(n)`, or `levels_of` a
+  problem's `at_param`), the total objective the weighted sum of the instances' best values
+  (`weight`, a hook or `table_of`). The bank keeps one record per instance (point, f, cv, where it
+  came from); an optional `certify(n, x)` hook checks every point strictly before the bank takes
+  it. A `transfer(n, x)` hook makes candidates for other instances, and the closure applies it
+  round by round from every record that got better until nothing improves (or `closure_rounds`).
+  The campaign gives pieces of one budget to the instance chosen by `pick = round_robin | gap |
+  gap_age`, each a run of any strategy (a resumable one, `portfolio_run`) started from the
+  instance's record; a better answer goes into the bank and starts a closure. Everything counts in
+  `used()`. The bank, with the campaign's state, the counts of every path and the history of the
+  total, is one JSON file written through a temporary file and a rename (`save_bank`,
+  `load_bank`): a campaign loaded and run on is the campaign in one piece.
+  `campaign/family_store.hpp` exports the bank into a run store as one record.
+
 ### Added (task 32, layer 1)
 - The strategy `portfolio_run` (`scalar/portfolio_run.hpp`): a portfolio of different resumable
   runs (`members`, each a strategy with its knobs; `member_rng`, `member_seeds`) sharing one
