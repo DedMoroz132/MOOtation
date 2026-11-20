@@ -178,6 +178,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -334,8 +335,12 @@ inline long long whole_of(const json::Value& v, const std::string& what)
     return static_cast<long long>(v.i);
 }
 
-inline const json::Value& field(const json::Value& o, const std::string& key)
+// key by value: a reference to o's member comes back, and GCC's
+// -Wdangling-reference takes a temporary string argument for its source (as
+// config.hpp's req)
+inline const json::Value& field(const json::Value& o, std::string_view key_)
 {
+    const std::string key(key_);
     const json::Value* v = o.find(key);
     if (!v) throw std::invalid_argument("family bank: no \"" + key + "\"");
     return *v;
