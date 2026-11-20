@@ -303,7 +303,8 @@ inline const std::vector<std::string>& names()
                                             "g3_pcx", "chc", "pso", "spso2011", "sep_cmaes",
                                             "multistart", "ipop", "bipop", "bipop_2009", "halving", "mlsl",
                                             "basin_hopping", "ils", "memetic", "tiktak", "data_continuation",
-                                            "pap", "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder", "ensemble", "sweep"};
+                                            "pap", "pbh", "mde", "ma_chains", "coevolution", "lns", "cluster_ga", "shrink", "reformulation", "replica_ladder", "ensemble", "sweep",
+                                            "portfolio_run"};
     return v;
 }
 

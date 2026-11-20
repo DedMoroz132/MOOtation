@@ -424,7 +424,7 @@ column is read from the item's wording (see the tool's docstring), not stated by
 
 Their readings, from every comment of each file (the first column the file's name).
 
-549 items: 420 yes, 126 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
+558 items: 420 yes, 135 no: option, 3 no: fixed. Headers that declare none: —. Headers with no item this tool recognises: `eigen`, `genome`, `portfolio`, `resumable_run`, `subproblems`.
 
 | solver | item | what | default run | file |
 |---|---|---|---|---|
@@ -740,6 +740,15 @@ Their readings, from every comment of each file (the first column the file's nam
 | `population` | POP-2 | A point the archive has already (a repeated point) is not evaluated again and costs nothing (evaluator.hpp, THE BUDGET); the method is told its value as for any other. | yes | `population.hpp` |
 | `population` | POP-3 | A failed evaluation (evaluator.hpp: a value not finite) is told as NaN, f and v, which evo.hpp counts as +infinity (EVO-1). | yes | `population.hpp` |
 | `population` | POP-4 | sep_cmaes works in the box normalized to [0, 1]^n, as cmaes does in run_single (SINGLE-2), from the mean y0 with step cma_sigma0; a point outside the box is evaluated at its clip and told the clip's f plus the squared... | yes | `population.hpp` |
+| `portfolio_run` | PF-1 (only when asked: the portfolio_run strategy) | The budget: with op_select = fixed each member's run has its share as its budget from the start, so that K members with share_best = off are the K independent runs with the budget split evenly (RES-1: a run cut into p... | no: option | `portfolio_run.hpp` |
+| `portfolio_run` | PF-2 (only when asked: the portfolio_run strategy) | The improvement from the best before the piece (after share_best's point) to the best after it: the violation's decrease where the point before violates, else the decrease of f; none (not rewarded) where there was no... | no: option | `portfolio_run.hpp` |
+| `portfolio_run` | PF-3 (only when asked: the portfolio_run strategy) | The draw (ProportionalSelectOperator, Thierens 2005) is among the members still running: P of each over the sum of theirs, one uniform of the run's stream, mt19937(start_seed(seed, 0x9F01)); none where one member runs. | no: option | `portfolio_run.hpp` |
+| `portfolio_run` | PF-4 (only when asked: the portfolio_run strategy) | A member's end and its rest: a member ended by its own rule (stall, max_steps, rule, idle; not by its budget or the target) leaves rest = its share - what it spent (none below 0). leftover = keep: the rest is not spen... | no: option | `portfolio_run.hpp` |
+| `portfolio_run` | PF-5 (only when asked: the portfolio_run strategy) | The end: the stop rule before a round (budget: what is left of the pool after the rests kept; deadline; stall: rounds without a better best of all; max_steps: rounds); a member's target ends the run after its round; e... | no: option | `portfolio_run.hpp` |
+| `portfolio_run` | PF-6 (only when asked: the portfolio_run strategy) | successive_halving: Jamieson and Talwalkar's §2, Figure 3: rounds k = 0 ... ⌈log2 K⌉ - 1 over the members as arms, a pull one unit of the budget: a member of S_k gets a piece of r_k units (at least 1), its budget the... | no: option | `portfolio_run.hpp` |
+| `portfolio_run` | PF-7 (only when asked: the portfolio_run strategy) | threads > 1 advances a round's members in that many threads (ensemble.hpp advance_members, ENS-7: the deferred count replayed member by member), members whose pieces are alike together, in the members' order; the roun... | no: option | `portfolio_run.hpp` |
+| `portfolio_run` | PF-8 (only when asked: the portfolio_run strategy) | The observer and record_every go to the member only where there is one (ENS-8). | no: option | `portfolio_run.hpp` |
+| `portfolio_run` | PF-9 (only when asked: the portfolio_run strategy) | One member is the member's run, bit for bit, with every rule: its budget is the run's, the draws need no uniform, and its pieces are the run in one piece (RES-1). | no: option | `portfolio_run.hpp` |
 | `pso` | PSO-1 | §VI computes chi "as shown in (4.15)"; (4.15) is the modulus of the eigenvalues, sqrt(chi). | yes | `pso.hpp` |
 | `pso` | PSO-2 | Synchronous: the whole swarm is evaluated, then every p_i and p_g are updated, then every particle moves (the pseudocode updates p_g particle by particle). | yes | `pso.hpp` |
 | `pso` | PSO-3 | "Initialize population: random x_i, v_i": v_i uniform in [-(hi - lo)/2, (hi - lo)/2] coordinate by coordinate, drawn after all positions; `v0_zero` starts at 0 (SMPSO-5 of smpso.hpp). | yes | `pso.hpp` |

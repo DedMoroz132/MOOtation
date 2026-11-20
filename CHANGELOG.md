@@ -10,6 +10,18 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 32, layer 1)
+- The strategy `portfolio_run` (`scalar/portfolio_run.hpp`): a portfolio of different resumable
+  runs (`members`, each a strategy with its knobs; `member_rng`, `member_seeds`) sharing one
+  budget. Each piece (`piece_budget` or `piece_steps`; `round_pieces` a round, `threads`) goes to
+  the member drawn by `op_select`: `fixed` (every member within its even share),
+  `probability_matching` or `adaptive_pursuit` (one pool, the reward the improvement of the best,
+  `reward = own | all`, per unit of the budget spent) or `successive_halving` (Jamieson and
+  Talwalkar 2016). `share_best = on` hands the best point of all to the members it beats
+  (`worst_if_better`); a member ended by its own rule leaves the rest of its share unspent
+  (`leftover = keep`, the default) or to the others (`leftover = share`). One member is that
+  member's run; `fixed` without `share_best` is the members' independent runs.
+
 ### Added (task 32, layer 4)
 - The strategy `sweep` (`scalar/sweep.hpp`): a plan over the problem's box (a design of
   `designs.hpp` or a full grid; integer coordinates by their values) whose faces move outward
