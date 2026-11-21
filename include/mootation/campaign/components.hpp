@@ -143,6 +143,43 @@
 //     a table without one, begins a new measure at its first piece; a call
 //     without diminish_* drops it (the table and its file then as before).
 //     Without keys the loop does nothing, as COMP-11 says.
+//   COMP-13. Off by default (task 33; table_journal = true, with a
+//     table_file). THE JOURNAL. A table of many parts is a long text, and
+//     its parts change one at a time. With the journal the loop writes the
+//     table's file whole (as COMP-9, the same text) at its first save, and
+//     at the later saves appends to <file>.journal what changed: the parts
+//     the table took since the last save, the pieces run since, and the
+//     settings, options and state. When the journal would grow past the
+//     whole file's length the save writes the file whole again and removes
+//     the journal (so the whole file is written again only after a journal
+//     as long as it).
+//     The journal is JSON lines, each a JSON object of one kind:
+//       {"format": "mootation-component-journal", "version": 1,
+//        "base_bytes": N, "base_sha256": "<hex>"}: the first line; the
+//         journal goes with the table's file of N bytes and that SHA-256
+//         only (another file: a journal left from before, not read);
+//       {"part": {...}}: a part's record, as in "records" (it replaces the
+//         part of its key);
+//       {"pieces_from": i, "pieces": [...]}: the pieces from the i-th on (the
+//         earlier ones kept);
+//       {"head": {"settings": ..., "options": ..., "state": ...}}: the end of
+//         a save, the three as in the file (they replace them).
+//     A save is one append of its lines, the head last. load_table reads the
+//     file, then the journal's saves that end with a head, up to the first
+//     line that is not whole (no newline, or not JSON: a write cut off);
+//     the lines after the last head are not read. A write cut off anywhere
+//     therefore reads as the last whole save: in an append, the saves
+//     before it; in the whole file's (.tmp and a rename, COMP-9), the file
+//     and journal before it; after the rename, the new file (the old
+//     journal goes with the old file). The table so read is the table, and
+//     its table_text the whole file's text, byte for byte. A call that goes
+//     on from it writes the file whole at its first save, so that no
+//     journal is appended after a part cut off. A script reads the table
+//     with Python's json and hashlib alone: the file, then the journal
+//     where its first line names the file, line by line in this order.
+//     Without table_journal the file and its writes are those of before,
+//     and no journal is written; load_table reads a file without a journal
+//     as before.
 //
 // Options: solver ("nelder_mead"), knobs, eq_tol (1e-4), pop_size (100),
 // budget (the loop's used() in all, the file's included), piece_budget,
@@ -150,26 +187,31 @@
 // > 0), scope (all), reassemble (used), closure_rounds (the bank's, 0: none),
 // seed (1), table_file ("": none), bank_file ("": none; needs a bank),
 // save_every (1), diminish_ratio, diminish_abs (0: off), round_pieces (0: the
-// number of keys; read with the diminishing returns).
+// number of keys; read with the diminishing returns), table_journal (false;
+// COMP-13).
 // ============================================================================
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <limits>
 #include <map>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
 #include "../json.hpp"
 #include "../scalar/scalar.hpp"
+#include "../store/sha256.hpp"
 #include "family.hpp"
 
 namespace mootation::campaign::comp {
@@ -307,6 +349,7 @@ struct Options {
     double diminish_ratio = 0.0;                         // COMP-12 (0: off)
     double diminish_abs = 0.0;
     long long round_pieces = 0;                          // 0: the number of keys
+    bool table_journal = false;                          // COMP-13 (false: the file whole at every save)
 };
 
 struct Report {
@@ -506,27 +549,29 @@ inline std::vector<std::pair<std::string, std::string>> settings_of(const Table&
     return s;
 }
 
-// COMP-9: the table as the file's text — one part a line
-inline std::string table_text(const Table& T, std::size_t keys, const std::string& stopped_by)
+namespace detail {
+
+// COMP-9: the file's settings, state and pieces (from the from-th on; COMP-13)
+inline json::Value settings_value(const Table& T, std::size_t keys, const std::string& stopped_by)
 {
-    std::string t = "{\n";
-    t += "\"format\": \"" + std::string(detail::kFormat) + "\",\n";
-    t += "\"version\": " + std::to_string(detail::kVersion) + ",\n";
     json::Value s = json::Value::object();
     for (const auto& [k, v] : settings_of(T, keys, stopped_by))
         s.set(k, json::parse(k == "components_stopped_by" ? json::dump(json::Value::string(v)) : v));
-    t += "\"settings\": " + json::dump(s) + ",\n";
-    t += "\"options\": " + json::dump(T.options) + ",\n";
+    return s;
+}
+
+inline json::Value state_value(const Table& T)
+{
     json::Value st = json::Value::object(), touched = json::Value::array(), assembled = json::Value::array();
     for (const auto& [k, p] : T.touched) {
         json::Value q = json::Value::array();
-        q.items.push_back(detail::wholes(k));
+        q.items.push_back(wholes(k));
         q.items.push_back(json::Value::integer(p));
         touched.items.push_back(q);
     }
     for (const auto& [n, a] : T.assembled) {
         json::Value q = json::Value::array(), ks = json::Value::array();
-        for (const Key& k : a.used_keys) ks.items.push_back(detail::wholes(k));
+        for (const Key& k : a.used_keys) ks.items.push_back(wholes(k));
         q.items.push_back(json::Value::integer(n));
         q.items.push_back(json::Value::number(a.f));
         q.items.push_back(ks);
@@ -535,21 +580,40 @@ inline std::string table_text(const Table& T, std::size_t keys, const std::strin
     st.set("used", json::Value::number(T.used));
     st.set("cursor", json::Value::integer(static_cast<std::int64_t>(T.cursor)));
     st.set("touched", touched);
-    st.set("pending", detail::wholes(T.pending));
-    st.set("next", T.has_next ? detail::wholes(T.next) : json::Value::null());
+    st.set("pending", wholes(T.pending));
+    st.set("next", T.has_next ? wholes(T.next) : json::Value::null());
     st.set("assembled", assembled);
     if (T.measure.on) st.set("diminish", fam::detail::measure_json(T.measure));   // COMP-12: only where begun
-    t += "\"state\": " + json::dump(st) + ",\n";
+    return st;
+}
+
+inline json::Value pieces_value(const Table& T, std::size_t from)
+{
     json::Value pieces = json::Value::array();
-    for (const PieceLog& p : T.pieces) {
+    for (std::size_t i = from; i < T.pieces.size(); ++i) {
+        const PieceLog& p = T.pieces[i];
         json::Value q = json::Value::array();
-        q.items.push_back(detail::wholes(p.key));
+        q.items.push_back(wholes(p.key));
         q.items.push_back(json::Value::number(p.used_at));
         q.items.push_back(json::Value::integer(p.budget));
         q.items.push_back(json::Value::boolean(p.taken));
         pieces.items.push_back(q);
     }
-    t += "\"pieces\": " + json::dump(pieces) + ",\n";
+    return pieces;
+}
+
+}   // namespace detail
+
+// COMP-9: the table as the file's text — one part a line
+inline std::string table_text(const Table& T, std::size_t keys, const std::string& stopped_by)
+{
+    std::string t = "{\n";
+    t += "\"format\": \"" + std::string(detail::kFormat) + "\",\n";
+    t += "\"version\": " + std::to_string(detail::kVersion) + ",\n";
+    t += "\"settings\": " + json::dump(detail::settings_value(T, keys, stopped_by)) + ",\n";
+    t += "\"options\": " + json::dump(T.options) + ",\n";
+    t += "\"state\": " + json::dump(detail::state_value(T)) + ",\n";
+    t += "\"pieces\": " + json::dump(detail::pieces_value(T, 0)) + ",\n";
     t += "\"records\": [";
     bool first = true;
     for (const auto& [k, p] : T.parts) {
@@ -566,22 +630,11 @@ inline void save_table(const std::string& path, const Table& T, std::size_t keys
     fam::detail::write_atomic(path, table_text(T, keys, stopped_by));
 }
 
-// COMP-9: a table from its file's text
-inline Table table_of_text(const std::string& text)
+namespace detail {
+
+// COMP-9, COMP-13: the settings, options and state of the file's text or of a journal's head (every field anew)
+inline void read_head(const json::Value& v, Table& T)
 {
-    using detail::field;
-    using detail::key_of;
-    using detail::number_of;
-    using detail::whole_of;
-    const json::Value v = json::parse(text);
-    if (v.kind != json::Value::Kind::Object) throw std::invalid_argument("component table: not a JSON object");
-    const json::Value& fmt = field(v, "format");
-    if (fmt.kind != json::Value::Kind::String || fmt.s != detail::kFormat)
-        throw std::invalid_argument("component table: the format is not " + std::string(detail::kFormat));
-    if (whole_of(field(v, "version"), "version") != detail::kVersion)
-        throw std::invalid_argument("component table: version " + std::to_string(whole_of(field(v, "version"), "version")) +
-                                    " (this library reads " + std::to_string(detail::kVersion) + ")");
-    Table T;
     const json::Value& s = field(v, "settings");
     auto counts = [&](long long fam::Counts::*c, const std::string& key) {
         const json::Value& o = field(s, key);
@@ -593,6 +646,7 @@ inline Table table_of_text(const std::string& text)
     T.assembles = whole_of(field(s, "components_assembles"), "components_assembles");
     T.sensitivities = whole_of(field(s, "components_sensitivities"), "components_sensitivities");
     T.bank_given = whole_of(field(s, "components_bank_given"), "components_bank_given");
+    T.ranking.clear();
     for (const auto& r : field(s, "components_ranking").items) {
         if (r.items.size() != 2) throw std::invalid_argument("component table: the ranking is a list of [key, value]");
         T.ranking.push_back({key_of(r.items[0], "a ranking's key"), number_of(r.items[1], "a ranking's value")});
@@ -601,16 +655,21 @@ inline Table table_of_text(const std::string& text)
     const json::Value& st = field(v, "state");
     T.used = number_of(field(st, "used"), "used");
     T.cursor = static_cast<std::size_t>(whole_of(field(st, "cursor"), "cursor"));
+    T.touched.clear();
     for (const auto& p : field(st, "touched").items) {
         if (p.items.size() != 2) throw std::invalid_argument("component table: touched is a list of [key, piece]");
         T.touched[key_of(p.items[0], "touched")] = whole_of(p.items[1], "touched");
     }
+    T.pending.clear();
     for (const auto& n : field(st, "pending").items) T.pending.push_back(whole_of(n, "pending"));
     const json::Value& next = field(st, "next");
+    T.has_next = false;
+    T.next.clear();
     if (next.kind != json::Value::Kind::Null) {
         T.has_next = true;
         T.next = key_of(next, "next");
     }
+    T.assembled.clear();
     for (const auto& a : field(st, "assembled").items) {
         if (a.items.size() != 3) throw std::invalid_argument("component table: assembled is a list of [n, f, keys]");
         Assembly as;
@@ -618,38 +677,236 @@ inline Table table_of_text(const std::string& text)
         for (const auto& k : a.items[2].items) as.used_keys.push_back(key_of(k, "an assembly's key"));
         T.assembled[whole_of(a.items[0], "an assembly's n")] = std::move(as);
     }
+    T.measure = fam::Measure();
     if (const json::Value* d = st.find("diminish")) T.measure = fam::detail::measure_of(*d, "component table: diminish");
-    for (const auto& p : field(v, "pieces").items) {
+}
+
+// the pieces of a list [[key, used_at, budget, taken], ...], after those of T
+inline void read_pieces(const json::Value& pieces, Table& T)
+{
+    for (const auto& p : pieces.items) {
         if (p.items.size() != 4 || p.items[3].kind != json::Value::Kind::Bool)
             throw std::invalid_argument("component table: a piece is [key, used_at, budget, taken]");
         T.pieces.push_back(PieceLog{key_of(p.items[0], "a piece's key"), number_of(p.items[1], "piece used_at"),
                                     whole_of(p.items[2], "piece budget"), p.items[3].b});
     }
+}
+
+inline std::pair<Key, Part> part_of(const json::Value& r)
+{
+    Part part;
+    const Key k = key_of(field(r, "key"), "a part's key");
+    part.q = number_of(field(r, "q"), "a part's q");
+    part.cv = number_of(field(r, "cv"), "a part's cv");
+    const json::Value& src = field(r, "source");
+    if (src.kind != json::Value::Kind::String) throw std::invalid_argument("component table: a part's source");
+    part.source = src.s;
+    part.piece = whole_of(field(r, "piece"), "a part's piece");
+    part.used = number_of(field(r, "used"), "a part's used");
+    for (const auto& x : field(r, "x").items) part.x.push_back(number_of(x, "a part's x"));
+    return {k, std::move(part)};
+}
+
+// COMP-13
+inline const char* const kJournalFormat = "mootation-component-journal";
+constexpr int kJournalVersion = 1;
+
+inline std::string sha256_hex(const std::string& text)
+{
+    const auto h = store::sha256(reinterpret_cast<const std::uint8_t*>(text.data()), text.size());
+    const char* const hex = "0123456789abcdef";
+    std::string s;
+    for (const std::uint8_t b : h) {
+        s += hex[b >> 4];
+        s += hex[b & 15];
+    }
+    return s;
+}
+
+// the journal's first line: the file's text it goes with
+inline std::string journal_header(std::size_t base_bytes, const std::string& base_sha256)
+{
+    json::Value h = json::Value::object();
+    h.set("format", json::Value::string(kJournalFormat));
+    h.set("version", json::Value::integer(kJournalVersion));
+    h.set("base_bytes", json::Value::integer(static_cast<std::int64_t>(base_bytes)));
+    h.set("base_sha256", json::Value::string(base_sha256));
+    return json::dump(h) + "\n";
+}
+
+// one save's lines: the parts changed (ascending keys), the pieces from the from-th on, the head
+inline std::string journal_save(const Table& T, std::size_t keys, const std::string& stopped_by,
+                                const std::set<Key>& changed, std::size_t from)
+{
+    std::string t;
+    for (const Key& k : changed) {
+        json::Value part_line = json::Value::object();
+        part_line.set("part", part_json(k, T.parts.at(k)));
+        t += json::dump(part_line) + "\n";
+    }
+    if (T.pieces.size() > from) {
+        json::Value pieces_line = json::Value::object();
+        pieces_line.set("pieces_from", json::Value::integer(static_cast<std::int64_t>(from)));
+        pieces_line.set("pieces", pieces_value(T, from));
+        t += json::dump(pieces_line) + "\n";
+    }
+    json::Value head = json::Value::object(), head_line = json::Value::object();
+    head.set("settings", settings_value(T, keys, stopped_by));
+    head.set("options", T.options);
+    head.set("state", state_value(T));
+    head_line.set("head", head);
+    return t + json::dump(head_line) + "\n";
+}
+
+inline std::string read_text(const std::string& path, bool& found)
+{
+    std::ifstream f(store::file::path_of(path), std::ios::binary);
+    found = static_cast<bool>(f);
+    std::stringstream ss;
+    if (found) ss << f.rdbuf();
+    return ss.str();
+}
+
+}   // namespace detail
+
+// COMP-9: a table from its file's text
+inline Table table_of_text(const std::string& text)
+{
+    using detail::field;
+    using detail::whole_of;
+    const json::Value v = json::parse(text);
+    if (v.kind != json::Value::Kind::Object) throw std::invalid_argument("component table: not a JSON object");
+    const json::Value& fmt = field(v, "format");
+    if (fmt.kind != json::Value::Kind::String || fmt.s != detail::kFormat)
+        throw std::invalid_argument("component table: the format is not " + std::string(detail::kFormat));
+    if (whole_of(field(v, "version"), "version") != detail::kVersion)
+        throw std::invalid_argument("component table: version " + std::to_string(whole_of(field(v, "version"), "version")) +
+                                    " (this library reads " + std::to_string(detail::kVersion) + ")");
+    Table T;
+    detail::read_head(v, T);
+    detail::read_pieces(field(v, "pieces"), T);
     for (const auto& r : field(v, "records").items) {
-        Part part;
-        const Key k = key_of(field(r, "key"), "a part's key");
-        part.q = number_of(field(r, "q"), "a part's q");
-        part.cv = number_of(field(r, "cv"), "a part's cv");
-        const json::Value& src = field(r, "source");
-        if (src.kind != json::Value::Kind::String) throw std::invalid_argument("component table: a part's source");
-        part.source = src.s;
-        part.piece = whole_of(field(r, "piece"), "a part's piece");
-        part.used = number_of(field(r, "used"), "a part's used");
-        for (const auto& x : field(r, "x").items) part.x.push_back(number_of(x, "a part's x"));
-        if (!T.parts.emplace(k, std::move(part)).second)
-            throw std::invalid_argument("component table: two parts of key " + key_text(k));
+        std::pair<Key, Part> kp = detail::part_of(r);
+        if (!T.parts.emplace(kp.first, std::move(kp.second)).second)
+            throw std::invalid_argument("component table: two parts of key " + key_text(kp.first));
     }
     return T;
 }
 
+// COMP-13: the journal of the table's file
+inline std::string journal_path(const std::string& table_file) { return table_file + ".journal"; }
+
+// COMP-13: T, read from the file's text `base`, brought on by the journal's text: its saves that end with a head, up
+// to its first line that is not whole; a journal of another file is not read. The saves read (0: none).
+inline long long apply_journal(Table& T, const std::string& base, const std::string& journal)
+{
+    using detail::field;
+    using detail::whole_of;
+    std::size_t at = 0;
+    json::Value v;
+    auto next_line = [&]() {                                       // false: no whole line is left
+        const std::size_t end = journal.find('\n', at);
+        if (end == std::string::npos) return false;
+        try {
+            v = json::parse(journal.substr(at, end - at));
+        } catch (const std::exception&) {
+            return false;
+        }
+        at = end + 1;
+        return v.kind == json::Value::Kind::Object;
+    };
+    if (!next_line()) return 0;
+    const json::Value* fmt = v.find("format");
+    if (!fmt || fmt->kind != json::Value::Kind::String || fmt->s != detail::kJournalFormat)
+        throw std::invalid_argument("component journal: the format is not " + std::string(detail::kJournalFormat));
+    if (whole_of(field(v, "version"), "the journal's version") != detail::kJournalVersion)
+        throw std::invalid_argument("component journal: version " +
+                                    std::to_string(whole_of(field(v, "version"), "the journal's version")) +
+                                    " (this library reads " + std::to_string(detail::kJournalVersion) + ")");
+    const json::Value& sha = field(v, "base_sha256");
+    if (whole_of(field(v, "base_bytes"), "base_bytes") != static_cast<long long>(base.size()) ||
+        sha.kind != json::Value::Kind::String || sha.s != detail::sha256_hex(base))
+        return 0;                                                  // a journal left from another file
+    std::vector<std::pair<Key, Part>> parts;                       // a save's, until its head
+    std::vector<std::pair<long long, json::Value>> pieces;
+    long long saves = 0;
+    while (next_line()) {
+        if (const json::Value* rec = v.find("part")) {
+            parts.push_back(detail::part_of(*rec));
+        } else if (const json::Value* pf = v.find("pieces_from")) {
+            pieces.push_back({whole_of(*pf, "pieces_from"), field(v, "pieces")});
+        } else if (const json::Value* head = v.find("head")) {
+            for (auto& kp : parts) T.parts[kp.first] = std::move(kp.second);
+            for (const auto& fp : pieces) {
+                if (fp.first < 0 || fp.first > static_cast<long long>(T.pieces.size()))
+                    throw std::invalid_argument("component journal: pieces from " + std::to_string(fp.first) +
+                                                " where the table has " + std::to_string(T.pieces.size()));
+                T.pieces.resize(static_cast<std::size_t>(fp.first));
+                detail::read_pieces(fp.second, T);
+            }
+            detail::read_head(*head, T);
+            parts.clear();
+            pieces.clear();
+            ++saves;
+        } else {
+            throw std::invalid_argument("component journal: a line that is not a part, pieces or a head");
+        }
+    }
+    return saves;
+}
+
+// COMP-9, COMP-13: the table's file, with its journal where it has one
 inline Table load_table(const std::string& path)
 {
-    std::ifstream f(store::file::path_of(path), std::ios::binary);
-    if (!f) throw std::runtime_error("component table: cannot read " + path);
-    std::stringstream ss;
-    ss << f.rdbuf();
-    return table_of_text(ss.str());
+    bool found = false;
+    const std::string text = detail::read_text(path, found);
+    if (!found) throw std::runtime_error("component table: cannot read " + path);
+    Table T = table_of_text(text);
+    const std::string journal = detail::read_text(journal_path(path), found);
+    if (found) apply_journal(T, text, journal);
+    return T;
 }
+
+namespace detail {
+
+// COMP-13: the loop's writer of the table's file and its journal; a call's first save writes the file whole
+struct JournalWriter {
+    std::size_t base_bytes = 0;          // the file's length (0: not written yet)
+    std::string base_sha256;
+    std::size_t bytes = 0;               // the journal's length since (0: none)
+    std::size_t pieces = 0;              // the pieces the file and the journal hold
+    std::set<Key> changed;               // the parts the table took since
+
+    void save(const std::string& path, const Table& T, std::size_t keys, const std::string& stopped_by)
+    {
+        const std::filesystem::path jp = store::file::path_of(journal_path(path));
+        if (base_bytes > 0) {
+            const std::string t = (bytes == 0 ? journal_header(base_bytes, base_sha256) : std::string()) +
+                                  journal_save(T, keys, stopped_by, changed, pieces);
+            if (bytes + t.size() <= base_bytes) {                   // appended: one write, the head last
+                std::ofstream f(jp, std::ios::binary | (bytes == 0 ? std::ios::trunc : std::ios::app));
+                f.write(t.data(), static_cast<std::streamsize>(t.size()));
+                f.flush();
+                if (!f) throw std::runtime_error("component table: cannot write " + journal_path(path));
+                bytes += t.size();
+                pieces = T.pieces.size();
+                changed.clear();
+                return;
+            }
+        }
+        const std::string t = table_text(T, keys, stopped_by);    // whole, as save_table
+        fam::detail::write_atomic(path, t);
+        std::error_code ec;
+        std::filesystem::remove(jp, ec);   // where it cannot be removed it goes with the file before: not read
+        base_bytes = t.size();
+        base_sha256 = sha256_hex(t);
+        bytes = 0;
+        pieces = T.pieces.size();
+        changed.clear();
+    }
+};
+
+}   // namespace detail
 
 // ── the loop ────────────────────────────────────────────────────────────────
 
@@ -692,6 +949,7 @@ public:
     Report run()
     {
         T_.options = detail::options_json(o_);
+        journal_ = detail::JournalWriter();                                    // COMP-13: the first save whole
         const bool dim = o_.diminish_ratio > 0.0 || o_.diminish_abs > 0.0;   // COMP-12
         if (!dim) T_.measure = fam::Measure();
         std::string stopped;
@@ -752,6 +1010,7 @@ private:
     std::vector<long long> inst_;                                              // FAM-1: ascending
     std::vector<double> w_;
     std::map<Key, Problem> problems_;
+    detail::JournalWriter journal_;                                            // COMP-13
 
     void check()
     {
@@ -770,6 +1029,8 @@ private:
         if (o_.closure_rounds < 0) throw std::invalid_argument("components: closure_rounds >= 0");
         if (o_.save_every < 1) throw std::invalid_argument("components: save_every >= 1");
         if (!o_.bank_file.empty() && !B_) throw std::invalid_argument("components: a bank_file without a bank");
+        if (o_.table_journal && o_.table_file.empty())
+            throw std::invalid_argument("components: a table_journal without a table_file");
         scalar::strategy::Diminish::check(o_.diminish_ratio, o_.diminish_abs, "components");
         if (o_.round_pieces < 0) throw std::invalid_argument("components: round_pieces >= 0");
         if (keys_.empty()) return;                                             // COMP-11: nothing asked
@@ -839,6 +1100,7 @@ private:
         p.piece = static_cast<long long>(T_.pieces.size()) - 1;
         p.used = T_.used;
         T_.parts[k] = std::move(p);
+        if (o_.table_journal) journal_.changed.insert(k);                      // COMP-13
         ++c.accepted;
         for (long long n : inst_) {
             bool touched = is_new || o_.reassemble == "all";
@@ -1001,11 +1263,15 @@ private:
             offer(k, r.variables[0], r.objectives[0][0], r.cv.empty() ? 0.0 : r.cv[0], T_.run, "run");
     }
 
-    // COMP-9: the bank first, then the table (COMP-11: without keys the bank's file is not written)
+    // COMP-9: the bank first, then the table (COMP-11: without keys the bank's file is not written; COMP-13)
     void save(const std::string& stopped)
     {
         if (!o_.bank_file.empty() && !keys_.empty()) fam::save_bank(o_.bank_file, *B_, bank_total(), inst_.size());
-        if (!o_.table_file.empty()) save_table(o_.table_file, T_, keys_.size(), stopped);
+        if (o_.table_file.empty()) return;
+        if (o_.table_journal)
+            journal_.save(o_.table_file, T_, keys_.size(), stopped);           // COMP-13
+        else
+            save_table(o_.table_file, T_, keys_.size(), stopped);
     }
 };
 

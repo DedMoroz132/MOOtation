@@ -10,6 +10,9 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 33.4)
+- The journal of the table of parts (`campaign/components.hpp`, `table_journal`, off by default): after the first save the loop appends to `<file>.journal` only the parts changed, the new pieces and the state, and writes the file whole again once the journal is as long as it; `load_table` reads the file and its journal up to the last whole save, so a write cut off reads as the last whole table. Without it the file and its writes are as before.
+
 ### Added (task 33.1)
 - The family's campaign (`campaign::fam::Options`): `pick = gap_utility`, the gap times MOEA/D-DRA's utility of the instance, which a piece that betters nothing lowers by `utility_factor` (kept in the bank's file); and `fresh_first`, the records that came by a transfer, an assembly or `give` and were not yet worked on get their pieces first, under every pick. Off by default: the other picks, banks and files are as before.
 

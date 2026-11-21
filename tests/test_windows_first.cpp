@@ -5,7 +5,8 @@
 // (rpcndr.h), interface and the rest are defined, and then the library's
 // umbrella headers — the algorithms (mootation.hpp), the single-objective
 // methods and strategies (scalar/scalar.hpp) and the campaign engine
-// (campaign/engine.hpp, with the readings of memory of mem_workers.hpp). The
+// (campaign/engine.hpp, with the readings of memory of mem_workers.hpp; the
+// table of parts and its journal, campaign/components.hpp). The
 // library calls min and max in parentheses, (std::min)(a, b),
 // (std::numeric_limits<T>::max)(), and names nothing near, far or small. A short run of each kind shows the code runs; that it runs
 // as before is the other tests' (golden_fingerprints, test_stop_rule's
@@ -18,6 +19,7 @@
 #endif
 #endif
 
+#include <mootation/campaign/components.hpp>
 #include <mootation/campaign/engine.hpp>
 #include <mootation/mootation.hpp>
 #include <mootation/scalar/scalar.hpp>
