@@ -10,6 +10,9 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 33.3)
+- `budget_more` in the family's campaign and the loop of parts (`campaign/family.hpp`, `campaign/components.hpp`, off by default): the call spends so much more than its file had spent, in place of `budget`, which counts the file's spending too; a `budget` not above what the file had spent gives no piece and says so in the settings (`family_budget_spent`, `components_budget_spent`).
+
 ### Added (task 33.4)
 - The journal of the table of parts (`campaign/components.hpp`, `table_journal`, off by default): after the first save the loop appends to `<file>.journal` only the parts changed, the new pieces and the state, and writes the file whole again once the journal is as long as it; `load_table` reads the file and its journal up to the last whole save, so a write cut off reads as the last whole table. Without it the file and its writes are as before.
 

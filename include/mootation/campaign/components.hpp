@@ -180,6 +180,15 @@
 //     Without table_journal the file and its writes are those of before,
 //     and no journal is written; load_table reads a file without a journal
 //     as before.
+//   COMP-14. budget_more (off by default; task 33.3): SO MUCH MORE, as
+//     family.hpp FAM-14 for the loop's count (COMP-8): with budget_more = B
+//     (budget then 0) the call's budget is ceil(the table's used()) when the
+//     loop is made, plus B. The file's options keep that budget and
+//     budget_more. Two calls of budget_more = B from a table are one of
+//     budget = 2B where the first ended at its budget exactly, bit for bit.
+//     A budget not above what the table had spent gives no piece
+//     (stopped_by budget, as before) and its settings say so
+//     (components_budget_spent: what the table had spent).
 //
 // Options: solver ("nelder_mead"), knobs, eq_tol (1e-4), pop_size (100),
 // budget (the loop's used() in all, the file's included), piece_budget,
@@ -188,7 +197,7 @@
 // seed (1), table_file ("": none), bank_file ("": none; needs a bank),
 // save_every (1), diminish_ratio, diminish_abs (0: off), round_pieces (0: the
 // number of keys; read with the diminishing returns), table_journal (false;
-// COMP-13).
+// COMP-13), budget_more (0: off; COMP-14).
 // ============================================================================
 
 #include <algorithm>
@@ -350,6 +359,7 @@ struct Options {
     double diminish_abs = 0.0;
     long long round_pieces = 0;                          // 0: the number of keys
     bool table_journal = false;                          // COMP-13 (false: the file whole at every save)
+    long long budget_more = 0;                           // COMP-14 (0: off; budget then 0)
 };
 
 struct Report {
@@ -501,6 +511,7 @@ inline json::Value options_json(const Options& o)
         v.set("diminish_abs", json::Value::number(o.diminish_abs));
         v.set("round_pieces", json::Value::integer(o.round_pieces));
     }
+    if (o.budget_more > 0) v.set("budget_more", json::Value::integer(o.budget_more));            // COMP-14
     return v;
 }
 
@@ -918,6 +929,8 @@ public:
         : F_(F), C_(C), T_(T), B_(B), o_(o)
     {
         check();
+        spent_ = static_cast<long long>(std::ceil(T_.used));                  // COMP-14
+        budget_ = o_.budget_more > 0 ? spent_ + o_.budget_more : o_.budget;
     }
 
     // a part given (source given): evaluated on its problem and offered (COMP-1)
@@ -948,7 +961,9 @@ public:
 
     Report run()
     {
-        T_.options = detail::options_json(o_);
+        Options given = o_;                                                    // COMP-14: the call's budget
+        given.budget = budget_;
+        T_.options = detail::options_json(given);
         journal_ = detail::JournalWriter();                                    // COMP-13: the first save whole
         const bool dim = o_.diminish_ratio > 0.0 || o_.diminish_abs > 0.0;   // COMP-12
         if (!dim) T_.measure = fam::Measure();
@@ -997,6 +1012,8 @@ public:
         r.settings = settings_of(T_, keys_.size(), stopped);
         if (B_ && !keys_.empty())
             r.settings.push_back({"components_bank_total", json::float_repr(bank_total())});
+        if (!keys_.empty() && o_.budget_more <= 0 && o_.budget <= spent_)      // COMP-14: not silent
+            r.settings.push_back({"components_budget_spent", std::to_string(spent_)});
         return r;
     }
 
@@ -1006,6 +1023,8 @@ private:
     Table& T_;
     fam::Bank* B_;
     const Options o_;
+    long long spent_ = 0;                                                      // COMP-14: ceil(used()) when made
+    long long budget_ = 0;                                                     // the call's budget
     std::vector<Key> keys_;                                                    // COMP-1: ascending
     std::vector<long long> inst_;                                              // FAM-1: ascending
     std::vector<double> w_;
@@ -1028,6 +1047,9 @@ private:
         if (o_.max_pieces < 0) throw std::invalid_argument("components: max_pieces >= 0");
         if (o_.closure_rounds < 0) throw std::invalid_argument("components: closure_rounds >= 0");
         if (o_.save_every < 1) throw std::invalid_argument("components: save_every >= 1");
+        if (o_.budget_more < 0) throw std::invalid_argument("components: budget_more >= 0");
+        if (o_.budget_more > 0 && o_.budget != 0)
+            throw std::invalid_argument("components: budget or budget_more, not both");
         if (!o_.bank_file.empty() && !B_) throw std::invalid_argument("components: a bank_file without a bank");
         if (o_.table_journal && o_.table_file.empty())
             throw std::invalid_argument("components: a table_journal without a table_file");
@@ -1063,7 +1085,7 @@ private:
 
     bool in_family(long long n) const { return std::binary_search(inst_.begin(), inst_.end(), n); }
     bool files() const { return !o_.table_file.empty() || !o_.bank_file.empty(); }
-    long long left() const { return o_.budget - static_cast<long long>(std::ceil(T_.used)); }
+    long long left() const { return budget_ - static_cast<long long>(std::ceil(T_.used)); }
 
     const Problem& problem(const Key& k)
     {
@@ -1279,7 +1301,7 @@ private:
 // none; COMP-5 ... COMP-10)
 inline Report run(const fam::Family& F, const Components& C, Table& T, fam::Bank* B, const Options& o)
 {
-    if (o.budget <= 0) throw std::invalid_argument("components: budget > 0");
+    if (o.budget_more <= 0 && o.budget <= 0) throw std::invalid_argument("components: budget > 0");
     if (o.piece_budget <= 0) throw std::invalid_argument("components: piece_budget > 0");
     Loop l(F, C, T, B, o);
     return l.run();

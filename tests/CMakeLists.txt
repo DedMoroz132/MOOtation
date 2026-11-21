@@ -120,6 +120,7 @@ set(MOOTATION_TESTS
     test_family_pick
     test_components
     test_component_journal
+    test_budget_more
     test_diminish
     test_clocks
     test_auto_mem

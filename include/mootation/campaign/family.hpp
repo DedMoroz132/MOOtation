@@ -205,6 +205,18 @@
 //     record goes before it even under gap. The bank already holds what this
 //     needs (the records' source and piece, touched): nothing new in its
 //     file but the option.
+//   FAM-14. budget_more (off by default; task 33.3): SO MUCH MORE. budget
+//     counts the bank's used() in all, the file's included (FAM-8), so a
+//     stage that goes on from a file is given its end, not its share. With
+//     budget_more = B (budget then 0: one of the two) the call's budget is
+//     ceil(used()) when the campaign is made, plus B: the stage spends B more
+//     than the file had. The file's options keep that budget and
+//     budget_more. Two calls of budget_more = B from a bank are one of
+//     budget = 2B where the first ended at its budget exactly (no closure or
+//     declared cost past it), bit for bit. A budget not above what the bank
+//     had spent when the campaign was made is no longer silent: the call
+//     gives no piece (stopped_by budget, as before) and its settings say so
+//     (family_budget_spent: what the bank had spent).
 //
 // Options: solver ("nelder_mead"), knobs, eq_tol (1e-4), pop_size (100),
 // budget (the campaign's used() in all, the file's included), piece_budget,
@@ -212,7 +224,7 @@
 // (1), bank_file ("": none), save_every (1), diminish_ratio, diminish_abs (0:
 // off), round_pieces (0: the number of instances; read with the diminishing
 // returns), utility_factor (0.95; read with pick = gap_utility), fresh_first
-// (false). The file's options name utility_factor only with pick =
+// (false), budget_more (0: off; FAM-14). The file's options name utility_factor only with pick =
 // gap_utility and fresh_first only where it is on.
 // ============================================================================
 
@@ -356,6 +368,7 @@ struct Options {
     long long round_pieces = 0;                          // 0: the number of instances
     double utility_factor = 0.95;                        // FAM-12 (pick = gap_utility)
     bool fresh_first = false;                            // FAM-13 (off)
+    long long budget_more = 0;                           // FAM-14 (0: off; budget then 0)
 };
 
 struct Report {
@@ -472,6 +485,7 @@ inline json::Value options_json(const Options& o)
     }
     if (o.pick == "gap_utility") v.set("utility_factor", json::Value::number(o.utility_factor));   // FAM-12
     if (o.fresh_first) v.set("fresh_first", json::Value::boolean(true));                         // FAM-13
+    if (o.budget_more > 0) v.set("budget_more", json::Value::integer(o.budget_more));            // FAM-14
     return v;
 }
 
@@ -731,7 +745,12 @@ inline Bank load_bank(const std::string& path)
 class Campaign {
 public:
     // the family and the options are copied (their hooks with them); the bank is the caller's
-    Campaign(const Family& F, Bank& B, const Options& o) : F_(F), B_(B), o_(o) { check(); }
+    Campaign(const Family& F, Bank& B, const Options& o) : F_(F), B_(B), o_(o)
+    {
+        check();
+        spent_ = static_cast<long long>(std::ceil(B_.used));                  // FAM-14
+        budget_ = o_.budget_more > 0 ? spent_ + o_.budget_more : o_.budget;
+    }
 
     // records given (source given: the record's label, counted on the path
     // given; layer 3's loop gives its assemblies as "assembled",
@@ -754,7 +773,9 @@ public:
 
     Report run()
     {
-        B_.options = detail::options_json(o_);
+        Options given = o_;                                                    // FAM-14: the call's budget
+        given.budget = budget_;
+        B_.options = detail::options_json(given);
         const bool dim = o_.diminish_ratio > 0.0 || o_.diminish_abs > 0.0;   // FAM-11
         if (!dim) B_.measure = Measure();
         std::string stopped;
@@ -772,7 +793,7 @@ public:
                 stopped = "pieces";
                 break;
             }
-            const long long left = o_.budget - static_cast<long long>(std::ceil(B_.used));
+            const long long left = budget_ - static_cast<long long>(std::ceil(B_.used));
             if (left <= 0) {
                 stopped = "budget";
                 break;
@@ -789,6 +810,8 @@ public:
         r.total = total();
         r.stopped_by = stopped;
         r.settings = settings_of(B_, r.total, F_.instances.size(), stopped);
+        if (o_.budget_more <= 0 && o_.budget <= spent_)                        // FAM-14: not silent
+            r.settings.push_back({"family_budget_spent", std::to_string(spent_)});
         return r;
     }
 
@@ -798,6 +821,8 @@ private:
     const Family F_;
     Bank& B_;
     const Options o_;
+    long long spent_ = 0;                                                      // FAM-14: ceil(used()) when made
+    long long budget_ = 0;                                                     // the call's budget
     std::vector<long long> inst_;                                              // FAM-1: ascending
     std::map<long long, Problem> problems_;
     std::map<long long, double> weights_, references_;
@@ -819,6 +844,9 @@ private:
         if (o_.closure_rounds < 0) throw std::invalid_argument("family: closure_rounds >= 0");
         if (o_.max_pieces < 0) throw std::invalid_argument("family: max_pieces >= 0");
         if (o_.save_every < 1) throw std::invalid_argument("family: save_every >= 1");
+        if (o_.budget_more < 0) throw std::invalid_argument("family: budget_more >= 0");
+        if (o_.budget_more > 0 && o_.budget != 0)
+            throw std::invalid_argument("family: budget or budget_more, not both");
         scalar::strategy::Diminish::check(o_.diminish_ratio, o_.diminish_abs, "family");
         if (o_.round_pieces < 0) throw std::invalid_argument("family: round_pieces >= 0");
         for (const auto& [n, r] : B_.records) {                                // FAM-9: a bank of this family
@@ -865,7 +893,7 @@ private:
         return it->second;
     }
 
-    long long left() const { return o_.budget - static_cast<long long>(std::ceil(B_.used)); }
+    long long left() const { return budget_ - static_cast<long long>(std::ceil(B_.used)); }
 
     // FAM-2, FAM-3: a point with its values (from a run or an evaluation)
     // offered; whether the bank took it
@@ -1149,7 +1177,7 @@ private:
 // the campaign over the family from the bank B (FAM-7 ... FAM-10)
 inline Report run(const Family& F, Bank& B, const Options& o)
 {
-    if (o.budget <= 0) throw std::invalid_argument("family: budget > 0");
+    if (o.budget_more <= 0 && o.budget <= 0) throw std::invalid_argument("family: budget > 0");
     if (o.piece_budget <= 0) throw std::invalid_argument("family: piece_budget > 0");
     Campaign c(F, B, o);
     return c.run();
