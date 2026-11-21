@@ -35,7 +35,8 @@
 // instance from its record, until the budget, max_pieces, or nothing to do:
 //   1. a closure not finished goes first (the file's, or that of records
 //      given);
-//   2. pick the instance (pick = round_robin | gap | gap_age);
+//   2. pick the instance (pick = round_robin | gap | gap_age | gap_utility;
+//      with fresh_first, the records not yet worked on first: FAM-13);
 //   3. the piece: scalar::run(solver, problem_at(n), piece budget, the
 //      piece's seed, knobs, start x0 = the bank's point of n);
 //   4. its answer is offered to the bank; if the bank takes it, the closure
@@ -96,6 +97,9 @@
 //     n; it needs a reference for every instance. gap_age: the largest w(n)
 //     age(n), age(n) the pieces since instance n was last given one (an
 //     instance never given one: the pieces so far + 1); ties to the lower n.
+//     gap_utility: gap's priority times the utility of the instance
+//     (FAM-12), so that pieces which do not better an instance move the
+//     next ones on to others.
 //   FAM-7. THE PIECE. Piece p (0, 1, ... over the whole campaign, its file
 //     included) runs the solver on problem_at(n) with the budget
 //     min(piece_budget, what is left of the campaign's), the seed
@@ -156,13 +160,60 @@
 //     run with other solvers or knobs) is measured by the caller: a Diminish
 //     of its own told each cycle's gain, the totals of the reports before
 //     and after.
+//   FAM-12. pick = gap_utility (task 33.1; the other picks as before). THE
+//     UTILITY of MOEA/D-DRA: Q. Zhang, W. Liu, H. Li, "The performance of a
+//     new version of MOEA/D on CEC09 unconstrained MOP test instances", IEEE
+//     CEC 2009, pp. 203-208, doi:10.1109/CEC.2009.4982949 (source:
+//     moead-dra_zhang2009), Step 1.4 and Step 5: every subproblem i has a
+//     utility pi^i, 1 at the start; after a stretch of the search, with
+//     Delta^i the relative decrease of its objective (old - new) / old,
+//       pi^i = 1                                  if Delta^i > 0.001,
+//       pi^i = (0.95 + 0.05 Delta^i / 0.001) pi^i  otherwise,
+//     and the effort goes to the subproblems of the highest utility (the
+//     paper's 10-tournament). Here an instance is the subproblem and its gap
+//     f(n) - reference(n) its objective (as the paper's Tchebycheff value,
+//     measured from a reference point); the stretch is a piece on the
+//     instance: Delta = (gap before the piece - gap after its answer was
+//     offered) / gap before, the closure that follows the piece not counted
+//     (a transfer that betters the instance lowers its gap, not its
+//     utility). An instance without a feasible record before the piece:
+//     utility 1 where the piece gave it one, else Delta = 0; a gap before not
+//     above 0: Delta = 0 (moead_dra.hpp's guard on old). utility_factor (0.95,
+//     the paper's; 0 < it < 1) is the factor of a piece that betters nothing,
+//     the 0.05 its complement 1 - utility_factor, the factor floored at 0 as
+//     moead_dra.hpp's DRA-11 (the bank takes no worse record, so Delta is not
+//     below 0 here). The pick: the largest pi(n) w(n) (f(n) - reference(n))
+//     where w(n) (f(n) - reference(n)) > 0, else that product alone (an
+//     instance at or below its reference is not raised by a small utility);
+//     an instance without a record, or with an infeasible one, first; ties
+//     as gap's. The tournament's draws are left out: the pick stays
+//     deterministic, the highest priority taken, as gap takes it. The
+//     utilities live in the bank and its file (state's "utility", [n, pi]
+//     of every instance given a piece by this pick, ascending n; absent in a
+//     bank without one, all utilities then 1): a campaign loaded and run on
+//     goes on with them (FAM-9).
+//   FAM-13. fresh_first (off by default; task 33.1): THE FRESH RECORDS
+//     FIRST. A record is fresh where it did not come from a piece (source
+//     transfer, given, or a label given, as components.hpp's assembled) and
+//     no piece has been given to its instance since it came (the record's
+//     piece not below the instance's last piece; a record of the piece p
+//     came after piece p's run). While some instance has a fresh record, the
+//     pick chooses among those instances alone, by its own rule (round_robin:
+//     the first of them from the cursor on, the cursor then after it; the
+//     others: their largest priority, ties as theirs); with none, it is the
+//     pick of before. An instance without a record is not fresh: a fresh
+//     record goes before it even under gap. The bank already holds what this
+//     needs (the records' source and piece, touched): nothing new in its
+//     file but the option.
 //
 // Options: solver ("nelder_mead"), knobs, eq_tol (1e-4), pop_size (100),
 // budget (the campaign's used() in all, the file's included), piece_budget,
 // max_pieces (0: none), pick (round_robin), closure_rounds (0: none), seed
 // (1), bank_file ("": none), save_every (1), diminish_ratio, diminish_abs (0:
 // off), round_pieces (0: the number of instances; read with the diminishing
-// returns).
+// returns), utility_factor (0.95; read with pick = gap_utility), fresh_first
+// (false). The file's options name utility_factor only with pick =
+// gap_utility and fresh_first only where it is on.
 // ============================================================================
 
 #include <algorithm>
@@ -284,6 +335,7 @@ struct Bank {
     std::size_t at = 0, cand = 0;
     json::Value options = json::Value::object();         // the last call's (for the scripts)
     Measure measure;                                     // FAM-11 (off: none)
+    std::map<long long, double> utility;                 // FAM-12 (pick = gap_utility; none: 1)
 };
 
 struct Options {
@@ -302,6 +354,8 @@ struct Options {
     double diminish_ratio = 0.0;                         // FAM-11 (0: off)
     double diminish_abs = 0.0;
     long long round_pieces = 0;                          // 0: the number of instances
+    double utility_factor = 0.95;                        // FAM-12 (pick = gap_utility)
+    bool fresh_first = false;                            // FAM-13 (off)
 };
 
 struct Report {
@@ -416,6 +470,8 @@ inline json::Value options_json(const Options& o)
         v.set("diminish_abs", json::Value::number(o.diminish_abs));
         v.set("round_pieces", json::Value::integer(o.round_pieces));
     }
+    if (o.pick == "gap_utility") v.set("utility_factor", json::Value::number(o.utility_factor));   // FAM-12
+    if (o.fresh_first) v.set("fresh_first", json::Value::boolean(true));                         // FAM-13
     return v;
 }
 
@@ -554,6 +610,16 @@ inline std::string bank_text(const Bank& B, double total, std::size_t instances,
     st.set("touched", touched);
     st.set("closure", cl);
     if (B.measure.on) st.set("diminish", detail::measure_json(B.measure));      // FAM-11: only where begun
+    if (!B.utility.empty()) {                                                    // FAM-12: only where given
+        json::Value u = json::Value::array();
+        for (const auto& [n, pi] : B.utility) {
+            json::Value q = json::Value::array();
+            q.items.push_back(json::Value::integer(n));
+            q.items.push_back(json::Value::number(pi));
+            u.items.push_back(q);
+        }
+        st.set("utility", u);
+    }
     t += "\"state\": " + json::dump(st) + ",\n";
     t += "\"pieces\": " + json::dump(pieces) + ",\n";
     t += "\"history\": " + json::dump(detail::history_json(B)) + ",\n";
@@ -616,6 +682,12 @@ inline Bank bank_of_text(const std::string& text)
     B.at = static_cast<std::size_t>(whole_of(field(cl, "at"), "closure at"));
     B.cand = static_cast<std::size_t>(whole_of(field(cl, "cand"), "closure cand"));
     if (const json::Value* d = st.find("diminish")) B.measure = detail::measure_of(*d, "family bank: diminish");
+    if (const json::Value* u = st.find("utility")) {                            // FAM-12
+        for (const auto& p : u->items) {
+            if (p.items.size() != 2) throw std::invalid_argument("family bank: utility is a list of [n, pi]");
+            B.utility[whole_of(p.items[0], "utility")] = number_of(p.items[1], "utility");
+        }
+    }
     for (const auto& p : field(v, "pieces").items) {
         if (p.items.size() != 4 || p.items[3].kind != json::Value::Kind::Bool)
             throw std::invalid_argument("family bank: a piece is [n, used_at, budget, taken]");
@@ -738,9 +810,12 @@ private:
         std::sort(inst_.begin(), inst_.end());
         if (std::adjacent_find(inst_.begin(), inst_.end()) != inst_.end())
             throw std::invalid_argument("family: an instance given twice");
-        if (o_.pick != "round_robin" && o_.pick != "gap" && o_.pick != "gap_age")
-            throw std::invalid_argument("family: pick = round_robin | gap | gap_age, not " + o_.pick);
-        if (o_.pick == "gap" && !F_.reference) throw std::invalid_argument("family: pick = gap needs reference(n)");
+        if (o_.pick != "round_robin" && o_.pick != "gap" && o_.pick != "gap_age" && o_.pick != "gap_utility")
+            throw std::invalid_argument("family: pick = round_robin | gap | gap_age | gap_utility, not " + o_.pick);
+        if ((o_.pick == "gap" || o_.pick == "gap_utility") && !F_.reference)
+            throw std::invalid_argument("family: pick = " + o_.pick + " needs reference(n)");
+        if (!(o_.utility_factor > 0.0 && o_.utility_factor < 1.0))
+            throw std::invalid_argument("family: 0 < utility_factor < 1");
         if (o_.closure_rounds < 0) throw std::invalid_argument("family: closure_rounds >= 0");
         if (o_.max_pieces < 0) throw std::invalid_argument("family: max_pieces >= 0");
         if (o_.save_every < 1) throw std::invalid_argument("family: save_every >= 1");
@@ -957,30 +1032,55 @@ private:
         return static_cast<long long>(B_.pieces.size()) - (it == B_.touched.end() ? -1 : it->second);
     }
 
-    // FAM-6
+    // FAM-13: the record of n did not come from a piece, and no piece was given to n since it came
+    bool fresh(long long n) const
+    {
+        const auto it = B_.records.find(n);
+        if (it == B_.records.end() || it->second.source == "run") return false;
+        const auto t = B_.touched.find(n);
+        return t == B_.touched.end() || t->second <= it->second.piece;
+    }
+
+    double utility(long long n) const
+    {
+        const auto it = B_.utility.find(n);
+        return it == B_.utility.end() ? 1.0 : it->second;
+    }
+
+    // FAM-6, FAM-12, FAM-13
     long long pick()
     {
+        std::vector<long long> fresh_ones;                                     // FAM-13
+        if (o_.fresh_first)
+            for (long long n : inst_)
+                if (fresh(n)) fresh_ones.push_back(n);
         if (o_.pick == "round_robin") {
-            const long long n = inst_[B_.cursor % inst_.size()];
-            B_.cursor = (B_.cursor + 1) % inst_.size();
-            return n;
+            for (std::size_t k = 0; k < inst_.size(); ++k) {
+                const std::size_t i = (B_.cursor + k) % inst_.size();
+                if (!fresh_ones.empty() && !fresh(inst_[i])) continue;
+                B_.cursor = (i + 1) % inst_.size();
+                return inst_[i];
+            }
         }
+        const std::vector<long long>& among = fresh_ones.empty() ? inst_ : fresh_ones;
+        const bool by_gap = o_.pick == "gap" || o_.pick == "gap_utility";
         const double inf = std::numeric_limits<double>::infinity();
-        long long best = inst_[0];
+        long long best = among[0];
         double best_p = -inf;
         long long best_age = -1;
         bool first = true;
-        for (long long n : inst_) {
+        for (long long n : among) {
             double p;
-            if (o_.pick == "gap") {
+            if (by_gap) {
                 const auto it = B_.records.find(n);
                 p = (it == B_.records.end() || it->second.cv > 0.0) ? inf
                                                                      : weight(n) * (it->second.f - reference(n));
+                if (o_.pick == "gap_utility" && p > 0.0 && p < inf) p *= utility(n);   // FAM-12
             } else {
                 p = weight(n) * static_cast<double>(age(n));
             }
             const long long a = age(n);
-            const bool take = first || p > best_p || (o_.pick == "gap" && p == best_p && a > best_age);
+            const bool take = first || p > best_p || (by_gap && p == best_p && a > best_age);
             if (take) {
                 best = n;
                 best_p = p;
@@ -1007,10 +1107,37 @@ private:
             scalar::run(o_.solver, problem(n), o_.eq_tol, false, 0.0, o_.pop_size, budget,
                         scalar::strategy::start_seed(o_.seed, static_cast<std::uint64_t>(p)), o_.knobs, {}, 0, st);
         B_.used += r.used;
-        if (r.variables.empty() || r.objectives.empty()) return;
-        const bool taken = offer(n, r.variables[0], r.objectives[0][0], r.cv.empty() ? 0.0 : r.cv[0], B_.run, "run", -1);
+        const double gap_before = o_.pick == "gap_utility" ? gap(n) : 0.0;     // FAM-12
+        bool taken = false;
+        if (!r.variables.empty() && !r.objectives.empty())
+            taken = offer(n, r.variables[0], r.objectives[0][0], r.cv.empty() ? 0.0 : r.cv[0], B_.run, "run", -1);
         B_.pieces.back().taken = taken;
+        if (o_.pick == "gap_utility") update_utility(n, gap_before);
         if (taken) begin_closure(n);
+    }
+
+    // FAM-12: the gap f(n) - reference(n) of n's record; infinite without a feasible one
+    double gap(long long n)
+    {
+        const auto it = B_.records.find(n);
+        if (it == B_.records.end() || it->second.cv > 0.0) return std::numeric_limits<double>::infinity();
+        return it->second.f - reference(n);
+    }
+
+    // FAM-12: MOEA/D-DRA's Step 5 after a piece on n, its gap before the piece given
+    void update_utility(long long n, double before)
+    {
+        const double after = gap(n);
+        double& pi = B_.utility.emplace(n, 1.0).first->second;
+        if (std::isinf(before) && !std::isinf(after)) {                        // its first feasible record
+            pi = 1.0;
+            return;
+        }
+        const double delta = (!std::isinf(before) && before > 0.0) ? (before - after) / before : 0.0;
+        if (delta > 0.001)
+            pi = 1.0;
+        else
+            pi = (std::max)(0.0, o_.utility_factor + (1.0 - o_.utility_factor) * delta / 0.001) * pi;
     }
 
     void save(const std::string& stopped)

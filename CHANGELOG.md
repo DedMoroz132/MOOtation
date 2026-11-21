@@ -10,6 +10,9 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 33.1)
+- The family's campaign (`campaign::fam::Options`): `pick = gap_utility`, the gap times MOEA/D-DRA's utility of the instance, which a piece that betters nothing lowers by `utility_factor` (kept in the bank's file); and `fresh_first`, the records that came by a transfer, an assembly or `give` and were not yet worked on get their pieces first, under every pick. Off by default: the other picks, banks and files are as before.
+
 ### Added (task 32, layer 5)
 - The diminishing returns of the campaign's loops, the stop rule's `stall` made general
   (`scalar/stop_rule.hpp`, `Diminish`): a loop ends after the round whose gain in the total

@@ -117,6 +117,7 @@ set(MOOTATION_TESTS
     test_sweep
     test_portfolio_run
     test_family
+    test_family_pick
     test_components
     test_diminish
     test_clocks
