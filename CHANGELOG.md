@@ -10,6 +10,9 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 33.2)
+- New parts in the loop of parts (`campaign/components.hpp`, off by default): the problem's `make_part(key)` builds the part of a key the table has none of as the start of its search (its cost and its point's evaluation in `used()`); with `key_hard_lo` / `key_hard_hi` the keys are a grid that grows to these hard bounds, a face moving outward by `grow_step` values where the parts of the largest contribution in the sensitivity lie on it (the sweep's edge rule, now `scalar::sweep::edge_faces` for both, the sweep as before), the new keys made and searched. Without them the keys, the loop and the file are as before.
+
 ### Added (task 33.3)
 - `budget_more` in the family's campaign and the loop of parts (`campaign/family.hpp`, `campaign/components.hpp`, off by default): the call spends so much more than its file had spent, in place of `budget`, which counts the file's spending too; a `budget` not above what the file had spent gives no piece and says so in the settings (`family_budget_spent`, `components_budget_spent`).
 

@@ -29,7 +29,8 @@
 // the band stays as thick as the plan's spacing, which the layers keep;
 // SWEEP-7). A face fires where
 // at least edge_share of the top_k points are on it and it is not at its hard
-// bound. A step moves every face that fired outward, in the order coordinate
+// bound (sweep::edge_faces; the grid of keys of campaign/components.hpp,
+// COMP-15, judges its faces by it too). A step moves every face that fired outward, in the order coordinate
 // 0's lower, its upper, coordinate 1's lower, ...:
 //   real        by expand_step w0_j (w0_j: the starting box's width), at
 //               most to the hard bound;
@@ -132,6 +133,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../designs.hpp"
@@ -241,6 +243,37 @@ inline void walk_grid(const std::vector<Vec>& L, Fn&& fn)
             at[j] = 0;
         }
     }
+}
+
+// THE EDGE RULE, a coordinate's side of it
+struct Edge {
+    double lo = 0.0, hi = 0.0;                 // the current faces
+    double tol = 0.0;                          // the band: x on the lower face where x - lo <= tol, the upper hi - x <= tol
+    bool open_lo = false, open_hi = false;     // the face may move (the coordinate movable, the face not at its hard bound)
+};
+
+// THE EDGE RULE (the sweep's, and campaign/components.hpp's grid of keys, COMP-15): the faces that fire for the best
+// points, in the order coordinate 0's lower, its upper, coordinate 1's lower, ...: a face fires where at least
+// edge_share of the points are on it and it is open. No points: none.
+inline std::vector<std::pair<std::size_t, bool>> edge_faces(const std::vector<Vec>& best, const std::vector<Edge>& E,
+                                                            double edge_share)
+{
+    std::vector<std::pair<std::size_t, bool>> faces;
+    if (best.empty()) return faces;
+    for (std::size_t j = 0; j < E.size(); ++j) {
+        const Edge& e = E[j];
+        if (!e.open_lo && !e.open_hi) continue;
+        long long on_lo = 0, on_hi = 0;
+        for (const Vec& x : best) {
+            on_lo += x[j] - e.lo <= e.tol ? 1 : 0;
+            on_hi += e.hi - x[j] <= e.tol ? 1 : 0;
+        }
+        const double share_lo = static_cast<double>(on_lo) / static_cast<double>(best.size());
+        const double share_hi = static_cast<double>(on_hi) / static_cast<double>(best.size());
+        if (share_lo >= edge_share && e.open_lo) faces.push_back({j, false});
+        if (share_hi >= edge_share && e.open_hi) faces.push_back({j, true});
+    }
+    return faces;
 }
 
 struct PlanCap {};       // the plan has spent sweep_budget
@@ -479,24 +512,18 @@ inline Result run_sweep(const Problem& P, double eq_tol, bool has_tol0, double e
             stop.mark(ev);
             for (;;) {
                 // THE EDGE RULE: the faces that fire, judged on the top before the step
-                const std::vector<std::size_t> best = top();
-                std::vector<std::pair<std::size_t, bool>> faces;
-                if (!best.empty())
-                    for (std::size_t j = 0; j < n; ++j) {
-                        const Axis& A = ax[j];
-                        if (!A.movable) continue;
-                        const double tol = edge_tol * A.w0;
-                        long long on_lo = 0, on_hi = 0;
-                        for (std::size_t i : best) {
-                            const double x = ev.X[i][j];
-                            on_lo += x - A.lo <= tol ? 1 : 0;
-                            on_hi += A.hi - x <= tol ? 1 : 0;
-                        }
-                        const double share_lo = static_cast<double>(on_lo) / static_cast<double>(best.size());
-                        const double share_hi = static_cast<double>(on_hi) / static_cast<double>(best.size());
-                        if (share_lo >= edge_share && A.lo > A.hard_lo) faces.push_back({j, false});
-                        if (share_hi >= edge_share && A.hi < A.hard_hi) faces.push_back({j, true});
-                    }
+                std::vector<Vec> best;
+                for (std::size_t i : top()) best.push_back(ev.X[i]);
+                std::vector<sweep::Edge> E(n);
+                for (std::size_t j = 0; j < n; ++j) {
+                    const Axis& A = ax[j];
+                    E[j].lo = A.lo;
+                    E[j].hi = A.hi;
+                    E[j].tol = edge_tol * A.w0;
+                    E[j].open_lo = A.movable && A.lo > A.hard_lo;
+                    E[j].open_hi = A.movable && A.hi < A.hard_hi;
+                }
+                const std::vector<std::pair<std::size_t, bool>> faces = sweep::edge_faces(best, E, edge_share);
                 if (faces.empty()) break;                                           // the sweep's own end
                 if (!stop.go(ev)) break;
                 ++steps;

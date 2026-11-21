@@ -24,7 +24,12 @@
 //                           the parts the view shows. f its value, x its
 //                           point in instance n's problem (empty: nothing for
 //                           the bank), used_keys the parts it used, cost the
-//                           assembly's declared cost in used().
+//                           assembly's declared cost in used();
+// and, where the problem has a generator of parts (none by default: COMP-15),
+//   make_part(key)          {x, cost}: the part of a key the table has no
+//                           part of, built by the problem's own construction
+//                           (a greedy layout, a formula) as the start of its
+//                           search; cost its declared cost in used().
 //
 // THE TABLE (Table): one record per key, the best one found — the part's
 // point, its quality q (the value of the part's problem at the point; lower
@@ -189,6 +194,54 @@
 //     A budget not above what the table had spent gives no piece
 //     (stopped_by budget, as before) and its settings say so
 //     (components_budget_spent: what the table had spent).
+//   COMP-15. Off by default (task 33.2; make_part, key_hard_lo or
+//     key_hard_hi). NEW PARTS. The keys the loop starts with are often the
+//     first values of the generator's parameters, and the best parts sit at
+//     their end.
+//     MAKE_PART. With the hook, a key picked that has no part and was not
+//     made before gets one before its piece: make_part(key) (its cost in
+//     used()), the point evaluated once on the part's problem (in used(),
+//     as give's) and offered as source made; the instances it touches are
+//     assembled and the bank's closure run (COMP-7), then the piece searches
+//     from it (COMP-6). An empty x makes nothing; a key is made once (the
+//     table keeps the keys made: state's "made"). The counts:
+//     components_offered / components_accepted's "made", there only where a
+//     part was made.
+//     THE GRID OF KEYS. With key_hard_lo or key_hard_hi (each a key: one
+//     whole number a coordinate; every key then of that length) the keys
+//     are a grid that grows to these hard bounds. A coordinate's values are
+//     those of the keys; its faces the least and the largest; it may move
+//     where its values are consecutive whole numbers (as sweep.hpp SWEEP-3)
+//     and its face is not at its hard bound (a bound not given: the face's
+//     own). THE EDGE RULE is sweep's (scalar/sweep.hpp, sweep::edge_faces):
+//     the points are the keys of the first edge_top_k parts of the ranking
+//     with a contribution > 0 (COMP-4: the parts whose improvement is worth
+//     most); a key is on a face where it is within edge_band values of it
+//     (0: on the face itself); a face fires where edge_share of the points
+//     are on it. The rule is judged on a sensitivity taken where every key
+//     of the table has a part: pick = sensitivity's own (COMP-5), and with
+//     round_robin one taken where a round begins (the cursor at the first
+//     key; its cost in used(), as COMP-4). Every face that fires moves
+//     outward by grow_step values (at most to its hard bound), in the order
+//     coordinate 0's lower, its upper, coordinate 1's lower, ...; its layer
+//     is the new values of its coordinate times every other coordinate's
+//     values (a face moved before it on the same sensitivity included), and
+//     its keys join the table's keys (state's "grown"). They have no part:
+//     pick = sensitivity gives them the next pieces (COMP-5, a key without a
+//     part first), round_robin in its turn; make_part, where given, makes
+//     each before its piece. So the grid goes on growing while its best
+//     parts are on its faces, one layer a face at a time, each new key made,
+//     searched and assembled before the faces are judged again. The keys
+//     grown stay keys of the table in every later call. SETTINGS (only where
+//     the grid grew): components_grown (the keys added), components_expansions
+//     ([sensitivity, coordinate, "lo" | "hi", from, to, keys of its layer] a
+//     face moved; sensitivity the components_sensitivities it was judged
+//     on). Without make_part the new keys' pieces start from no point, as a
+//     key without a part does. A loop stopped and run on is the loop in one
+//     piece (COMP-9): the keys made, grown and the faces moved are in the
+//     table's file, a key made and stopped before its piece is not made
+//     again. Without make_part and the hard bounds the keys, the loop and
+//     the file are those of before, bit for bit.
 //
 // Options: solver ("nelder_mead"), knobs, eq_tol (1e-4), pop_size (100),
 // budget (the loop's used() in all, the file's included), piece_budget,
@@ -197,7 +250,9 @@
 // seed (1), table_file ("": none), bank_file ("": none; needs a bank),
 // save_every (1), diminish_ratio, diminish_abs (0: off), round_pieces (0: the
 // number of keys; read with the diminishing returns), table_journal (false;
-// COMP-13), budget_more (0: off; COMP-14).
+// COMP-13), budget_more (0: off; COMP-14), key_hard_lo, key_hard_hi (none:
+// no grid), edge_top_k (5), edge_share (0.4), edge_band (0), grow_step (1;
+// COMP-15).
 // ============================================================================
 
 #include <algorithm>
@@ -285,10 +340,17 @@ struct Assembled {
     double cost = 0.0;             // the assembly's declared cost in used()
 };
 
+// make_part's answer (COMP-15)
+struct Made {
+    Vec x;                         // the part's point in its problem (empty: none made)
+    double cost = 0.0;             // the making's declared cost in used()
+};
+
 struct Components {
     std::vector<Key> keys;
     std::function<Problem(const Key& key)> component_problem;
     std::function<Assembled(long long n, const View& view)> assemble;
+    std::function<Made(const Key& key)> make_part;           // COMP-15 (none: a part's piece starts from no point)
 };
 
 // COMP-4
@@ -314,6 +376,15 @@ struct PieceLog {
     bool taken = false;          // the table took its answer
 };
 
+// a face of the grid of keys moved (COMP-15)
+struct Expansion {
+    long long sensitivity = 0;   // the sensitivity it was judged on (components_sensitivities then)
+    std::size_t coordinate = 0;
+    bool upper = false;
+    long long from = 0, to = 0;  // the face before and after
+    long long keys = 0;          // the keys of its layer
+};
+
 // an instance's last assembly that was ok
 struct Assembly {
     double f = 0.0;
@@ -336,6 +407,10 @@ struct Table {
     std::vector<std::pair<Key, double>> ranking;         // the last sensitivity's
     json::Value options = json::Value::object();         // the last call's (for the scripts)
     fam::Measure measure;                                // COMP-12 (off: none)
+    fam::Counts made;                                    // COMP-15: the parts make_part made
+    std::set<Key> made_keys;                             // COMP-15: the keys make_part was asked for
+    std::vector<Key> grown;                              // COMP-15: the keys the edge rule added, ascending
+    std::vector<Expansion> expansions;                   // COMP-15: the faces moved, in turn
 };
 
 struct Options {
@@ -360,6 +435,11 @@ struct Options {
     long long round_pieces = 0;                          // 0: the number of keys
     bool table_journal = false;                          // COMP-13 (false: the file whole at every save)
     long long budget_more = 0;                           // COMP-14 (0: off; budget then 0)
+    Key key_hard_lo, key_hard_hi;                        // COMP-15 (none: no grid of keys)
+    long long edge_top_k = 5;                            // COMP-15: the edge rule (sweep.hpp's)
+    double edge_share = 0.4;
+    long long edge_band = 0;                             // values of a face (0: on it)
+    long long grow_step = 1;                             // values a face moves
 };
 
 struct Report {
@@ -472,7 +552,32 @@ inline json::Value counts_json(const Table& T, long long fam::Counts::*c)
     json::Value o = json::Value::object();
     o.set("run", json::Value::integer(T.run.*c));
     o.set("given", json::Value::integer(T.given.*c));
+    if (T.made.offered > 0) o.set("made", json::Value::integer(T.made.*c));   // COMP-15: only where a part was made
     return o;
+}
+
+// COMP-15: a list of keys
+inline json::Value keys_json(const std::vector<Key>& ks)
+{
+    json::Value a = json::Value::array();
+    for (const Key& k : ks) a.items.push_back(wholes(k));
+    return a;
+}
+
+inline json::Value expansions_json(const Table& T)
+{
+    json::Value a = json::Value::array();
+    for (const Expansion& e : T.expansions) {
+        json::Value q = json::Value::array();
+        q.items.push_back(json::Value::integer(e.sensitivity));
+        q.items.push_back(json::Value::integer(static_cast<std::int64_t>(e.coordinate)));
+        q.items.push_back(json::Value::string(e.upper ? "hi" : "lo"));
+        q.items.push_back(json::Value::integer(e.from));
+        q.items.push_back(json::Value::integer(e.to));
+        q.items.push_back(json::Value::integer(e.keys));
+        a.items.push_back(q);
+    }
+    return a;
 }
 
 inline json::Value ranking_json(const Table& T)
@@ -512,6 +617,14 @@ inline json::Value options_json(const Options& o)
         v.set("round_pieces", json::Value::integer(o.round_pieces));
     }
     if (o.budget_more > 0) v.set("budget_more", json::Value::integer(o.budget_more));            // COMP-14
+    if (!o.key_hard_lo.empty() || !o.key_hard_hi.empty()) {                    // COMP-15: only where asked
+        v.set("key_hard_lo", wholes(o.key_hard_lo));
+        v.set("key_hard_hi", wholes(o.key_hard_hi));
+        v.set("edge_top_k", json::Value::integer(o.edge_top_k));
+        v.set("edge_share", json::Value::number(o.edge_share));
+        v.set("edge_band", json::Value::integer(o.edge_band));
+        v.set("grow_step", json::Value::integer(o.grow_step));
+    }
     return v;
 }
 
@@ -555,6 +668,10 @@ inline std::vector<std::pair<std::string, std::string>> settings_of(const Table&
     s.push_back({"components_sensitivities", std::to_string(T.sensitivities)});
     s.push_back({"components_bank_given", std::to_string(T.bank_given)});
     s.push_back({"components_ranking", json::dump(detail::ranking_json(T))});
+    if (!T.grown.empty()) {                                                                     // COMP-15
+        s.push_back({"components_grown", json::dump(detail::keys_json(T.grown))});
+        s.push_back({"components_expansions", json::dump(detail::expansions_json(T))});
+    }
     if (T.measure.on) s.push_back({"components_gains", json::dump(T.measure.rule.gains_json())});   // COMP-12
     if (!stopped_by.empty()) s.push_back({"components_stopped_by", stopped_by});
     return s;
@@ -594,6 +711,12 @@ inline json::Value state_value(const Table& T)
     st.set("pending", wholes(T.pending));
     st.set("next", T.has_next ? wholes(T.next) : json::Value::null());
     st.set("assembled", assembled);
+    if (!T.made_keys.empty())                                                  // COMP-15: only where begun
+        st.set("made", keys_json(std::vector<Key>(T.made_keys.begin(), T.made_keys.end())));
+    if (!T.grown.empty()) {
+        st.set("grown", keys_json(T.grown));
+        st.set("expansions", expansions_json(T));
+    }
     if (T.measure.on) st.set("diminish", fam::detail::measure_json(T.measure));   // COMP-12: only where begun
     return st;
 }
@@ -651,6 +774,8 @@ inline void read_head(const json::Value& v, Table& T)
         const json::Value& o = field(s, key);
         T.run.*c = whole_of(field(o, "run"), key);
         T.given.*c = whole_of(field(o, "given"), key);
+        const json::Value* m = o.find("made");                                 // COMP-15
+        T.made.*c = m ? whole_of(*m, key) : 0;
     };
     counts(&fam::Counts::offered, "components_offered");
     counts(&fam::Counts::accepted, "components_accepted");
@@ -687,6 +812,28 @@ inline void read_head(const json::Value& v, Table& T)
         as.f = number_of(a.items[1], "an assembly's f");
         for (const auto& k : a.items[2].items) as.used_keys.push_back(key_of(k, "an assembly's key"));
         T.assembled[whole_of(a.items[0], "an assembly's n")] = std::move(as);
+    }
+    T.made_keys.clear();                                                       // COMP-15
+    if (const json::Value* m = st.find("made"))
+        for (const auto& k : m->items) T.made_keys.insert(key_of(k, "a key made"));
+    T.grown.clear();
+    T.expansions.clear();
+    if (const json::Value* g = st.find("grown")) {
+        for (const auto& k : g->items) T.grown.push_back(key_of(k, "a key grown"));
+        for (const auto& e : field(st, "expansions").items) {
+            if (e.items.size() != 6 || e.items[2].kind != json::Value::Kind::String ||
+                (e.items[2].s != "lo" && e.items[2].s != "hi"))
+                throw std::invalid_argument(
+                    "component table: an expansion is [sensitivity, coordinate, \"lo\" | \"hi\", from, to, keys]");
+            Expansion x;
+            x.sensitivity = whole_of(e.items[0], "an expansion's sensitivity");
+            x.coordinate = static_cast<std::size_t>(whole_of(e.items[1], "an expansion's coordinate"));
+            x.upper = e.items[2].s == "hi";
+            x.from = whole_of(e.items[3], "an expansion's from");
+            x.to = whole_of(e.items[4], "an expansion's to");
+            x.keys = whole_of(e.items[5], "an expansion's keys");
+            T.expansions.push_back(x);
+        }
     }
     T.measure = fam::Measure();
     if (const json::Value* d = st.find("diminish")) T.measure = fam::detail::measure_of(*d, "component table: diminish");
@@ -938,25 +1085,7 @@ public:
     {
         if (!std::binary_search(keys_.begin(), keys_.end(), k))
             throw std::invalid_argument("components: " + key_text(k) + " is not a key of the parts");
-        const Problem& Q = problem(k);
-        if (x.size() != Q.lo.size())
-            throw std::invalid_argument("components: the point given for part " + key_text(k) + " has " +
-                                        std::to_string(x.size()) + " values, its problem " +
-                                        std::to_string(Q.lo.size()));
-        scalar::Evaluator ev(Q, o_.eq_tol, false, 0.0, std::int64_t{1} << 40, 1, {}, 0);
-        std::size_t i = 0;
-        try {
-            i = ev.index(x);
-        } catch (const scalar::BudgetSpent&) {                                  // the problem's deadline
-            ++T_.given.offered;
-            return;
-        }
-        T_.used += ev.used();
-        if (ev.failed[i]) {
-            ++T_.given.offered;
-            return;
-        }
-        offer(k, x, ev.F[i][0], ev.cv(i), T_.given, "given");
+        evaluate_offer(k, x, T_.given, "given");
     }
 
     Report run()
@@ -990,6 +1119,17 @@ public:
             if (!T_.has_next) {                                                // COMP-5
                 T_.next = pick();
                 T_.has_next = true;
+            }
+            if (C_.make_part && !T_.parts.count(T_.next) && !T_.made_keys.count(T_.next)) {   // COMP-15
+                if (left() <= 0) {
+                    stopped = "budget";
+                    break;
+                }
+                make(T_.next);
+                if (!settle()) {                                               // its assemblies before its piece
+                    stopped = "budget";
+                    break;
+                }
             }
             const long long l = left();
             if (l <= 0) {
@@ -1030,6 +1170,7 @@ private:
     std::vector<double> w_;
     std::map<Key, Problem> problems_;
     detail::JournalWriter journal_;                                            // COMP-13
+    bool grid_ = false;                                                        // COMP-15: key_hard_lo or _hi
 
     void check()
     {
@@ -1037,6 +1178,11 @@ private:
         std::sort(keys_.begin(), keys_.end());
         if (std::adjacent_find(keys_.begin(), keys_.end()) != keys_.end())
             throw std::invalid_argument("components: a key given twice");
+        if (!T_.grown.empty()) {                                               // COMP-15: the keys grown before
+            keys_.insert(keys_.end(), T_.grown.begin(), T_.grown.end());
+            std::sort(keys_.begin(), keys_.end());
+            keys_.erase(std::unique(keys_.begin(), keys_.end()), keys_.end());
+        }
         if (o_.pick != "round_robin" && o_.pick != "sensitivity")
             throw std::invalid_argument("components: pick = round_robin | sensitivity, not " + o_.pick);
         if (o_.pick == "sensitivity") detail::check_sensitivity(o_.epsilon, o_.scope);
@@ -1055,7 +1201,33 @@ private:
             throw std::invalid_argument("components: a table_journal without a table_file");
         scalar::strategy::Diminish::check(o_.diminish_ratio, o_.diminish_abs, "components");
         if (o_.round_pieces < 0) throw std::invalid_argument("components: round_pieces >= 0");
+        grid_ = !o_.key_hard_lo.empty() || !o_.key_hard_hi.empty();            // COMP-15
+        if (grid_) {
+            if (o_.edge_top_k < 1) throw std::invalid_argument("components: edge_top_k >= 1");
+            if (!(o_.edge_share > 0.0 && o_.edge_share <= 1.0))
+                throw std::invalid_argument("components: edge_share in (0, 1]");
+            if (o_.edge_band < 0) throw std::invalid_argument("components: edge_band >= 0");
+            if (o_.grow_step < 1) throw std::invalid_argument("components: grow_step >= 1");
+            detail::check_sensitivity(o_.epsilon, o_.scope);                   // the rule's ranking
+        }
         if (keys_.empty()) return;                                             // COMP-11: nothing asked
+        if (grid_) {
+            const std::size_t d = keys_.front().size();
+            if (d == 0) throw std::invalid_argument("components: the grid of keys needs keys of a number at least");
+            for (const Key* h : {&o_.key_hard_lo, &o_.key_hard_hi})
+                if (!h->empty() && h->size() != d)
+                    throw std::invalid_argument("components: a hard bound of the keys has " + std::to_string(h->size()) +
+                                                " numbers, the keys " + std::to_string(d));
+            for (const Key& k : keys_) {
+                if (k.size() != d)
+                    throw std::invalid_argument("components: the grid of keys needs keys of one length; " +
+                                                key_text(k) + " is not of " + std::to_string(d));
+                for (std::size_t j = 0; j < d; ++j)
+                    if ((!o_.key_hard_lo.empty() && k[j] < o_.key_hard_lo[j]) ||
+                        (!o_.key_hard_hi.empty() && k[j] > o_.key_hard_hi[j]))
+                        throw std::invalid_argument("components: key " + key_text(k) + " is outside the hard bounds");
+            }
+        }
         if (!C_.component_problem) throw std::invalid_argument("components: no component_problem");
         if (!C_.assemble) throw std::invalid_argument("components: no assemble");
         inst_ = detail::instances_of(F_);
@@ -1072,6 +1244,9 @@ private:
         for (const auto& kv : T_.touched)
             if (!std::binary_search(keys_.begin(), keys_.end(), kv.first))
                 throw std::invalid_argument("components: the table touched " + key_text(kv.first) + ", not a key");
+        for (const Key& k : T_.made_keys)
+            if (!std::binary_search(keys_.begin(), keys_.end(), k))
+                throw std::invalid_argument("components: the table made " + key_text(k) + ", not a key");
         if (T_.has_next && !std::binary_search(keys_.begin(), keys_.end(), T_.next))
             throw std::invalid_argument("components: the table's next part " + key_text(T_.next) + " is not a key");
         for (const auto& kv : T_.assembled)
@@ -1136,6 +1311,42 @@ private:
         std::sort(T_.pending.begin(), T_.pending.end());
         T_.pending.erase(std::unique(T_.pending.begin(), T_.pending.end()), T_.pending.end());
         return true;
+    }
+
+    // a point of part k evaluated once on its problem (in used()) and offered (give; COMP-15's make)
+    void evaluate_offer(const Key& k, const Vec& x, fam::Counts& c, const std::string& source)
+    {
+        const Problem& Q = problem(k);
+        if (x.size() != Q.lo.size())
+            throw std::invalid_argument("components: the point " + source + " for part " + key_text(k) + " has " +
+                                        std::to_string(x.size()) + " values, its problem " +
+                                        std::to_string(Q.lo.size()));
+        scalar::Evaluator ev(Q, o_.eq_tol, false, 0.0, std::int64_t{1} << 40, 1, {}, 0);
+        std::size_t i = 0;
+        try {
+            i = ev.index(x);
+        } catch (const scalar::BudgetSpent&) {                                  // the problem's deadline
+            ++c.offered;
+            return;
+        }
+        T_.used += ev.used();
+        if (ev.failed[i]) {
+            ++c.offered;
+            return;
+        }
+        offer(k, x, ev.F[i][0], ev.cv(i), c, source);
+    }
+
+    // COMP-15: the part of key k made by make_part (once a key), its cost and its evaluation in used()
+    void make(const Key& k)
+    {
+        T_.made_keys.insert(k);
+        const Made m = C_.make_part(k);
+        if (!std::isfinite(m.cost) || m.cost < 0.0)
+            throw std::invalid_argument("components: the cost of making part " + key_text(k) +
+                                        " is not a finite number >= 0");
+        T_.used += m.cost;
+        if (!m.x.empty()) evaluate_offer(k, m.x, T_.made, "made");
     }
 
     fam::Options bank_options(long long budget) const
@@ -1227,18 +1438,18 @@ private:
         return m.rule.round(g);
     }
 
-    // COMP-5
-    Key pick()
+    // COMP-5: the key without a part untouched longest, then the lower key (nullptr: none)
+    const Key* missing() const
     {
-        if (o_.pick == "round_robin") {
-            const Key k = keys_[T_.cursor % keys_.size()];
-            T_.cursor = (T_.cursor + 1) % keys_.size();
-            return k;
-        }
-        const Key* missing = nullptr;
+        const Key* m = nullptr;
         for (const Key& k : keys_)
-            if (!T_.parts.count(k) && (!missing || age(k) > age(*missing))) missing = &k;
-        if (missing) return *missing;
+            if (!T_.parts.count(k) && (!m || age(k) > age(*m))) m = &k;
+        return m;
+    }
+
+    // COMP-4, COMP-5: the sensitivity of the table, its cost in used(), kept as the ranking
+    std::map<Key, double> rank()
+    {
         const Sensitivity S = detail::sensitivity_of(inst_, w_, C_, T_.parts, o_.epsilon, o_.scope);
         T_.used += S.cost;
         T_.assembles += S.assembles;
@@ -1249,6 +1460,87 @@ private:
             T_.ranking.push_back({c.key, c.value});
             value[c.key] = c.value;
         }
+        return value;
+    }
+
+    // COMP-15: the edge rule on the ranking just taken; the faces that fire move by grow_step values and the keys
+    // of their layers join the table's keys. Whether a face moved.
+    bool grow()
+    {
+        const std::size_t d = keys_.front().size();
+        std::vector<std::vector<long long>> vals(d);                          // a coordinate's values, ascending
+        for (const Key& k : keys_)
+            for (std::size_t j = 0; j < d; ++j) vals[j].push_back(k[j]);
+        for (auto& v : vals) {
+            std::sort(v.begin(), v.end());
+            v.erase(std::unique(v.begin(), v.end()), v.end());
+        }
+        std::vector<Vec> best;                                                 // the best parts' keys
+        for (const auto& r : T_.ranking) {
+            if (!(r.second > 0.0) || static_cast<long long>(best.size()) >= o_.edge_top_k) break;
+            Vec x;
+            for (long long v : r.first) x.push_back(static_cast<double>(v));
+            best.push_back(x);
+        }
+        std::vector<scalar::sweep::Edge> E(d);
+        for (std::size_t j = 0; j < d; ++j) {
+            const std::vector<long long>& v = vals[j];
+            const bool whole = v.back() - v.front() + 1 == static_cast<long long>(v.size());   // consecutive
+            E[j].lo = static_cast<double>(v.front());
+            E[j].hi = static_cast<double>(v.back());
+            E[j].tol = static_cast<double>(o_.edge_band);
+            E[j].open_lo = whole && !o_.key_hard_lo.empty() && v.front() > o_.key_hard_lo[j];
+            E[j].open_hi = whole && !o_.key_hard_hi.empty() && v.back() < o_.key_hard_hi[j];
+        }
+        const std::vector<std::pair<std::size_t, bool>> faces = scalar::sweep::edge_faces(best, E, o_.edge_share);
+        for (const auto& [j, upper] : faces) {
+            std::vector<long long>& v = vals[j];
+            const long long from = upper ? v.back() : v.front();
+            const long long to = upper ? (std::min)(o_.key_hard_hi[j], from + o_.grow_step)
+                                       : (std::max)(o_.key_hard_lo[j], from - o_.grow_step);
+            std::vector<long long> add;                                        // the new values, ascending
+            for (long long t = upper ? from + 1 : to; t <= (upper ? to : from - 1); ++t) add.push_back(t);
+            std::vector<Vec> layer(d);                                         // its values times the others'
+            for (std::size_t q = 0; q < d; ++q)
+                for (long long t : q == j ? add : vals[q]) layer[q].push_back(static_cast<double>(t));
+            long long count = 0;
+            scalar::sweep::walk_grid(layer, [&](const Vec& x) {
+                Key k;
+                for (double t : x) k.push_back(static_cast<long long>(t));
+                keys_.push_back(k);
+                T_.grown.push_back(k);
+                ++count;
+            });
+            v.insert(upper ? v.end() : v.begin(), add.begin(), add.end());
+            Expansion e;
+            e.sensitivity = T_.sensitivities;
+            e.coordinate = j;
+            e.upper = upper;
+            e.from = from;
+            e.to = to;
+            e.keys = count;
+            T_.expansions.push_back(e);
+        }
+        std::sort(keys_.begin(), keys_.end());
+        std::sort(T_.grown.begin(), T_.grown.end());
+        return !faces.empty();
+    }
+
+    // COMP-5; COMP-15: the edge rule where every key has a part
+    Key pick()
+    {
+        if (o_.pick == "round_robin") {
+            if (grid_ && T_.cursor == 0 && T_.parts.size() == keys_.size()) {  // a round begins
+                rank();
+                grow();
+            }
+            const Key k = keys_[T_.cursor % keys_.size()];
+            T_.cursor = (T_.cursor + 1) % keys_.size();
+            return k;
+        }
+        if (const Key* m = missing()) return *m;
+        const std::map<Key, double> value = rank();
+        if (grid_ && grow()) return *missing();                                // the new keys first
         const Key* best = nullptr;
         double best_v = 0.0;
         long long best_age = 0;

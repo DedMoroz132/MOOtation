@@ -121,6 +121,7 @@ set(MOOTATION_TESTS
     test_components
     test_component_journal
     test_budget_more
+    test_component_grid
     test_diminish
     test_clocks
     test_auto_mem
