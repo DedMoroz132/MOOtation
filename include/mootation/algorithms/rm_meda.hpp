@@ -116,6 +116,9 @@ public:
         return false;
     }
 
+    // The sizes setup takes (run_core.hpp, pop_size_mode = nearest).
+    bool accepts_pop_size(int n, int, int) const { return n > K_; }
+
     void setup(DataVault<Ind_t>& vault)
     {
         check(vault);

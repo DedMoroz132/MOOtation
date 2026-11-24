@@ -102,6 +102,13 @@ struct Result {
     std::vector<std::string>         ignored;     // knobs this algorithm lacks
     int                              generations = 0;
     int                              evaluations = 0;
+    // The population size the run took: Settings::pop_size unless
+    // pop_size_mode = nearest moved it (task 34.2).
+    int                              pop_size_used = 0;
+    // The run's settings as the core used them (run_core.hpp,
+    // RunResult::settings): a preset's knobs (smpso, ...), pop_size_used with
+    // pop_size_mode = nearest; empty for most runs.
+    std::vector<std::pair<std::string, std::string>> settings;
 
     std::size_t size() const { return objectives.size(); }
 };
@@ -181,6 +188,7 @@ inline runner::RunConfig config_of(const Settings& s, const io::Population* seed
 {
     runner::RunConfig c;
     c.pop_size = s.pop_size;
+    c.pop_size_mode = s.pop_size_mode;
     c.n_gen = s.max_gen;
     c.max_evaluations = s.max_evaluations;
     c.seed = s.seed;
@@ -301,6 +309,8 @@ inline Result run(const Settings& s, Evaluate eval, const io::Population* seed,
     r.ignored = std::move(rr.ignored);
     r.generations = rr.generations;
     r.evaluations = static_cast<int>(rr.evaluations);
+    r.pop_size_used = rr.pop_size_used;
+    r.settings = std::move(rr.settings);
     return r;
 }
 

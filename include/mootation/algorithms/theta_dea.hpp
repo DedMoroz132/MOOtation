@@ -528,6 +528,13 @@ public:
     }
 
     // ── setup ──────────────────────────────────────────────────────────────
+    // The sizes setup takes (run_core.hpp, pop_size_mode = nearest): any with
+    // n_ref_points given, the Das-Dennis lattice sizes otherwise.
+    bool accepts_pop_size(int n, int m, int) const
+    {
+        return n_ref_points_ > 0 || das_dennis::is_attainable(m, n);
+    }
+
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size();
         int m = vault.objs_n();

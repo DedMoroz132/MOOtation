@@ -125,6 +125,7 @@ set(MOOTATION_TESTS
     test_diminish
     test_clocks
     test_auto_mem
+    test_pop_size_mode
     test_windows_first)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
@@ -239,6 +240,9 @@ mootation_test_timeout(test_core_readings 300)
 # the property it guards — that a warm start costs no function evaluations — is
 # the whole reason to have one.
 mootation_test_timeout(test_warm_start 600)
+# pop_size_mode (task 34.2): embed.hpp's dispatch again, every algorithm at
+# three numbers of objectives on a short budget.
+mootation_test_timeout(test_pop_size_mode 900)
 
 # test_hvc and test_dss check against an independent computation on random
 # sets: on every push a part of them (every kind of set still dozens of

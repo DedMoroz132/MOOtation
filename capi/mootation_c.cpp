@@ -298,6 +298,16 @@ int moo_ignored_count(moo_session* s) {
     });
 }
 
+int moo_pop_size_used(moo_session* s) {
+    return guarded(s, [&] {
+        if (!s->have_result) {
+            s->result      = s->sess->result();
+            s->have_result = true;
+        }
+        return s->result.pop_size_used;
+    });
+}
+
 const char* moo_ignored_name(moo_session* s, int i) {
     if (!s || !s->have_result) return nullptr;
     if (i < 0 || i >= static_cast<int>(s->result.ignored.size())) return nullptr;

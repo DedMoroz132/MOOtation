@@ -237,6 +237,9 @@ public:
         repair_ = r;
     }
 
+    // The sizes setup takes (run_core.hpp, pop_size_mode = nearest): NP >= 4.
+    bool accepts_pop_size(int n, int, int) const { return n >= 4; }
+
     void setup(DataVault<Ind_t>& vault)
     {
         require(vault);

@@ -10,6 +10,9 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 34.2)
+- `pop_size_mode = exact | nearest` (`settings.hpp`, `RunConfig`, `minimize`; off by default): with `nearest` a run whose algorithm does not take the `pop_size` asked for runs with the nearest size it does take, the smaller of two equally near — a Das–Dennis lattice size, a multiple of the M2M cores' K, the lower bounds of GDE3, BC and RM-MEDA, each core saying which sizes its setup takes (`accepts_pop_size`). The size taken is `pop_size_used` in the run's settings (`Result::pop_size_used`, `moo_pop_size_used`); the evaluation budget stays as given. With `exact` every run is as before.
+
 ### Added (task 33.2)
 - New parts in the loop of parts (`campaign/components.hpp`, off by default): the problem's `make_part(key)` builds the part of a key the table has none of as the start of its search (its cost and its point's evaluation in `used()`); with `key_hard_lo` / `key_hard_hi` the keys are a grid that grows to these hard bounds, a face moving outward by `grow_step` values where the parts of the largest contribution in the sensitivity lie on it (the sweep's edge rule, now `scalar::sweep::edge_faces` for both, the sweep as before), the new keys made and searched. Without them the keys, the loop and the file are as before.
 

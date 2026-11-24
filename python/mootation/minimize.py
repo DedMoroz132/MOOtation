@@ -180,6 +180,7 @@ def minimize(
     n_gen: int = 250,
     max_evaluations: int = 0,
     seed: int = 0,
+    pop_size_mode: str = "exact",
     constraints: Callable[[Sequence[float]], Sequence[float]] | None = None,
     n_cons: int = 0,
     eq_constraints: Callable[[Sequence[float]], Sequence[float]] | None = None,
@@ -236,6 +237,15 @@ def minimize(
     bounds      one (lower, upper) pair per decision variable.
     n_objs      how many objectives `fn` returns.
     algorithm   any name from `mootation.algorithms()`.
+    pop_size_mode
+                a pop_size the algorithm does not take (a Das-Dennis lattice
+                size for NSGA-III, MOEA/D, ...; a multiple of K for the M2M
+                cores): "exact" (the default) is an error, "nearest" runs
+                with the nearest size it takes, the smaller of two equally
+                near; result.settings then names it (pop_size_used, also
+                result.pop_size_used). max_evaluations stays as given. A seed
+                population or a design (init) must have the size taken
+                (run_core.hpp, RunConfig::pop_size_mode).
     constraints takes one decision vector, returns `n_cons` values; each <= 0
                 means satisfied. Supplying it turns constraint handling on.
     eq_constraints, n_eq
@@ -484,6 +494,8 @@ def minimize(
     if block_weights is not None and residual_blocks is None:
         raise ValueError("block_weights go with residual_blocks")
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
+    if pop_size_mode not in ("exact", "nearest"):
+        raise ValueError(f"pop_size_mode = '{pop_size_mode}': exact or nearest")
     if wrap is not None:
         if residuals_blocks is not None or group_act is not None:
             raise ValueError("wrap: not with residuals_blocks or group_act (task 28)")
@@ -496,6 +508,7 @@ def minimize(
                                  batch=batch, var_types=var_types, grad=grad, residuals=residuals, jac=jac, x0=x0,
                                  gauge_basis=gauge_basis,
                                  rest=dict(algorithm=algorithm, pop_size=pop_size, n_gen=n_gen,
+                                           pop_size_mode=pop_size_mode,
                                            max_evaluations=max_evaluations, seed=seed, n_cons=n_cons, n_eq=n_eq,
                                            eq_tol=eq_tol, eq_tol_schedule=eq_tol_schedule, eq_tol0=eq_tol0,
                                            constraint_mode=constraint_mode, eps_schedule=eps_schedule,
@@ -890,6 +903,7 @@ def minimize(
 
     cfg = _core.Config()
     cfg.pop_size = int(pop_size)
+    cfg.pop_size_mode = str(pop_size_mode)
     cfg.n_gen = int(n_gen)
     if max_evaluations:
         if int(max_evaluations) < 0:

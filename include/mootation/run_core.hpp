@@ -625,12 +625,56 @@ bool core_finished(const C& c)
     else { (void)c; return false; }
 }
 
+// The population sizes a core takes (RunConfig::pop_size_mode, task 34.2). A
+// core whose setup refuses some sizes says which it takes:
+//     bool accepts_pop_size(int n, int m, int n_vars) const
+// for n members, m objectives (the vault's, objs_n()) and n_vars real
+// variables, read after its knobs are set (M2M's K, NSGA-III's n_ref_points).
+// A core without it takes every size.
+template <typename C, typename = void>
+struct has_accepts_pop_size : std::false_type {};
+template <typename C>
+struct has_accepts_pop_size<C, std::void_t<decltype(std::declval<const C&>().accepts_pop_size(0, 0, 0))>>
+    : std::true_type {};
+template <typename C>
+bool core_accepts_pop_size(const C& c, int n, int m, int n_vars)
+{
+    if constexpr (has_accepts_pop_size<C>::value) return c.accepts_pop_size(n, m, n_vars);
+    else { (void)c; (void)n; (void)m; (void)n_vars; return true; }
+}
+
+// The size nearest to n that `takes` accepts, at least 2: n itself when taken,
+// otherwise n - d or n + d for the least d, the smaller of the two when both
+// are taken (POP-1). None within n + 1000 of n: n, and the core's own setup
+// then says why it refuses it.
+// POP-1. A tie goes to the smaller size: under max_gen the run then spends no
+//   more than pop_size x max_gen evaluations, and PlatEMO 4.16 rounds the
+//   same way (UniformPoint.m, NBI: the largest lattice not above N).
+template <typename Takes>
+int nearest_pop_size(int n, const Takes& takes)
+{
+    if (takes(n)) return n;
+    for (int d = 1; d <= n + 1000; ++d) {
+        if (n - d >= 2 && takes(n - d)) return n - d;
+        if (takes(n + d)) return n + d;
+    }
+    return n;
+}
+
 // ── Run configuration ───────────────────────────────────────────────────────
 // NOT named PyConfig: CPython's own Python.h defines that (PEP 587).
 // Every knob is optional. `has_*` is false until the caller assigns, so an
 // unset knob leaves the algorithm's paper default alone.
 struct RunConfig {
     int      pop_size = 100;
+    // A pop_size the core does not take (task 34.2; has_accepts_pop_size):
+    //   "exact"   (the default) the core's setup refuses it: the run it was;
+    //   "nearest" the run takes nearest_pop_size's (POP-1), written to
+    //             RunResult::pop_size_used and to RunResult::settings as
+    //             pop_size_used; max_evaluations stays as given.
+    // POP-2. A warm start keeps its rows: with nearest, seed_variables must
+    //   have as many rows as the size taken, an error otherwise.
+    std::string pop_size_mode = "exact";
     int      n_gen    = 250;
     unsigned seed     = 0;
     mootation::ConstraintMode constraint_mode = mootation::ConstraintMode::NONE;
@@ -878,6 +922,9 @@ struct RunResult {
     int                              generations = 0;
     std::vector<std::vector<double>> limits;
     bool                             finished = false;   // the core stopped by its own rule (task 16)
+    // The population size the run took: RunConfig::pop_size unless
+    // pop_size_mode = "nearest" moved it (task 34.2).
+    int                              pop_size_used = 0;
     // Every variation operator the run used, with its bound repair ("none" for
     // one that cannot leave the box), in order of first use.
     std::vector<std::pair<std::string, std::string>> operators;
@@ -1164,6 +1211,28 @@ RunResult run_core(const RunConfig& cfg)
             throw std::invalid_argument(kv.first + " = '" + kv.second + "' is not one of its values");
         note(apply_word(alg, kv.first, kv.second), kv.first.c_str());
     }
+    // the population size (RunConfig::pop_size_mode): with nearest, the core
+    // is asked after its knobs, and the vault, not yet used, takes the size
+    int pop_n = cfg.pop_size;
+    if (cfg.pop_size_mode == "nearest") {
+        auto& v0 = opt.get_vault();
+        const int m = v0.objs_n(), nv = v0.vars_n();
+        pop_n = nearest_pop_size(cfg.pop_size, [&](int n) { return core_accepts_pop_size(alg, n, m, nv); });
+        if (pop_n != cfg.pop_size) {
+            if (!cfg.seed_variables.empty() && static_cast<int>(cfg.seed_variables.size()) != pop_n)
+                throw std::invalid_argument(
+                    "pop_size_mode = nearest: this algorithm takes pop_size " + std::to_string(pop_n) +
+                    " (not " + std::to_string(cfg.pop_size) + "), but the seed population has " +
+                    std::to_string(cfg.seed_variables.size()) + " rows (POP-2); set pop_size = " +
+                    std::to_string(pop_n));
+            v0.set_pop_size(pop_n);
+            if (by_evaluations)                   // the schedule's first guess, as above
+                apply_t_max(alg, static_cast<int>(std::min<long long>(
+                    INT_MAX, (cfg.max_evaluations + pop_n - 1) / pop_n)));
+        }
+    } else if (cfg.pop_size_mode != "exact") {
+        throw std::invalid_argument("pop_size_mode = '" + cfg.pop_size_mode + "': exact or nearest");
+    }
     long long steps_done = 0;                 // the steps taken (RunResult::generations)
     std::optional<ops::ScopedSbxVarProb> var_prob;
     if (cfg.sbx_var_prob) {
@@ -1261,7 +1330,7 @@ RunResult run_core(const RunConfig& cfg)
         // EPS_LEVEL, Eq. 8 rules 2-4, once for every generation reached
         auto eps_update = [&]() {
             auto& v = opt.get_vault();
-            const double pop = static_cast<double>((std::max)(1, cfg.pop_size));
+            const double pop = static_cast<double>((std::max)(1, pop_n));
             const double gens_total = by_evaluations
                 ? static_cast<double>(cfg.max_evaluations) / pop : static_cast<double>(cfg.n_gen);
             const int gen_now = by_evaluations
@@ -1327,7 +1396,7 @@ RunResult run_core(const RunConfig& cfg)
             if (observe) emit(0);
             const long long start  = spent();
             const long long stride = static_cast<long long>(cfg.record_every) *
-                                     (std::max)(1, cfg.pop_size);
+                                     (std::max)(1, pop_n);
             long long next_record  = start + stride;
             long long idle         = 0;   // consecutive steps that evaluated nothing
             for (int g = 1; spent() < cfg.max_evaluations; ++g) {
@@ -1384,6 +1453,8 @@ RunResult run_core(const RunConfig& cfg)
     r.finished = core_finished(alg);
     for (const auto& u : ops::operators_used()) r.operators.emplace_back(u.op, u.repair);
     if constexpr (has_effective_settings<Core>::value) r.settings = alg.effective_settings();
+    r.pop_size_used = v.pop_size();
+    if (cfg.pop_size_mode == "nearest") r.settings.emplace_back("pop_size_used", std::to_string(r.pop_size_used));
     if (var_prob) {
         bool used = false;
         for (const auto& u : ops::operators_used()) used = used || std::string(u.op) == "sbx";

@@ -144,6 +144,11 @@ MOO_API int moo_result(moo_session* s,
 MOO_API int         moo_ignored_count(moo_session* s);
 MOO_API const char* moo_ignored_name(moo_session* s, int i);
 
+/* The population size the run took: `pop_size` of the settings text, unless
+ * `pop_size_mode = nearest` moved it to the nearest size the algorithm takes.
+ * Blocks until the run ends, as moo_result_count. Negative on error. */
+MOO_API int         moo_pop_size_used(moo_session* s);
+
 /* ── Errors ───────────────────────────────────────────────────────────────── */
 
 /* The last error on `s`, or the last moo_open failure when `s` is NULL.

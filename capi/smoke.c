@@ -34,6 +34,23 @@ static int fail(const char* what, moo_session* s) {
     return 1;
 }
 
+/* The ask/tell loop to the end of the run: 0, or negative on an error. */
+static int run_out(moo_session* s) {
+    int n = moo_ask_count(s), i;
+    double *x = NULL, *f = NULL;
+    while (n > 0) {
+        double* nx = (double*)realloc(x, (size_t)n * N_VARS * sizeof(double));
+        double* nf = (double*)realloc(f, (size_t)n * N_OBJS * sizeof(double));
+        if (!nx || !nf) { free(nx ? nx : x); free(nf ? nf : f); return -1; }
+        x = nx; f = nf;
+        if (moo_ask(s, x, n * N_VARS) != n) { n = -1; break; }
+        for (i = 0; i < n; ++i) simulate(&x[i * N_VARS], &f[i * N_OBJS]);
+        n = moo_tell(s, f, n * N_OBJS, NULL, 0);
+    }
+    free(x); free(f);
+    return n;
+}
+
 int main(void) {
     static const char* kSettings =
         "algorithm = nsga2\n"
@@ -98,6 +115,7 @@ int main(void) {
 
     count = moo_result_count(s);
     if (count != 40) return fail("expected 40 solutions", s);
+    if (moo_pop_size_used(s) != 40) return fail("pop_size_used must be pop_size", s);
 
     rx  = (double*)malloc((size_t)count * (size_t)nv * sizeof(double));
     rf  = (double*)malloc((size_t)count * (size_t)no * sizeof(double));
@@ -135,6 +153,23 @@ int main(void) {
     free(x); free(f); free(rx); free(rf); free(rcv);
     moo_close(s);
     moo_close(NULL);   /* must be safe */
+
+    /* pop_size_mode = nearest: MOEA/D-M2M splits the population into K = 10
+     * equal parts, so 105 is refused as it is and taken as 100 (100 and 110
+     * are equally near, the smaller wins). */
+    s = moo_open("algorithm = moead_m2m\npop_size = 105\npop_size_mode = nearest\nmax_gen = 2\n"
+                 "seed = 7\nn_vars = 10\nn_objs = 2\nlower = 0\nupper = 1\n");
+    if (!s) return fail("moo_open with pop_size_mode = nearest", NULL);
+    if (run_out(s) < 0) return fail("the nearest run", s);
+    if (moo_pop_size_used(s) != 100) return fail("pop_size_mode = nearest: expected 100", s);
+    if (moo_result_count(s) != 100) return fail("pop_size_mode = nearest: expected 100 solutions", s);
+    moo_close(s);
+    s = moo_open("algorithm = moead_m2m\npop_size = 105\nmax_gen = 2\n"
+                 "seed = 7\nn_vars = 10\nn_objs = 2\nlower = 0\nupper = 1\n");
+    if (!s) return fail("moo_open", NULL);
+    if (run_out(s) >= 0 || moo_last_error(s) == NULL)
+        return fail("pop_size_mode = exact must refuse pop_size 105 for moead_m2m", s);
+    moo_close(s);
 
     printf("OK\n");
     return 0;

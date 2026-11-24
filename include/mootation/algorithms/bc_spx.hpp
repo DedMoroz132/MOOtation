@@ -106,6 +106,10 @@ public:
         return false;
     }
 
+    // The sizes setup takes (run_core.hpp, pop_size_mode = nearest): k = n + 1
+    // different parents for one crossover.
+    bool accepts_pop_size(int n, int, int n_vars) const { return n >= n_vars + 1; }
+
     void setup(DataVault<Ind_t>& vault)
     {
         check(vault);

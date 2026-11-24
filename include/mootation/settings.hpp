@@ -18,6 +18,7 @@
 //   # ---- the run --------------------------------------------------------
 //   algorithm   = nsga3        # any name from algorithm_names()
 //   pop_size    = 92
+//   # pop_size_mode = exact    # exact | nearest: a size the algorithm takes
 //   max_gen     = 300
 //   # max_evaluations = 30000  # instead of max_gen: stop on evaluations spent
 //   seed        = 42
@@ -580,6 +581,13 @@ struct Settings {
     // ── the run ──────────────────────────────────────────────────────────
     std::string algorithm = "nsga2";
     int         pop_size  = 100;
+    // What a run does with a pop_size the algorithm does not take (task 34.2;
+    // run_core.hpp, RunConfig::pop_size_mode): "exact" (the default) refuses
+    // it, as before; "nearest" runs with the nearest size the algorithm takes
+    // (a Das-Dennis lattice size, a multiple of M2M's K, ...), the smaller of
+    // two equally near. The size taken is Result::pop_size_used and the
+    // entry pop_size_used of Result::settings; max_evaluations stays as given.
+    std::string pop_size_mode = "exact";
     int         max_gen   = 250;
     // Evaluation budget. 0 = run max_gen steps; > 0 = step until this many
     // evaluations have been spent (setup included), and max_gen is ignored.
@@ -629,6 +637,8 @@ struct Settings {
         };
         if (algorithm.empty())        bad("algorithm is empty");
         if (pop_size < 2)             bad("pop_size must be >= 2, got " + std::to_string(pop_size));
+        if (pop_size_mode != "exact" && pop_size_mode != "nearest")
+            bad("pop_size_mode must be exact or nearest, got '" + pop_size_mode + "'");
         if (max_gen < 0)              bad("max_gen must be >= 0, got " + std::to_string(max_gen));
         if (max_evaluations < 0)      bad("max_evaluations must be >= 0, got " + std::to_string(max_evaluations));
         if (lower.empty())            bad("lower/upper are empty — no decision variables");
@@ -785,6 +795,7 @@ inline Settings Settings::from_string(const std::string& text, const std::string
         const std::string w = where + " (" + key + ")";
         if      (key == "algorithm")   s.algorithm = val;
         else if (key == "pop_size")    s.pop_size  = detail::parse_int(val, w);
+        else if (key == "pop_size_mode") s.pop_size_mode = val;   // validate() checks it
         else if (key == "max_gen")     s.max_gen   = detail::parse_int(val, w);
         else if (key == "max_evaluations") s.max_evaluations = detail::parse_int(val, w);
         else if (key == "seed")        s.seed      = static_cast<unsigned>(detail::parse_int(val, w));
@@ -813,7 +824,7 @@ inline Settings Settings::from_string(const std::string& text, const std::string
             if (std::find(kn.begin(), kn.end(), key) == kn.end())
                 throw std::invalid_argument(
                     where + ": unknown key '" + key + "'. Known keys: algorithm, "
-                    "pop_size, max_gen, max_evaluations, seed, n_vars, n_objs, n_cons, lower, upper, "
+                    "pop_size, pop_size_mode, max_gen, max_evaluations, seed, n_vars, n_objs, n_cons, lower, upper, "
                     "constraints, seed_population, on_size_mismatch, and the knobs "
                     "listed in knob_names()");
             s.params[key] = detail::parse_num(val, w);
@@ -870,6 +881,9 @@ inline std::string Settings::to_string() const {
     o << "# mootation settings\n";
     o << "algorithm   = " << algorithm << "\n";
     o << "pop_size    = " << pop_size  << "\n";
+    // only when not the default: the text of an exact run stays as it was
+    if (pop_size_mode != "exact")
+        o << "pop_size_mode = " << pop_size_mode << "\n";
     o << "max_gen     = " << max_gen   << "\n";
     if (max_evaluations > 0)
         o << "max_evaluations = " << max_evaluations << "\n";

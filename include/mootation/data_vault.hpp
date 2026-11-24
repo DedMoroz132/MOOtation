@@ -610,7 +610,22 @@ public:
         num_objs_     = problem_.get_objs_n();
         num_lims_     = problem_.get_lims_n();
         user_objs_    = num_objs_;
+        allocate_slots();
+    }
 
+    // Another population size, before anything is evaluated (the run's
+    // pop_size_mode = nearest, run_core.hpp): the slots as the constructor
+    // makes them for n.
+    void set_pop_size(int n) {
+        if (n < 1) throw std::invalid_argument("set_pop_size: n >= 1");
+        if (!fin_lo_.empty() || failed_n_ > 0)
+            throw std::logic_error("set_pop_size: set before the first evaluation");
+        pop_size_ = n;
+        allocate_slots();
+    }
+
+private:
+    void allocate_slots() {
         // Base buffer 2*N: N active + N free.
         // grow_buf adds more when slots run out.
         std::size_t total = static_cast<std::size_t>(pop_size_) * 2;
@@ -627,6 +642,7 @@ public:
             free_[i] = static_cast<std::size_t>(pop_size_ + i);
     }
 
+public:
     // ── Configuration ────────────────────────────────────────────────────────
 
     void set_batch_executor(BatchExecutor e)         { batch_executor_ = std::move(e); }

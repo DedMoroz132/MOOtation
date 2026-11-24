@@ -406,6 +406,10 @@ public:
     void set_pm(double p)          { pm_ = p; }
     void set_seed(unsigned s)      { rng_.seed(s); }
 
+    // The sizes setup takes (run_core.hpp, pop_size_mode = nearest): K * S,
+    // S >= 2; K is the K asked for, which build_directions keeps.
+    bool accepts_pop_size(int n, int, int) const { return K_req_ >= 1 && n % K_req_ == 0 && n / K_req_ >= 2; }
+
     void setup(DataVault<Ind_t>& vault) {
         init_S_and_dirs(vault);
         int N = vault.pop_size();

@@ -309,6 +309,10 @@ public:
         return true;
     }
 
+    // The sizes setup takes (run_core.hpp, pop_size_mode = nearest): the
+    // Das-Dennis lattice sizes, single or two-layer (das_dennis::generate_exact).
+    bool accepts_pop_size(int n, int m, int) const { return das_dennis::is_attainable(m, n); }
+
     void setup(DataVault<Ind_t>& vault) {
         int n = vault.pop_size(), m = vault.objs_n();
         W_ = das_dennis::generate_exact(m, n);

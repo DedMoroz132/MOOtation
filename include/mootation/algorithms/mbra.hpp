@@ -319,6 +319,10 @@ public:
     void set_t_max(int t)            { t_max_ = (t > 0) ? t : 0; }
     void set_seed(unsigned s)        { rng_.seed(s); }
 
+    // The sizes setup takes (run_core.hpp, pop_size_mode = nearest): the
+    // Das-Dennis lattice sizes, single or two-layer (das_dennis::generate_exact).
+    bool accepts_pop_size(int n, int m, int) const { return das_dennis::is_attainable(m, n); }
+
     void setup(DataVault<Ind_t>& vault) {
         require_t_max();   // FIX 2026-06 (M1): the Condition1 schedule derives from Gmax
         int n = vault.pop_size(), m = vault.objs_n();

@@ -485,6 +485,10 @@ public:
         ops::require_repair(r, "moead_m2m", false, true); repair_ = r; }
 
     // ── setup: K×S random initialization + initial Allocation (line 1) ───────
+    // The sizes setup takes (run_core.hpp, pop_size_mode = nearest): K * S,
+    // S >= 2 (M2M-8 above); K is the K asked for, which build_directions keeps.
+    bool accepts_pop_size(int n, int, int) const { return K_req_ >= 1 && n % K_req_ == 0 && n / K_req_ >= 2; }
+
     void setup(DataVault<Ind_t>& vault) {
         init_S_and_dirs(vault);
         gen_ = 0;                          // FIX 2026-07-07: annealing of [20]

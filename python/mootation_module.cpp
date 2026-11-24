@@ -196,6 +196,9 @@ PYBIND11_MODULE(_core, m)
     py::class_<RunConfig>(m, "Config")
         .def(py::init<>())
         .def_readwrite("pop_size",        &RunConfig::pop_size)
+        .def_readwrite("pop_size_mode",   &RunConfig::pop_size_mode,
+                       "a pop_size the core does not take: exact (the default) refuses it, "
+                       "nearest takes the nearest size it does (run_core.hpp, POP-1)")
         .def_readwrite("n_gen",           &RunConfig::n_gen)
         .def_readwrite("seed",            &RunConfig::seed)
         .def_readwrite("constraint_mode", &RunConfig::constraint_mode)
@@ -327,6 +330,9 @@ PYBIND11_MODULE(_core, m)
                       "The equalities' tolerance cv was taken with; 0 without equalities.")
         .def_readonly("evaluations", &PyResult::evaluations,
                       "Evaluations the run spent, setup included.")
+        .def_readonly("pop_size_used", &PyResult::pop_size_used,
+                      "The population size the run took (pop_size unless "
+                      "pop_size_mode = nearest moved it).")
         .def_readonly("finished", &PyResult::finished,
                       "Whether the core stopped by its own rule (DMS, DMulti-MADS: the step size below its tolerance), before the budget or the generations ran out.")
         .def_readonly("callback_seconds", &PyResult::callback_seconds,

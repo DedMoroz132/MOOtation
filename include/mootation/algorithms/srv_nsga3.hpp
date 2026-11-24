@@ -329,6 +329,13 @@ public:
     // API surface.
     void set_kmeans_iter  (int /*k*/) { /* iterations fixed at 2m (paper) */ }
 
+    // The sizes setup takes (run_core.hpp, pop_size_mode = nearest): any with
+    // n_ref_points given, the Das-Dennis lattice sizes otherwise.
+    bool accepts_pop_size(int n, int m, int) const
+    {
+        return n_ref_points_ > 0 || das_dennis::is_attainable(m, n);
+    }
+
     void setup(DataVault<Ind_t>& vault) {
         int n=vault.pop_size(), m=vault.objs_n();
         current_gen_=0;
