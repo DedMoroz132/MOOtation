@@ -21,6 +21,10 @@
 //   # pop_size_mode = exact    # exact | nearest: a size the algorithm takes
 //   max_gen     = 300
 //   # max_evaluations = 30000  # instead of max_gen: stop on evaluations spent
+//   # local_search = off       # off | lamarck | baldwin: the hook of run() or
+//   # ls_every = 1             #   Session, on ceil(ls_share x pop_size) members
+//   # ls_share = 0.1           #   after every ls_every-th step, picked by
+//   # ls_pick  = spread        #   ls_pick: spread | random | objective | feasible
 //   seed        = 42
 //
 //   # ---- the problem ----------------------------------------------------
@@ -598,6 +602,19 @@ struct Settings {
     // than one step.
     int         max_evaluations = 0;
     unsigned    seed      = 0;
+    // Local search of the population's members between the algorithm's
+    // steps (task 34.1; member_search.hpp, MLS-1 ... MLS-11): "off" (the
+    // default, even where run() or Session is given a hook) | "lamarck" (the
+    // improved point replaces the member) | "baldwin" (the member keeps its
+    // variables and takes the improved point's values). On, the hook is
+    // called on ceil(ls_share x pop_size) members picked by ls_pick (spread |
+    // random | objective | feasible) after every ls_every-th step; its
+    // declared costs count in max_evaluations, and Result::settings says
+    // ls_calls, ls_accepted, ls_cost and used.
+    std::string local_search = "off";
+    int         ls_every = 1;
+    double      ls_share = 0.1;
+    std::string ls_pick  = "spread";
 
     // ── the problem ──────────────────────────────────────────────────────
     std::vector<double> lower;          // one entry per variable
@@ -641,6 +658,13 @@ struct Settings {
             bad("pop_size_mode must be exact or nearest, got '" + pop_size_mode + "'");
         if (max_gen < 0)              bad("max_gen must be >= 0, got " + std::to_string(max_gen));
         if (max_evaluations < 0)      bad("max_evaluations must be >= 0, got " + std::to_string(max_evaluations));
+        if (local_search != "off" && local_search != "lamarck" && local_search != "baldwin")
+            bad("local_search must be off, lamarck or baldwin, got '" + local_search + "'");
+        if (ls_every < 1)             bad("ls_every must be >= 1, got " + std::to_string(ls_every));
+        if (!(ls_share > 0.0 && ls_share <= 1.0))
+            bad("ls_share must be in (0, 1], got " + std::to_string(ls_share));
+        if (ls_pick != "spread" && ls_pick != "random" && ls_pick != "objective" && ls_pick != "feasible")
+            bad("ls_pick must be spread, random, objective or feasible, got '" + ls_pick + "'");
         if (lower.empty())            bad("lower/upper are empty — no decision variables");
         if (lower.size() != upper.size())
             bad("lower.size()=" + std::to_string(lower.size()) +
@@ -799,6 +823,10 @@ inline Settings Settings::from_string(const std::string& text, const std::string
         else if (key == "max_gen")     s.max_gen   = detail::parse_int(val, w);
         else if (key == "max_evaluations") s.max_evaluations = detail::parse_int(val, w);
         else if (key == "seed")        s.seed      = static_cast<unsigned>(detail::parse_int(val, w));
+        else if (key == "local_search") s.local_search = val;      // validate() checks it
+        else if (key == "ls_every")    s.ls_every  = detail::parse_int(val, w);
+        else if (key == "ls_share")    s.ls_share  = detail::parse_num(val, w);
+        else if (key == "ls_pick")     s.ls_pick   = val;           // validate() checks it
         else if (key == "n_objs")      s.n_objs    = detail::parse_int(val, w);
         else if (key == "n_cons")      s.n_cons    = detail::parse_int(val, w);
         else if (key == "n_vars")      n_vars_decl = detail::parse_int(val, w);
@@ -824,7 +852,8 @@ inline Settings Settings::from_string(const std::string& text, const std::string
             if (std::find(kn.begin(), kn.end(), key) == kn.end())
                 throw std::invalid_argument(
                     where + ": unknown key '" + key + "'. Known keys: algorithm, "
-                    "pop_size, pop_size_mode, max_gen, max_evaluations, seed, n_vars, n_objs, n_cons, lower, upper, "
+                    "pop_size, pop_size_mode, max_gen, max_evaluations, seed, local_search, ls_every, ls_share, "
+                    "ls_pick, n_vars, n_objs, n_cons, lower, upper, "
                     "constraints, seed_population, on_size_mismatch, and the knobs "
                     "listed in knob_names()");
             s.params[key] = detail::parse_num(val, w);
@@ -888,6 +917,16 @@ inline std::string Settings::to_string() const {
     if (max_evaluations > 0)
         o << "max_evaluations = " << max_evaluations << "\n";
     o << "seed        = " << seed      << "\n";
+    // each only when not the default: the text of a run without it stays as it was
+    if (local_search != "off") o << "local_search = " << local_search << "\n";
+    if (ls_every != 1)         o << "ls_every = " << ls_every << "\n";
+    if (ls_share != 0.1) {
+        std::ostringstream v;
+        v.precision(17);
+        v << ls_share;
+        o << "ls_share = " << v.str() << "\n";
+    }
+    if (ls_pick != "spread")   o << "ls_pick = " << ls_pick << "\n";
     o << "n_objs      = " << n_objs    << "\n";
     o << "n_cons      = " << n_cons    << "\n";
     o << "constraints = " << detail::constraints_name(constraints) << "\n";

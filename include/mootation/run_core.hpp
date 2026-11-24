@@ -44,6 +44,7 @@
 #include <utility>
 #include <vector>
 
+#include "member_search.hpp"
 #include "mootation.hpp"
 #include "scalar/nelder_mead.hpp"
 #include "scalar/symmetry.hpp"
@@ -181,6 +182,11 @@ struct RunState {
     // progress, for current_eq_tol() and current_cv_level().
     std::function<double()> eq_tol;
     std::function<double()> cv_level;
+    // The local search of members (RunConfig::local_search; member_search.hpp
+    // MLS-2, MLS-10): the hook's calls, the points taken, the declared costs.
+    long long ls_calls    = 0;
+    long long ls_accepted = 0;
+    double    ls_cost     = 0.0;
 };
 
 inline RunState& st()
@@ -864,6 +870,19 @@ struct RunConfig {
     //   new point where nothing better was found (nothing moves).
     std::string local = "none";
     long long   local_evals = 100;
+    // Local search of the population's members between the core's steps
+    // (task 34.1; member_search.hpp, MLS-1 ... MLS-11):
+    //   local_search = "off" (the default, even with ls_hook set) nothing:
+    //     the run it was, bit for bit; "lamarck" the improved point replaces
+    //     the member; "baldwin" the member keeps x and takes the values;
+    //   after every ls_every-th step, ceil(ls_share x pop_size) members
+    //   picked by ls_pick (spread, random, objective, feasible), each handed
+    //   to ls_hook; its declared costs are spent from max_evaluations.
+    std::string            local_search = "off";
+    int                    ls_every = 1;
+    double                 ls_share = 0.1;
+    std::string            ls_pick = "spread";
+    mootation::LocalSearch ls_hook;
     std::string sym = "off";
     std::vector<mootation::scalar::symmetry::Blocks> sym_blocks;
     std::function<void(std::vector<double>&)> sym_canon;
@@ -956,6 +975,11 @@ struct RunResult {
     long long                        callbacks = 0;
     // The time spent evaluating a problem of the suite (PyProblem::native).
     double                           native_seconds = 0.0;
+    // The local search of members (RunConfig::local_search, MLS-10): the
+    // hook's calls, the points taken and the declared costs; 0 without it.
+    long long                        ls_calls = 0;
+    long long                        ls_accepted = 0;
+    double                           ls_cost = 0.0;
 };
 
 template <typename Tag, typename Core>
@@ -1098,6 +1122,28 @@ RunResult run_core(const RunConfig& cfg)
     } else if (cfg.local != "none") {
         throw std::invalid_argument("local = '" + cfg.local + "': none or nm");
     }
+    // local search of the population's members (RunConfig::local_search, MLS-1, MLS-9)
+    if (!member_search::known_mode(cfg.local_search))
+        throw std::invalid_argument("local_search = '" + cfg.local_search + "': off, lamarck or baldwin");
+    const bool ls_on = cfg.local_search != "off";
+    if (ls_on) {
+        const RunProblem& rp = *st().problem;
+        if (!cfg.ls_hook)
+            throw std::invalid_argument("local_search = " + cfg.local_search + " needs the local search "
+                                        "hook (ls_hook)");
+        if (cfg.ls_every < 1) throw std::invalid_argument("ls_every: at least 1");
+        if (!(cfg.ls_share > 0.0 && cfg.ls_share <= 1.0))
+            throw std::invalid_argument("ls_share: in (0, 1]");
+        if (!member_search::known_pick(cfg.ls_pick))
+            throw std::invalid_argument("ls_pick = '" + cfg.ls_pick + "': spread, random, objective or feasible");
+        if (rp.n_bin > 0 || !cfg.var_kinds.empty())
+            throw std::invalid_argument("local_search: no binary, integer or discrete variables (MLS-9)");
+        if (cfg.aux != "none")
+            throw std::invalid_argument("local_search: not with aux, whose values come from the "
+                                        "population (MLS-9)");
+        if (cfg.n_eq > 0)
+            throw std::invalid_argument("local_search: no equality constraints (MLS-9)");
+    }
     // sym = canon (RunConfig::sym, MSYM-1): after the rounding, at every write
     if (cfg.sym == "canon") {
         symm.mode = mootation::scalar::symmetry::Mode::canon;
@@ -1234,6 +1280,15 @@ RunResult run_core(const RunConfig& cfg)
         throw std::invalid_argument("pop_size_mode = '" + cfg.pop_size_mode + "': exact or nearest");
     }
     long long steps_done = 0;                 // the steps taken (RunResult::generations)
+    // MLS-8: the point (x') whose values baldwin gave a member, by the
+    // member's variables and those values
+    std::unordered_map<std::string, std::vector<double>> baldwin_x;
+    auto answer_x = [&baldwin_x](const std::vector<double>& x, const std::vector<double>& f)
+        -> std::vector<double> {
+        if (baldwin_x.empty()) return x;
+        const auto it = baldwin_x.find(member_search::key_of(x, f));
+        return it == baldwin_x.end() ? x : it->second;
+    };
     std::optional<ops::ScopedSbxVarProb> var_prob;
     if (cfg.sbx_var_prob) {
         if (!(*cfg.sbx_var_prob >= 0.0 && *cfg.sbx_var_prob <= 1.0))
@@ -1291,7 +1346,7 @@ RunResult run_core(const RunConfig& cfg)
         // the variables of the rows emit() hands over, when the observer asks:
         // the real genome and then the integer one (bits, categorical
         // variables' label indices), as the evaluator receives a point
-        st().answer_variables = [&opt]() {
+        st().answer_variables = [&opt, &answer_x]() {
             auto& v = opt.get_vault();
             std::size_t n = std::min<std::size_t>(
                 v.active_n(), static_cast<std::size_t>(v.pop_size()));
@@ -1299,7 +1354,8 @@ RunResult run_core(const RunConfig& cfg)
             X.reserve(n);
             for (std::size_t i = 0; i < n; ++i) {
                 if (v.is_failed(i)) continue;                           // as emit() below
-                X.push_back(v.variables_of(i));
+                X.push_back(v.is_dirty(i) ? v.variables_of(i)
+                                          : answer_x(v.variables_of(i), v.objectives_of(i)));   // MLS-8
                 if (v.bin_vars_n() > 0)
                     for (int b : v.binary_variables_of(i)) X.back().push_back(static_cast<double>(b));
             }
@@ -1320,11 +1376,14 @@ RunResult run_core(const RunConfig& cfg)
             return out;
         };
         st().eq_tol = [&opt]() { return opt.get_vault().eq_tol(); };
-        // the evaluations the budget counts: calls, or distinct points
+        // the evaluations the budget counts: calls, or distinct points; and
+        // the local search's declared costs, rounded up (MLS-2; 0 without it)
         auto spent = [&]() -> long long {
-            if (!cfg.budget_unique || !cfg.unique_evaluations) return st().evaluations.load();
+            const long long hook = st().ls_cost > 0.0
+                ? static_cast<long long>((std::min)(std::ceil(st().ls_cost), 9.0e18)) : 0;
+            if (!cfg.budget_unique || !cfg.unique_evaluations) return st().evaluations.load() + hook;
             const auto gil = hold_lock();
-            return cfg.unique_evaluations();
+            return cfg.unique_evaluations() + hook;
         };
         st().cv_level = [&opt]() { return opt.get_vault().cv_level(); };
         // EPS_LEVEL, Eq. 8 rules 2-4, once for every generation reached
@@ -1352,6 +1411,89 @@ RunResult run_core(const RunConfig& cfg)
                                                  : (1.0 + cfg.eps_tau) * v.max_raw_cv());
             }
         };
+        // The local search of members after a step (member_search.hpp, MLS-2 ... MLS-8)
+        long long ls_times = 0;
+        std::mt19937 ls_rng(cfg.seed ^ 0x9E3779B9u);
+        // MLS-2 under max_evaluations: every ls_every x pop_size evaluations of the core
+        const long long ls_stride = static_cast<long long>(cfg.ls_every) * (std::max)(1, pop_n);
+        long long ls_next = st().evaluations.load() + ls_stride;
+        auto search_members = [&]() {
+            if (!ls_on) return;
+            if (by_evaluations) {
+                const long long now = st().evaluations.load();
+                if (now < ls_next) return;
+                while (ls_next <= now) ls_next += ls_stride;
+            } else if (steps_done % cfg.ls_every != 0) {
+                return;
+            }
+            auto& v = opt.get_vault();
+            const RunProblem& rp = *st().problem;
+            const std::size_t n = std::min<std::size_t>(v.active_n(), static_cast<std::size_t>(v.pop_size()));
+            std::vector<VaultPoint> pts;                     // MLS-3: evaluated, not failed
+            std::vector<std::size_t> slots;
+            for (std::size_t i = 0; i < n; ++i) {
+                if (v.is_dirty(i) || v.is_failed(i)) continue;
+                pts.push_back(v.point_of(i));
+                slots.push_back(i);
+            }
+            std::vector<member_search::Member> P(pts.size());
+            for (std::size_t c = 0; c < pts.size(); ++c) P[c] = {slots[c], &pts[c].objectives, pts[c].cv_raw};
+            const std::size_t k = static_cast<std::size_t>(
+                std::ceil(cfg.ls_share * static_cast<double>(v.pop_size())));
+            const auto picks = member_search::pick(P, k, cfg.ls_pick, ls_times++, ls_rng);
+            const std::size_t nv = rp.bounds.size();
+            for (std::size_t c : picks) {
+                if (by_evaluations && spent() >= cfg.max_evaluations) break;   // MLS-2
+                const VaultPoint& old = pts[c];
+                const std::string at = "local_search: member " + std::to_string(slots[c]) + " after step " +
+                                       std::to_string(steps_done) + ": ";
+                LocalStep out;
+                {
+                    const auto gil = hold_lock();
+                    ++st().ls_calls;
+                    try {
+                        out = cfg.ls_hook(old.variables, old.objectives, old.limits);
+                    } catch (const std::exception& e) {                            // MLS-5
+                        throw std::runtime_error(at + "the hook failed: " + e.what());
+                    }
+                }
+                if (out.x.size() != nv)
+                    throw std::runtime_error(at + "x' has " + std::to_string(out.x.size()) + " values for " +
+                                             std::to_string(nv) + " variables (MLS-5)");
+                for (std::size_t j = 0; j < nv; ++j)
+                    if (!std::isfinite(out.x[j]) || out.x[j] < rp.bounds[j].first || out.x[j] > rp.bounds[j].second)
+                        throw std::runtime_error(at + "x' is not finite or not in the box (MLS-5)");
+                if (static_cast<int>(out.f.size()) != rp.n_objectives)
+                    throw std::runtime_error(at + "f' has " + std::to_string(out.f.size()) + " values for " +
+                                             std::to_string(rp.n_objectives) + " objectives (MLS-5)");
+                if (static_cast<int>(out.g.size()) != rp.n_limits)
+                    throw std::runtime_error(at + "g' has " + std::to_string(out.g.size()) + " values for " +
+                                             std::to_string(rp.n_limits) + " constraints (MLS-5)");
+                for (double u : out.f)
+                    if (!std::isfinite(u)) throw std::runtime_error(at + "f' is not finite (MLS-5)");
+                for (double u : out.g)
+                    if (!std::isfinite(u)) throw std::runtime_error(at + "g' is not finite (MLS-5)");
+                if (!(std::isfinite(out.cost) && out.cost >= 0.0))
+                    throw std::runtime_error(at + "the declared cost is not a number >= 0 (MLS-5)");
+                st().ls_cost += out.cost;
+                if (!member_search::improves(out.f, member_search::violation(out.g), old.objectives, old.cv_raw))
+                    continue;                                                      // MLS-6
+                ++st().ls_accepted;
+                VaultPoint p = old;                                                // MLS-7
+                if (cfg.local_search == "lamarck") {
+                    p.variables = out.x;
+                    if (v.snap()) v.snap()(p.variables);       // sym = canon: f unchanged by the symmetry
+                }
+                p.objectives = out.f;
+                p.limits = out.g;
+                for (std::size_t a = 0; a < v.archive_size(); ++a)
+                    if (v.archive_variables_of(a) == old.variables && v.archive_objectives_of(a) == old.objectives)
+                        v.archive_put_point(a, p);
+                v.put_point(slots[c], p);
+                if (cfg.local_search == "baldwin")                                 // MLS-8
+                    baldwin_x[member_search::key_of(p.variables, p.objectives)] = out.x;
+            }
+        };
         auto one_step = [&]() {
             if (cfg.eps_level) eps_update();
             if (cfg.n_eq > 0 && cfg.eq_linear) {
@@ -1364,6 +1506,7 @@ RunResult run_core(const RunConfig& cfg)
             opt.step();
             ++steps_done;
             if (st().ops.on) ops_after_step(opt.get_vault());
+            search_members();
             if (cfg.on_step) cfg.on_step(static_cast<int>(steps_done));
         };
         auto emit = [&](int g) {
@@ -1455,6 +1598,15 @@ RunResult run_core(const RunConfig& cfg)
     if constexpr (has_effective_settings<Core>::value) r.settings = alg.effective_settings();
     r.pop_size_used = v.pop_size();
     if (cfg.pop_size_mode == "nearest") r.settings.emplace_back("pop_size_used", std::to_string(r.pop_size_used));
+    r.ls_calls = st().ls_calls;
+    r.ls_accepted = st().ls_accepted;
+    r.ls_cost = st().ls_cost;
+    if (ls_on) {                                                                   // MLS-10
+        r.settings.emplace_back("ls_calls", std::to_string(r.ls_calls));
+        r.settings.emplace_back("ls_accepted", std::to_string(r.ls_accepted));
+        r.settings.emplace_back("ls_cost", member_search::number(r.ls_cost));
+        r.settings.emplace_back("used", member_search::number(static_cast<double>(r.evaluations) + r.ls_cost));
+    }
     if (var_prob) {
         bool used = false;
         for (const auto& u : ops::operators_used()) used = used || std::string(u.op) == "sbx";
@@ -1498,7 +1650,7 @@ RunResult run_core(const RunConfig& cfg)
         const auto& f = v.objectives_of(i);
         if (v.is_failed(i)) { --r.active_n; continue; }  // a failure is no answer
         r.objectives.push_back(own(f));
-        r.variables.push_back(v.variables_of(i));
+        r.variables.push_back(answer_x(v.variables_of(i), f));                    // MLS-8
         if (v.bin_vars_n() > 0) r.binary_variables.push_back(v.binary_variables_of(i));
         r.cv.push_back(v.get_cv(i));
         if (st().problem->n_limits > 0) r.limits.push_back(v.limits_of(i));
@@ -1589,6 +1741,9 @@ inline RunResult run(const std::string& name, RunProblem& problem, const RunConf
     s.callback_seconds = 0.0;
     s.callbacks = 0;
     s.native_seconds = 0.0;
+    s.ls_calls = 0;
+    s.ls_accepted = 0;
+    s.ls_cost = 0.0;
     s.rows = NativeRows{};
     s.decode = NativeDecode{};
     if (problem.native && !cfg.var_kinds.empty()) {
@@ -1618,6 +1773,9 @@ inline RunResult run(const std::string& name, RunProblem& problem, const RunConf
         }
     } guard;
 
+    if (cfg.local_search != "off")                                                 // MLS-9
+        if (const char* why = member_search::refusal(name))
+            throw std::invalid_argument(name + ": local_search = " + cfg.local_search + " is refused: " + why);
 #define MOOTATION_ALG(KEY, IND, CORE) \
     if (name == #KEY) return run_core<RunTag_##KEY, mootation::CORE<RunTag_##KEY>>(cfg);
 #include "algorithms.def"

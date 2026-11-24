@@ -10,6 +10,9 @@ always listed under **Changed** or **Removed**.
 
 ## [Unreleased]
 
+### Added (task 34.1)
+- The local search of the population's members in every multi-objective algorithm (`member_search.hpp`, one layer in `run_core.hpp`, no core changed; off by default): `local_search = off | lamarck | baldwin`, `ls_every`, `ls_share`, `ls_pick = spread | random | objective | feasible` in the settings text, `RunConfig` and `minimize`; the user's hook `(x, f, g) -> {x', f', g', cost}` beside `Evaluate` in `embed.hpp` (`run(settings, evaluate, local_search)`, `Session::asks_local` / `tell_local`), `moo_ask_is_local` / `moo_ask_local` / `moo_tell_local` in the C ABI. The hook's declared cost counts in `max_evaluations`; the run's settings say the calls, their cost, the points taken and what the budget counted (`ls_calls`, `ls_cost`, `ls_accepted`, `used`; `moo_result_setting`). With `baldwin` the answer gives each member's values with the point they are of. With `off` every run is as before.
+
 ### Added (task 34.2)
 - `pop_size_mode = exact | nearest` (`settings.hpp`, `RunConfig`, `minimize`; off by default): with `nearest` a run whose algorithm does not take the `pop_size` asked for runs with the nearest size it does take, the smaller of two equally near — a Das–Dennis lattice size, a multiple of the M2M cores' K, the lower bounds of GDE3, BC and RM-MEDA, each core saying which sizes its setup takes (`accepts_pop_size`). The size taken is `pop_size_used` in the run's settings (`Result::pop_size_used`, `moo_pop_size_used`); the evaluation budget stays as given. With `exact` every run is as before.
 

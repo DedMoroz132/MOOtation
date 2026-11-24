@@ -60,6 +60,26 @@
 // (tens of seconds). A program that always uses one algorithm can skip it and
 // build `Optimizer<Ind, Core>` directly — see docs/writing-an-algorithm.md.
 //
+// ── LOCAL SEARCH OF MEMBERS (task 34.1; member_search.hpp) ──────────────────
+// A function beside Evaluate: your local search, (x, f, g) -> {x', f', g',
+// cost}, called on some members of the population between the algorithm's
+// steps when Settings::local_search is lamarck or baldwin (off, the default,
+// never calls it):
+//
+//     auto r = mootation::run(settings, evaluate,
+//         [](const std::vector<double>& x, const std::vector<double>& f,
+//            const std::vector<double>& g) {
+//             mootation::LocalStep out = my_local_solver(x);   // x', f(x'), g(x')
+//             out.cost = 20;                                   // the evaluations it spent
+//             return out;
+//         });
+//
+// The declared cost counts in max_evaluations; Result::settings says
+// ls_calls, ls_accepted, ls_cost and used. A Session asks for the local
+// search as it asks for evaluations: when asks_local() is true the batch
+// ask() returned is one member, local_objectives() and local_limits() its
+// values, and tell_local() answers it.
+//
 // ── THREADING ───────────────────────────────────────────────────────────────
 // `run` is single-threaded: the callback is invoked on the calling thread.
 // `Session` runs the algorithm on one worker thread and blocks it while you
@@ -192,6 +212,10 @@ inline runner::RunConfig config_of(const Settings& s, const io::Population* seed
     c.n_gen = s.max_gen;
     c.max_evaluations = s.max_evaluations;
     c.seed = s.seed;
+    c.local_search = s.local_search;
+    c.ls_every = s.ls_every;
+    c.ls_share = s.ls_share;
+    c.ls_pick = s.ls_pick;
     c.constraint_mode = s.constraints;
     auto num = [&](const char* k) -> std::optional<double> {
         const auto it = s.params.find(k);
@@ -293,13 +317,15 @@ inline runner::RunProblem problem_of(const Settings& s, Evaluate eval)
     return p;
 }
 
-// One run: on_step(g) after setup (0) and after every step
+// One run: on_step(g) after setup (0) and after every step; ls the local
+// search of members (empty: none)
 inline Result run(const Settings& s, Evaluate eval, const io::Population* seed,
-                  const std::function<void(int)>& on_step)
+                  const std::function<void(int)>& on_step, LocalSearch ls = nullptr)
 {
     runner::RunProblem problem = problem_of(s, std::move(eval));
     runner::RunConfig cfg = config_of(s, seed);
     cfg.on_step = on_step;
+    cfg.ls_hook = std::move(ls);
     runner::RunResult rr = runner::run(s.algorithm, problem, cfg);
     Result r;
     r.variables = std::move(rr.variables);
@@ -376,6 +402,30 @@ inline Result run(const Settings& s, Evaluate eval, io::Population seed) {
     embed_detail::validate_seed(seed, s, "passed to run()");
 
     return embed_detail::run(s, std::move(eval), &seed, nullptr);
+}
+
+// The same with a local search of members (task 34.1, LOCAL SEARCH OF
+// MEMBERS above): called only with Settings::local_search = lamarck or
+// baldwin.
+inline Result run(const Settings& s, Evaluate eval, LocalSearch local_search) {
+    s.validate();
+    validate_algorithm(s.algorithm);
+    if (!eval)
+        throw std::invalid_argument("mootation::run: evaluator is empty");
+    std::optional<io::Population> seed;
+    if (!s.seed_population.empty()) seed = embed_detail::load_seed(s);
+    return embed_detail::run(s, std::move(eval), seed ? &*seed : nullptr, nullptr,
+                             std::move(local_search));
+}
+
+inline Result run(const Settings& s, Evaluate eval, io::Population seed, LocalSearch local_search) {
+    s.validate();
+    validate_algorithm(s.algorithm);
+    if (!eval)
+        throw std::invalid_argument("mootation::run: evaluator is empty");
+    io::fit_population(seed, s.pop_size, s.on_size_mismatch);
+    embed_detail::validate_seed(seed, s, "passed to run()");
+    return embed_detail::run(s, std::move(eval), &seed, nullptr, std::move(local_search));
 }
 
 // A Result is what a finished run hands back; this turns it into something the
@@ -461,6 +511,9 @@ public:
             if (!have_batch_)
                 throw std::logic_error("mootation::Session::tell: the run has "
                                        "already finished");
+            if (local_)
+                throw std::logic_error("mootation::Session::tell: the batch waiting is a "
+                                       "local search of a member; answer it with tell_local");
             if (F.size() != pending_.size())
                 throw std::invalid_argument(
                     "mootation::Session::tell: got " + std::to_string(F.size()) +
@@ -490,6 +543,38 @@ public:
             answer_G_    = G;
             have_batch_  = false;
             have_answer_ = true;
+        }
+        cv_worker_.notify_one();
+        return ask();
+    }
+
+    // ── The local search of members (Settings::local_search, task 34.1) ──
+    // True when the batch ask() returns is a local search request: one
+    // member's variables, its values in local_objectives() and
+    // local_limits(), answered by tell_local() with the point found.
+    bool asks_local() {
+        std::unique_lock<std::mutex> lk(m_);
+        cv_main_.wait(lk, [this] { return have_batch_ || finished_; });
+        rethrow_if_failed();
+        return have_batch_ && local_;
+    }
+    std::vector<double> local_objectives() { return local_values(true); }
+    std::vector<double> local_limits() { return local_values(false); }
+
+    // Posts the point the local search found for the member ask() returned
+    // (x', its objectives f', its constraint values g', the evaluations the
+    // search spent) and returns the next batch, as tell() does.
+    std::vector<std::vector<double>> tell_local(const LocalStep& step) {
+        {
+            std::unique_lock<std::mutex> lk(m_);
+            cv_main_.wait(lk, [this] { return have_batch_ || finished_; });
+            rethrow_if_failed();
+            if (!have_batch_ || !local_)
+                throw std::logic_error("mootation::Session::tell_local: no local search "
+                                       "request is waiting (asks_local() is false)");
+            answer_local_ = step;
+            have_batch_   = false;
+            have_answer_  = true;
         }
         cv_worker_.notify_one();
         return ask();
@@ -550,7 +635,14 @@ private:
                     [this](int g) {
                         std::lock_guard<std::mutex> lk(m_);
                         generation_ = g;
-                    });
+                    },
+                    // the local search of members goes to the caller as a request
+                    settings_.local_search == "off"
+                        ? LocalSearch()
+                        : LocalSearch([this](const std::vector<double>& x, const std::vector<double>& f,
+                                             const std::vector<double>& g) {
+                              return this->handoff_local(x, f, g);
+                          }));
                 std::lock_guard<std::mutex> lk(m_);
                 result_ = std::move(r);
             } catch (const Aborted&) {
@@ -574,6 +666,7 @@ private:
                  std::vector<std::vector<double>>&       G) {
         std::unique_lock<std::mutex> lk(m_);
         pending_     = X;
+        local_       = false;
         have_batch_  = true;
         have_answer_ = false;
         lk.unlock();
@@ -585,6 +678,38 @@ private:
         F = std::move(answer_F_);
         G = std::move(answer_G_);
         have_answer_ = false;
+    }
+
+    // The local search of a member, on the worker thread: the member posted
+    // as a batch of one, the caller's tell_local() its answer.
+    LocalStep handoff_local(const std::vector<double>& x, const std::vector<double>& f,
+                            const std::vector<double>& g) {
+        std::unique_lock<std::mutex> lk(m_);
+        pending_.assign(1, x);
+        local_f_     = f;
+        local_g_     = g;
+        local_       = true;
+        have_batch_  = true;
+        have_answer_ = false;
+        lk.unlock();
+        cv_main_.notify_one();
+
+        lk.lock();
+        cv_worker_.wait(lk, [this] { return have_answer_ || abort_; });
+        if (abort_) throw Aborted{};
+        have_answer_ = false;
+        local_       = false;
+        return std::move(answer_local_);
+    }
+
+    std::vector<double> local_values(bool objectives) {
+        std::unique_lock<std::mutex> lk(m_);
+        cv_main_.wait(lk, [this] { return have_batch_ || finished_; });
+        rethrow_if_failed();
+        if (!have_batch_ || !local_)
+            throw std::logic_error("mootation::Session: no local search request is waiting "
+                                   "(asks_local() is false)");
+        return objectives ? local_f_ : local_g_;
     }
 
     void rethrow_if_failed() {
@@ -617,6 +742,10 @@ private:
     std::condition_variable cv_main_, cv_worker_;
 
     std::vector<std::vector<double>> pending_, answer_F_, answer_G_;
+    // a local search request (asks_local): the member's values, the answer
+    bool                local_ = false;
+    std::vector<double> local_f_, local_g_;
+    LocalStep           answer_local_;
     bool               have_batch_  = false;
     bool               have_answer_ = false;
     bool               finished_    = false;

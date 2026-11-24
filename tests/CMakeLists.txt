@@ -126,6 +126,7 @@ set(MOOTATION_TESTS
     test_clocks
     test_auto_mem
     test_pop_size_mode
+    test_member_search
     test_windows_first)
 
 foreach(_t IN LISTS MOOTATION_TESTS)
@@ -243,6 +244,9 @@ mootation_test_timeout(test_warm_start 600)
 # pop_size_mode (task 34.2): embed.hpp's dispatch again, every algorithm at
 # three numbers of objectives on a short budget.
 mootation_test_timeout(test_pop_size_mode 900)
+# the local search of members (task 34.1): ZDT4 over a grid of budgets, and
+# every algorithm of the dispatch with lamarck and baldwin.
+mootation_test_timeout(test_member_search 900)
 
 # test_hvc and test_dss check against an independent computation on random
 # sets: on every push a part of them (every kind of set still dozens of

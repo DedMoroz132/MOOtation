@@ -149,6 +149,44 @@ MOO_API const char* moo_ignored_name(moo_session* s, int i);
  * Blocks until the run ends, as moo_result_count. Negative on error. */
 MOO_API int         moo_pop_size_used(moo_session* s);
 
+/* An entry of the run's settings (embed.hpp, Result::settings) by name — with
+ * `local_search` on: "ls_calls", "ls_accepted", "ls_cost", "used"; with
+ * `pop_size_mode = nearest`: "pop_size_used" — or NULL where the run has none.
+ * Blocks until the run ends, as moo_result_count. The pointer stays valid
+ * until moo_close. */
+MOO_API const char* moo_result_setting(moo_session* s, const char* name);
+
+/* ── The local search of members (task 34.1) ──────────────────────────────── */
+/* With `local_search = lamarck | baldwin` in the settings text the run asks for
+ * the local search of a member as it asks for evaluations: a batch of one
+ * candidate for which moo_ask_is_local() is 1.
+ *
+ *   n = moo_ask_count(s);
+ *   while (n > 0) {
+ *       moo_ask(s, x, n * nv);
+ *       if (moo_ask_is_local(s) == 1) {          // one member: x, f, g
+ *           moo_ask_local(s, f, no, g, nc);
+ *           cost = my_local_solver(x, f, g);     // x', f', g' written in place
+ *           n = moo_tell_local(s, x, nv, f, no, g, nc, cost);
+ *       } else {
+ *           ... evaluate the batch ...
+ *           n = moo_tell(s, f, n * no, g, n * nc);
+ *       }
+ *   }
+ *
+ * cost: the evaluations the search spent (declared; counted in max_evaluations).
+ * moo_ask_is_local: 1 a local search request, 0 an evaluation batch or none,
+ * negative on error. moo_ask_local copies the member's objectives (and
+ * constraint values; g may be NULL with g_len 0 when moo_n_cons() is 0);
+ * moo_tell_local posts the point found and returns the NEXT count. */
+MOO_API int moo_ask_is_local(moo_session* s);
+MOO_API int moo_ask_local(moo_session* s, double* f, int f_len, double* g, int g_len);
+MOO_API int moo_tell_local(moo_session* s,
+                           const double* x, int x_len,
+                           const double* f, int f_len,
+                           const double* g, int g_len,
+                           double cost);
+
 /* ── Errors ───────────────────────────────────────────────────────────────── */
 
 /* The last error on `s`, or the last moo_open failure when `s` is NULL.

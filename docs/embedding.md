@@ -121,6 +121,7 @@ A plain struct, and the same fields as a `key = value` file:
 | `algorithm` | any name from `mootation::algorithm_names()` |
 | `pop_size`, `max_gen`, `seed` | the run |
 | `pop_size_mode` | a `pop_size` the algorithm does not take — a Das–Dennis lattice size (NSGA-III, θ-DEA, the MOEA/D family, RVEA, ...), a multiple of K (MOEA/D-M2M, SMS-M2M), a lower bound (GDE3, BC, RM-MEDA): `exact` (the default) is an error, `nearest` runs with the nearest size it takes, the smaller of two equally near (`run_core.hpp`, POP-1). The size taken is `Result::pop_size_used` and the entry `pop_size_used` of `Result::settings`; `max_evaluations` stays as given. A seed population must have the size taken |
+| `local_search`, `ls_every`, `ls_share`, `ls_pick` | the local search of the population's members between the algorithm's steps (`member_search.hpp`, MLS-1 ... MLS-11): `off` (the default, even with a hook) | `lamarck` (the improved point replaces the member) | `baldwin` (the member keeps its variables and takes the improved point's values). On, your hook `(x, f, g) -> LocalStep{x', f', g', cost}` — the third argument of `run()`, a request of `Session` (`asks_local()`, `tell_local()`), `moo_ask_is_local` / `moo_tell_local` in C — is called on `ceil(ls_share x pop_size)` members picked by `ls_pick` (`spread`, the default: the first front by crowding distance; `random`, `objective`, `feasible`) after every `ls_every`-th step. The point is taken when it is a Pareto improvement (or less violating). Its declared `cost` counts in `max_evaluations`; `Result::settings` says `ls_calls`, `ls_accepted`, `ls_cost`, `used`. Real variables, no equalities |
 | `max_evaluations` | a budget in evaluations instead of `max_gen` steps (0, the default, runs `max_gen`); checked between steps, so a generational core overshoots it by less than one generation. Use it whenever algorithms are compared or a budget is what you pay for: a step is one offspring for NIMMO and a fifth of the population for MOEA/D-DRA and -AWA |
 | `n_vars`, `lower`, `upper` | per-variable bounds; one scalar broadcasts to all `n_vars` (`Settings::set_box(n, lo, hi)`) |
 | `n_objs`, `n_cons` | objective and constraint values per candidate |
@@ -326,6 +327,8 @@ arrays.
 | `moo_tell(s, f, f_len, g, g_len)` | posts objectives (and constraint values, or `NULL, 0`); returns the size of the NEXT batch |
 | `moo_result_count(s)`, `moo_result(s, x, x_len, f, f_len, cv, cv_len)` | the final population; any of the three pointers may be `NULL` with length 0 |
 | `moo_ignored_count(s)`, `moo_ignored_name(s, i)` | knobs the algorithm does not have |
+| `moo_ask_is_local(s)`, `moo_ask_local(s, f, f_len, g, g_len)`, `moo_tell_local(s, x, x_len, f, f_len, g, g_len, cost)` | with `local_search` on: whether the batch waiting is the local search of one member, its values, and the point found (its `cost` the evaluations spent) |
+| `moo_result_setting(s, name)` | an entry of the run's settings (`ls_calls`, `ls_accepted`, `ls_cost`, `used`, `pop_size_used`), or `NULL` |
 | `moo_pop_size_used(s)` | the population size the run took (`pop_size`, unless `pop_size_mode = nearest` moved it) |
 | `moo_last_error(s)` | the last error on the session, or on `NULL` the last `moo_open` failure |
 

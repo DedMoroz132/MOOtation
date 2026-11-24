@@ -308,6 +308,70 @@ int moo_pop_size_used(moo_session* s) {
     });
 }
 
+const char* moo_result_setting(moo_session* s, const char* name) {
+    if (!s || !name) return nullptr;
+    const int ok = guarded(s, [&] {
+        if (!s->have_result) {
+            s->result      = s->sess->result();
+            s->have_result = true;
+        }
+        return 0;
+    });
+    if (ok < 0) return nullptr;
+    for (const auto& kv : s->result.settings)
+        if (kv.first == name) return kv.second.c_str();
+    return nullptr;
+}
+
+int moo_ask_is_local(moo_session* s) {
+    return guarded(s, [&] {
+        if (s->have_result) return 0;
+        refresh_batch(s);
+        if (s->batch.empty()) return 0;
+        return s->sess->asks_local() ? 1 : 0;
+    });
+}
+
+int moo_ask_local(moo_session* s, double* f, int f_len, double* g, int g_len) {
+    return guarded(s, [&] {
+        if (s->have_result || !s->sess->asks_local())
+            throw std::logic_error("moo_ask_local: no local search request is waiting");
+        const std::vector<double> fv = s->sess->local_objectives();
+        const std::vector<double> gv = s->sess->local_limits();
+        if (!f || f_len < static_cast<int>(fv.size()))
+            throw std::invalid_argument("moo_ask_local: f needs " + std::to_string(fv.size()) + " doubles");
+        if (!gv.empty() && (!g || g_len < static_cast<int>(gv.size())))
+            throw std::invalid_argument("moo_ask_local: g needs " + std::to_string(gv.size()) + " doubles");
+        std::memcpy(f, fv.data(), fv.size() * sizeof(double));
+        if (!gv.empty()) std::memcpy(g, gv.data(), gv.size() * sizeof(double));
+        return 1;
+    });
+}
+
+int moo_tell_local(moo_session* s, const double* x, int x_len, const double* f, int f_len,
+                   const double* g, int g_len, double cost) {
+    return guarded(s, [&] {
+        if (s->have_result) throw std::logic_error("moo_tell_local: the run has already finished");
+        const int nv = s->settings.n_vars(), no = s->settings.n_objs, nc = s->settings.n_cons;
+        if (!x || x_len < nv) throw std::invalid_argument("moo_tell_local: x needs " + std::to_string(nv) + " doubles");
+        if (!f || f_len < no) throw std::invalid_argument("moo_tell_local: f needs " + std::to_string(no) + " doubles");
+        if (nc > 0 && (!g || g_len < nc))
+            throw std::invalid_argument("moo_tell_local: g needs " + std::to_string(nc) + " doubles");
+        mootation::LocalStep step;
+        step.x.assign(x, x + nv);
+        step.f.assign(f, f + no);
+        if (nc > 0) step.g.assign(g, g + nc);
+        step.cost = cost;
+        s->batch       = s->sess->tell_local(step);
+        s->batch_valid = true;
+        if (s->batch.empty()) {
+            s->result      = s->sess->result();
+            s->have_result = true;
+        }
+        return static_cast<int>(s->batch.size());
+    });
+}
+
 const char* moo_ignored_name(moo_session* s, int i) {
     if (!s || !s->have_result) return nullptr;
     if (i < 0 || i >= static_cast<int>(s->result.ignored.size())) return nullptr;

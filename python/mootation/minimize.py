@@ -181,6 +181,11 @@ def minimize(
     max_evaluations: int = 0,
     seed: int = 0,
     pop_size_mode: str = "exact",
+    local_search: str = "off",
+    ls_hook: Callable | None = None,
+    ls_every: int = 1,
+    ls_share: float = 0.1,
+    ls_pick: str = "spread",
     constraints: Callable[[Sequence[float]], Sequence[float]] | None = None,
     n_cons: int = 0,
     eq_constraints: Callable[[Sequence[float]], Sequence[float]] | None = None,
@@ -246,6 +251,19 @@ def minimize(
                 result.pop_size_used). max_evaluations stays as given. A seed
                 population or a design (init) must have the size taken
                 (run_core.hpp, RunConfig::pop_size_mode).
+    local_search, ls_hook, ls_every, ls_share, ls_pick
+                the local search of the population's members between the
+                algorithm's steps (task 34.1; include/mootation/
+                member_search.hpp): "off" (the default, even with ls_hook) |
+                "lamarck" (the improved point replaces the member) |
+                "baldwin" (the member keeps its x and takes the values).
+                ls_hook(x, f, g) -> (x', f', g', cost) is called on
+                ceil(ls_share x pop_size) members picked by ls_pick (spread,
+                random, objective, feasible) after every ls_every-th step; g
+                is empty without constraints; cost is the evaluations the
+                search spent, counted in max_evaluations. result.settings
+                names ls_calls, ls_accepted, ls_cost and used. Real variables
+                only, no equalities, not with wrap or the scalarizing methods.
     constraints takes one decision vector, returns `n_cons` values; each <= 0
                 means satisfied. Supplying it turns constraint handling on.
     eq_constraints, n_eq
@@ -496,6 +514,16 @@ def minimize(
     bounds = [(float(lo), float(hi)) for lo, hi in bounds]
     if pop_size_mode not in ("exact", "nearest"):
         raise ValueError(f"pop_size_mode = '{pop_size_mode}': exact or nearest")
+    if local_search not in ("off", "lamarck", "baldwin"):
+        raise ValueError(f"local_search = '{local_search}': off, lamarck or baldwin")
+    if local_search != "off":
+        if ls_hook is None:
+            raise ValueError(f"local_search = {local_search} needs ls_hook")
+        if wrap is not None:
+            raise ValueError("local_search: not with wrap (the hook would see the wrapped box)")
+        from .scalar import NAMES as _scalar_names
+        if algorithm in _scalar_names:
+            raise ValueError("local_search: the multi-objective cores only, not " + algorithm)
     if wrap is not None:
         if residuals_blocks is not None or group_act is not None:
             raise ValueError("wrap: not with residuals_blocks or group_act (task 28)")
@@ -904,6 +932,17 @@ def minimize(
     cfg = _core.Config()
     cfg.pop_size = int(pop_size)
     cfg.pop_size_mode = str(pop_size_mode)
+    cfg.local_search = str(local_search)
+    cfg.ls_every = int(ls_every)
+    cfg.ls_share = float(ls_share)
+    cfg.ls_pick = str(ls_pick)
+    if local_search != "off":
+        def _ls(x, f, g, _h=ls_hook):
+            x1, f1, g1, cost = _h(list(x), list(f), list(g))
+            out = _core.LocalStep()
+            out.x, out.f, out.g, out.cost = list(x1), list(f1), list(g1 or []), float(cost)
+            return out
+        cfg.ls_hook = _ls
     cfg.n_gen = int(n_gen)
     if max_evaluations:
         if int(max_evaluations) < 0:

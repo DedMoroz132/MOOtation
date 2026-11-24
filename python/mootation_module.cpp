@@ -193,6 +193,14 @@ PYBIND11_MODULE(_core, m)
                        "order, a batch at a time: before every on_generation call, at the "
                        "end of the run and every few thousand rows in between.");
 
+    // what the local search of members gives back (member_search.hpp, task 34.1)
+    py::class_<mootation::LocalStep>(m, "LocalStep")
+        .def(py::init<>())
+        .def_readwrite("x",    &mootation::LocalStep::x, "x', the point found")
+        .def_readwrite("f",    &mootation::LocalStep::f, "its objectives")
+        .def_readwrite("g",    &mootation::LocalStep::g, "its constraint values (empty without constraints)")
+        .def_readwrite("cost", &mootation::LocalStep::cost, "the evaluations the search spent (declared)");
+
     py::class_<RunConfig>(m, "Config")
         .def(py::init<>())
         .def_readwrite("pop_size",        &RunConfig::pop_size)
@@ -200,6 +208,14 @@ PYBIND11_MODULE(_core, m)
                        "a pop_size the core does not take: exact (the default) refuses it, "
                        "nearest takes the nearest size it does (run_core.hpp, POP-1)")
         .def_readwrite("n_gen",           &RunConfig::n_gen)
+        .def_readwrite("local_search",    &RunConfig::local_search,
+                       "off (the default) | lamarck | baldwin: the local search of members "
+                       "(member_search.hpp, MLS-1 ... MLS-11)")
+        .def_readwrite("ls_every",        &RunConfig::ls_every)
+        .def_readwrite("ls_share",        &RunConfig::ls_share)
+        .def_readwrite("ls_pick",         &RunConfig::ls_pick)
+        .def_readwrite("ls_hook",         &RunConfig::ls_hook,
+                       "(x, f, g) -> LocalStep, called on members when local_search is on")
         .def_readwrite("seed",            &RunConfig::seed)
         .def_readwrite("constraint_mode", &RunConfig::constraint_mode)
         .def_readwrite("eta_c",           &RunConfig::eta_c)

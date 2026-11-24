@@ -171,6 +171,57 @@ int main(void) {
         return fail("pop_size_mode = exact must refuse pop_size 105 for moead_m2m", s);
     moo_close(s);
 
+    /* local_search = lamarck (task 34.1): the run asks for the local search of
+     * a member as a batch of one; the answer here puts the distance variables
+     * at ZDT1's optimum (0), one evaluation declared. */
+    s = moo_open("algorithm = nsga2\npop_size = 20\nmax_gen = 5\nseed = 7\nn_vars = 10\nn_objs = 2\n"
+                 "lower = 0\nupper = 1\nlocal_search = lamarck\nls_share = 0.25\n");
+    if (!s) return fail("moo_open with local_search = lamarck", NULL);
+    {
+        double lx[N_VARS], lf[N_OBJS], *bx = NULL, *bf = NULL;
+        int requests = 0, j, front = 0;
+        const char* calls;
+        n = moo_ask_count(s);
+        while (n > 0) {
+            double* nx = (double*)realloc(bx, (size_t)n * N_VARS * sizeof(double));
+            double* nf = (double*)realloc(bf, (size_t)n * N_OBJS * sizeof(double));
+            if (!nx || !nf) return fail("out of memory", s);
+            bx = nx; bf = nf;
+            if (moo_ask(s, bx, n * N_VARS) != n) return fail("moo_ask (local search run)", s);
+            if (moo_ask_is_local(s) == 1) {
+                if (moo_ask_local(s, lf, N_OBJS, NULL, 0) != 1) return fail("moo_ask_local", s);
+                for (j = 0; j < N_VARS; ++j) lx[j] = j == 0 ? bx[0] : 0.0;
+                simulate(lx, lf);
+                ++requests;
+                n = moo_tell_local(s, lx, N_VARS, lf, N_OBJS, NULL, 0, 1.0);
+                if (n < 0) return fail("moo_tell_local", s);
+            } else {
+                for (i = 0; i < n; ++i) simulate(&bx[i * N_VARS], &bf[i * N_OBJS]);
+                n = moo_tell(s, bf, n * N_OBJS, NULL, 0);
+                if (n < 0) return fail("moo_tell (local search run)", s);
+            }
+        }
+        free(bx); free(bf);
+        count = moo_result_count(s);
+        if (count != 20) return fail("local search run: expected 20 solutions", s);
+        rx = (double*)malloc((size_t)count * N_VARS * sizeof(double));
+        if (!rx) return fail("out of memory", s);
+        if (moo_result(s, rx, count * N_VARS, NULL, 0, NULL, 0) != count) return fail("moo_result", s);
+        for (i = 0; i < count; ++i) {
+            int zero = 1;
+            for (j = 1; j < N_VARS; ++j) zero = zero && rx[i * N_VARS + j] == 0.0;
+            front += zero;
+        }
+        free(rx);
+        calls = moo_result_setting(s, "ls_calls");
+        if (!calls || atoi(calls) != requests || requests != 25)
+            return fail("local search run: ls_calls must be the 25 requests (5 steps x 5 members)", s);
+        if (front < 1) return fail("local search run: no member at the front", s);
+        if (moo_result_setting(s, "no_such_entry") != NULL) return fail("moo_result_setting of no entry", s);
+        printf("c api local search: %d requests, %d of %d solutions at the front\n", requests, front, count);
+    }
+    moo_close(s);
+
     printf("OK\n");
     return 0;
 }

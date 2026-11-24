@@ -952,6 +952,13 @@ public:
         check_point(p, "put_point");
         write_point(real_idx(v), p);
     }
+    // Writes p into archive slot i whole, as put_point writes an active slot
+    // (the run's local search of members, member_search.hpp MLS-7).
+    void archive_put_point(std::size_t i, const VaultPoint& p) {
+        check_point(p, "archive_put_point");
+        if (i >= archive_.size()) throw std::out_of_range("DataVault::archive_put_point");
+        write_point(archive_[i], p);
+    }
     // Appends p to the archive, as put_point writes a slot.
     std::size_t archive_push_point(const VaultPoint& p) {
         check_point(p, "archive_push_point");
